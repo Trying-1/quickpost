@@ -1,0 +1,248 @@
+name: quickpost
+description: Create stunning social posts, crop images in bulk, and make videos easily.
+publish_to: 'none'
+
+version: 1.0.0+2
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+  image_picker: ^1.0.4
+  path_provider: ^2.1.1
+  permission_handler: ^11.0.1
+  image: ^4.1.3
+  device_info_plus: ^9.1.1
+  video_player: ^2.8.1
+  open_file: ^3.3.2
+  
+  # Database
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  
+  # Video thumbnail
+  video_thumbnail: ^0.5.3
+  
+  # AdMob
+  google_mobile_ads: ^5.1.0
+  
+  # In-app updates and reviews
+  in_app_update: ^4.2.3
+  in_app_review: ^2.0.9
+
+  # ffmpeg_kit_flutter: ^5.1.0  # Temporarily disabled due to build issues
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  hive_generator: ^2.0.1
+  build_runner: ^2.4.7
+  flutter_launcher_icons: ^0.13.1
+
+flutter:
+  uses-material-design: true
+  fonts:
+    - family: Akony
+      fonts:
+        - asset: assets/fonts/akony.ttf
+        - asset: assets/fonts/akony.otf
+    - family: AllertaStencil
+      fonts:
+        - asset: assets/fonts/AllertaStencil-Regular.ttf
+    - family: AlmendraDisplay
+      fonts:
+        - asset: assets/fonts/AlmendraDisplay-Regular.ttf
+    - family: AlumniSans
+      fonts:
+        - asset: assets/fonts/AlumniSans-Regular.ttf
+        - asset: assets/fonts/AlumniSans-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/AlumniSans-Black.ttf
+          weight: 900
+        - asset: assets/fonts/AlumniSans-Light.ttf
+          weight: 300
+        - asset: assets/fonts/AlumniSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/AlumniSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/AlumniSans-Thin.ttf
+          weight: 100
+        - asset: assets/fonts/AlumniSans-ExtraLight.ttf
+          weight: 200
+        - asset: assets/fonts/AlumniSans-ExtraBold.ttf
+          weight: 800
+        - asset: assets/fonts/AlumniSans-Italic.ttf
+          style: italic
+        - asset: assets/fonts/AlumniSans-BoldItalic.ttf
+          weight: 700
+          style: italic
+        - asset: assets/fonts/AlumniSans-BlackItalic.ttf
+          weight: 900
+          style: italic
+        - asset: assets/fonts/AlumniSans-LightItalic.ttf
+          weight: 300
+          style: italic
+        - asset: assets/fonts/AlumniSans-MediumItalic.ttf
+          weight: 500
+          style: italic
+        - asset: assets/fonts/AlumniSans-SemiBoldItalic.ttf
+          weight: 600
+          style: italic
+        - asset: assets/fonts/AlumniSans-ThinItalic.ttf
+          weight: 100
+          style: italic
+        - asset: assets/fonts/AlumniSans-ExtraLightItalic.ttf
+          weight: 200
+          style: italic
+        - asset: assets/fonts/AlumniSans-ExtraBoldItalic.ttf
+          weight: 800
+          style: italic
+    - family: AlumniSansPinstripe
+      fonts:
+        - asset: assets/fonts/AlumniSansPinstripe-Regular.ttf
+        - asset: assets/fonts/AlumniSansPinstripe-Italic.ttf
+          style: italic
+    - family: Barrio
+      fonts:
+        - asset: assets/fonts/Barrio-Regular.ttf
+    - family: Bellota
+      fonts:
+        - asset: assets/fonts/Bellota-Regular.ttf
+        - asset: assets/fonts/Bellota-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Bellota-Light.ttf
+          weight: 300
+        - asset: assets/fonts/Bellota-Italic.ttf
+          style: italic
+        - asset: assets/fonts/Bellota-BoldItalic.ttf
+          weight: 700
+          style: italic
+        - asset: assets/fonts/Bellota-LightItalic.ttf
+          weight: 300
+          style: italic
+    - family: BhuTukaExpandedOne
+      fonts:
+        - asset: assets/fonts/BhuTukaExpandedOne-Regular.ttf
+    - family: Bokor
+      fonts:
+        - asset: assets/fonts/Bokor-Regular.ttf
+    - family: BungeeHairline
+      fonts:
+        - asset: assets/fonts/BungeeHairline-Regular.ttf
+    - family: Caramel
+      fonts:
+        - asset: assets/fonts/Caramel-Regular.ttf
+    - family: Centralwell
+      fonts:
+        - asset: assets/fonts/Centralwell.ttf
+    - family: ChalkBoard
+      fonts:
+        - asset: assets/fonts/Chalk Board.ttf
+        - asset: assets/fonts/Chalk Board.otf
+    - family: Explora
+      fonts:
+        - asset: assets/fonts/Explora-Regular.ttf
+    - family: GrandifloraOne
+      fonts:
+        - asset: assets/fonts/GrandifloraOne-Regular.ttf
+    - family: KleeOne
+      fonts:
+        - asset: assets/fonts/KleeOne-SemiBold.ttf
+          weight: 600
+    - family: Lacquer
+      fonts:
+        - asset: assets/fonts/Lacquer-Regular.ttf
+    - family: LibreBarcode39Text
+      fonts:
+        - asset: assets/fonts/LibreBarcode39Text-Regular.ttf
+    - family: LuckiestGuy
+      fonts:
+        - asset: assets/fonts/LuckiestGuy-Regular.ttf
+    - family: MajorMonoDisplay
+      fonts:
+        - asset: assets/fonts/MajorMonoDisplay-Regular.ttf
+    - family: Metrophobic
+      fonts:
+        - asset: assets/fonts/Metrophobic-Regular.ttf
+    - family: Michroma
+      fonts:
+        - asset: assets/fonts/Michroma-Regular.ttf
+    - family: Milker
+      fonts:
+        - asset: assets/fonts/Milker.otf
+    - family: Modernline
+      fonts:
+        - asset: assets/fonts/modernline.otf
+        - asset: assets/fonts/modernline bold.otf
+          weight: 700
+    - family: NCLNeovibes
+      fonts:
+        - asset: assets/fonts/NCLNeovibes-Demo.otf
+    - family: NewRocker
+      fonts:
+        - asset: assets/fonts/NewRocker-Regular.ttf
+    - family: NewTegomin
+      fonts:
+        - asset: assets/fonts/NewTegomin-Regular.ttf
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Poppins-Black.ttf
+          weight: 900
+        - asset: assets/fonts/Poppins-Light.ttf
+          weight: 300
+        - asset: assets/fonts/Poppins-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Poppins-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Poppins-Thin.ttf
+          weight: 100
+        - asset: assets/fonts/Poppins-ExtraLight.ttf
+          weight: 200
+        - asset: assets/fonts/Poppins-ExtraBold.ttf
+          weight: 800
+        - asset: assets/fonts/Poppins-Italic.ttf
+          style: italic
+        - asset: assets/fonts/Poppins-BoldItalic.ttf
+          weight: 700
+          style: italic
+        - asset: assets/fonts/Poppins-BlackItalic.ttf
+          weight: 900
+          style: italic
+        - asset: assets/fonts/Poppins-LightItalic.ttf
+          weight: 300
+          style: italic
+        - asset: assets/fonts/Poppins-MediumItalic.ttf
+          weight: 500
+          style: italic
+        - asset: assets/fonts/Poppins-SemiBoldItalic.ttf
+          weight: 600
+          style: italic
+        - asset: assets/fonts/Poppins-ThinItalic.ttf
+          weight: 100
+          style: italic
+        - asset: assets/fonts/Poppins-ExtraLightItalic.ttf
+          weight: 200
+          style: italic
+    - family: ProtestRevolution
+      fonts:
+        - asset: assets/fonts/ProtestRevolution-Regular.ttf
+    - family: Religath
+      fonts:
+        - asset: assets/fonts/RELIGATH-Demo.otf
+    - family: SourGummy
+      fonts:
+        - asset: assets/fonts/SourGummy-VariableFont_wdth,wght.ttf
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/images/app_icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/images/app_icon_foreground.png"

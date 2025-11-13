@@ -1,0 +1,1157 @@
+{
+  "systemInfo": {
+    "operatingSystem": "linux",
+    "windsurfVersion": "1.12.28",
+    "ideName": "windsurf",
+    "timestamp": "2025-11-13T18:15:13.229Z",
+    "installationId": "9a469c59-cc96-458a-b149-b41edd776f9b"
+  },
+  "userSettings": {
+    "openMostRecentChatConversation": false,
+    "lastSelectedModel": "MODEL_UNSPECIFIED",
+    "themePreference": "THEME_PREFERENCE_UNSPECIFIED",
+    "extensionPanelTab": "EXTENSION_PANEL_TAB_UNSPECIFIED",
+    "fontSize": "FONT_SIZE_UNSPECIFIED",
+    "autocompleteSpeed": "AUTOCOMPLETE_SPEED_UNSPECIFIED",
+    "rememberLastModelSelection": "REMEMBER_LAST_MODEL_SELECTION_UNSPECIFIED",
+    "lastSelectedModelName": "",
+    "lastSelectedCascadeModel": "MODEL_PRIVATE_3",
+    "cascadeNuxStates": [],
+    "cascadePlannerMode": "CONVERSATIONAL_PLANNER_MODE_DEFAULT",
+    "cascadeAllowedCommands": [],
+    "cascadeDeniedCommands": [],
+    "userNuxStates": [],
+    "cascadeWebSearchDisabled": false,
+    "disableAutocomplete": false,
+    "disableSupercomplete": false,
+    "disableSelectionPopup": false,
+    "disableExplainProblemInlayHint": false,
+    "disableInlayHintShortcuts": false,
+    "disableOpenCascadeOnReload": false,
+    "disableAutoOpenEditedFiles": false,
+    "disableTabToJump": false,
+    "cascadeAutoExecutionPolicy": "CASCADE_COMMANDS_AUTO_EXECUTION_UNSPECIFIED",
+    "explainAndFixInCurrentConversation": false,
+    "allowCascadeAccessGitignoreFiles": false,
+    "disableCascadeAutoFixLints": false,
+    "disableCascadeBrowserPreviews": false,
+    "detectProxy": false,
+    "disableTabToImport": false,
+    "useClipboardForCompletions": false,
+    "disableHighlightAfterAccept": false,
+    "lastSelectedNewConvoTab": "",
+    "disableAutoGenerateMemories": false,
+    "enableSoundsForSpecialEvents": false,
+    "enableTabSounds": false,
+    "allowCascadeInBackground": false,
+    "tabToJump": "TAB_TO_JUMP_UNSPECIFIED",
+    "cascadeWebSearch": "CASCADE_WEB_SEARCH_TOOL_UNSPECIFIED",
+    "enableTerminalCompletion": false,
+    "featureUsageData": {
+      "CASCADE_REVERT_TO_STEP": {
+        "hasUsed": true
+      }
+    },
+    "disableCascadeInBackground": true,
+    "enableCommandCascadeMode": false,
+    "customWorkspace": [],
+    "conversationBrainConfigs": {},
+    "cachedCascadeModelConfigs": [
+      {
+        "label": "SWE-1.5 (Promo)",
+        "modelOrAlias": {
+          "model": "MODEL_SWE_1_5"
+        },
+        "creditMultiplier": 1,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": false,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_WINDSURF",
+        "isRecommended": true,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": true,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Claude Haiku 4.5",
+        "modelOrAlias": {
+          "model": "MODEL_PRIVATE_11"
+        },
+        "creditMultiplier": 1,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": false,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_ANTHROPIC",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Claude Sonnet 4.5",
+        "modelOrAlias": {
+          "model": "MODEL_PRIVATE_2"
+        },
+        "creditMultiplier": 2,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": false,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_ANTHROPIC",
+        "isRecommended": true,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Claude Sonnet 4.5 Thinking",
+        "modelOrAlias": {
+          "model": "MODEL_PRIVATE_3"
+        },
+        "creditMultiplier": 3,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": false,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_ANTHROPIC",
+        "isRecommended": true,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "GPT-5 (low reasoning)",
+        "modelOrAlias": {
+          "model": "MODEL_PRIVATE_6"
+        },
+        "creditMultiplier": 0.5,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": false,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_OPENAI",
+        "isRecommended": true,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": true,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "GPT-4.1",
+        "modelOrAlias": {
+          "model": "MODEL_CHAT_GPT_4_1_2025_04_14"
+        },
+        "creditMultiplier": 1,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": true,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_OPENAI",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "SWE-1",
+        "modelOrAlias": {
+          "alias": "MODEL_ALIAS_SWE_1"
+        },
+        "creditMultiplier": 0,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": false,
+        "isPremium": false,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_WINDSURF",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Gemini 2.5 Pro",
+        "modelOrAlias": {
+          "model": "MODEL_GOOGLE_GEMINI_2_5_PRO"
+        },
+        "creditMultiplier": 1,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": false,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_GOOGLE",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Claude 3.7 Sonnet",
+        "modelOrAlias": {
+          "model": "MODEL_CLAUDE_3_7_SONNET_20250219"
+        },
+        "creditMultiplier": 1,
+        "disabled": true,
+        "supportsImages": true,
+        "supportsLegacy": true,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_ANTHROPIC",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Claude 3.7 Sonnet (BYOK)",
+        "modelOrAlias": {
+          "model": "MODEL_CLAUDE_3_7_SONNET_BYOK"
+        },
+        "creditMultiplier": 0,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": true,
+        "isPremium": true,
+        "betaWarningMessage": "Register your Anthropic API key in Windsurf settings.",
+        "isBeta": true,
+        "provider": "MODEL_PROVIDER_ANTHROPIC",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_BYOK",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Claude 3.7 Sonnet",
+        "modelOrAlias": {
+          "model": "MODEL_CLAUDE_3_7_SONNET_20250219"
+        },
+        "creditMultiplier": 2,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": true,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_ANTHROPIC",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Claude 3.7 Sonnet (Thinking)",
+        "modelOrAlias": {
+          "model": "MODEL_CLAUDE_3_7_SONNET_20250219_THINKING"
+        },
+        "creditMultiplier": 1.25,
+        "disabled": true,
+        "supportsImages": true,
+        "supportsLegacy": true,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_ANTHROPIC",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Claude 3.7 Sonnet (Thinking) (BYOK)",
+        "modelOrAlias": {
+          "model": "MODEL_CLAUDE_3_7_SONNET_THINKING_BYOK"
+        },
+        "creditMultiplier": 0,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": true,
+        "isPremium": true,
+        "betaWarningMessage": "Register your Anthropic API key in Windsurf settings.",
+        "isBeta": true,
+        "provider": "MODEL_PROVIDER_ANTHROPIC",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_BYOK",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Claude 3.7 Sonnet (Thinking)",
+        "modelOrAlias": {
+          "model": "MODEL_CLAUDE_3_7_SONNET_20250219_THINKING"
+        },
+        "creditMultiplier": 3,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": true,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_ANTHROPIC",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Claude 3.5 Sonnet",
+        "modelOrAlias": {
+          "model": "MODEL_CLAUDE_3_5_SONNET_20241022"
+        },
+        "creditMultiplier": 1,
+        "disabled": true,
+        "supportsImages": true,
+        "supportsLegacy": true,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_ANTHROPIC",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Claude 3.5 Sonnet (BYOK)",
+        "modelOrAlias": {
+          "model": "MODEL_CLAUDE_3_5_SONNET_BYOK"
+        },
+        "creditMultiplier": 0,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": true,
+        "isPremium": true,
+        "betaWarningMessage": "Register your Anthropic API key in Windsurf settings.",
+        "isBeta": true,
+        "provider": "MODEL_PROVIDER_ANTHROPIC",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_BYOK",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Claude Sonnet 4 (BYOK)",
+        "modelOrAlias": {
+          "model": "MODEL_CLAUDE_4_SONNET_BYOK"
+        },
+        "creditMultiplier": 0,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": true,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_ANTHROPIC",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_BYOK",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Claude Sonnet 4",
+        "modelOrAlias": {
+          "model": "MODEL_CLAUDE_4_SONNET"
+        },
+        "creditMultiplier": 2,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": true,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_ANTHROPIC",
+        "isRecommended": true,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Claude Sonnet 4 (Thinking, BYOK)",
+        "modelOrAlias": {
+          "model": "MODEL_CLAUDE_4_SONNET_THINKING_BYOK"
+        },
+        "creditMultiplier": 0,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": true,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_ANTHROPIC",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_BYOK",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Claude Sonnet 4 (Thinking)",
+        "modelOrAlias": {
+          "model": "MODEL_CLAUDE_4_SONNET_THINKING"
+        },
+        "creditMultiplier": 3,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": true,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_ANTHROPIC",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Claude Opus 4 (BYOK)",
+        "modelOrAlias": {
+          "model": "MODEL_CLAUDE_4_OPUS_BYOK"
+        },
+        "creditMultiplier": 0,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": true,
+        "isPremium": true,
+        "betaWarningMessage": "Register your Anthropic API key in Windsurf settings.",
+        "isBeta": true,
+        "provider": "MODEL_PROVIDER_ANTHROPIC",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_BYOK",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Claude Opus 4 (Thinking, BYOK)",
+        "modelOrAlias": {
+          "model": "MODEL_CLAUDE_4_OPUS_THINKING_BYOK"
+        },
+        "creditMultiplier": 0,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": true,
+        "isPremium": true,
+        "betaWarningMessage": "Register your Anthropic API key in Windsurf settings.",
+        "isBeta": true,
+        "provider": "MODEL_PROVIDER_ANTHROPIC",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_BYOK",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "o3",
+        "modelOrAlias": {
+          "model": "MODEL_CHAT_O3"
+        },
+        "creditMultiplier": 1,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": false,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_OPENAI",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "o3 (high reasoning)",
+        "modelOrAlias": {
+          "model": "MODEL_CHAT_O3_HIGH"
+        },
+        "creditMultiplier": 1,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": false,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_OPENAI",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Grok Code Fast 1",
+        "modelOrAlias": {
+          "model": "MODEL_PRIVATE_4"
+        },
+        "creditMultiplier": 0,
+        "disabled": false,
+        "supportsImages": false,
+        "supportsLegacy": false,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_XAI",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": true,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "GPT-5-Codex",
+        "modelOrAlias": {
+          "model": "MODEL_CHAT_GPT_5_CODEX"
+        },
+        "creditMultiplier": 0,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": false,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_OPENAI",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": true,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "GPT-5 (medium reasoning)",
+        "modelOrAlias": {
+          "model": "MODEL_PRIVATE_7"
+        },
+        "creditMultiplier": 1,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": false,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_OPENAI",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": true,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "GPT-5 (high reasoning)",
+        "modelOrAlias": {
+          "model": "MODEL_PRIVATE_8"
+        },
+        "creditMultiplier": 2,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": false,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_OPENAI",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": true,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "GPT-4o",
+        "modelOrAlias": {
+          "model": "MODEL_CHAT_GPT_4O_2024_08_06"
+        },
+        "creditMultiplier": 1,
+        "disabled": false,
+        "supportsImages": true,
+        "supportsLegacy": true,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_OPENAI",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "DeepSeek V3 (0324)",
+        "modelOrAlias": {
+          "model": "MODEL_DEEPSEEK_V3"
+        },
+        "creditMultiplier": 0,
+        "disabled": false,
+        "supportsImages": false,
+        "supportsLegacy": false,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_DEEPSEEK",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Kimi K2",
+        "modelOrAlias": {
+          "model": "MODEL_KIMI_K2"
+        },
+        "creditMultiplier": 0.5,
+        "disabled": false,
+        "supportsImages": false,
+        "supportsLegacy": false,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_MOONSHOT",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "Qwen3-Coder",
+        "modelOrAlias": {
+          "model": "MODEL_QWEN_3_CODER_480B_INSTRUCT"
+        },
+        "creditMultiplier": 0.5,
+        "disabled": false,
+        "supportsImages": false,
+        "supportsLegacy": false,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_QWEN",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "GPT-OSS 120B (Medium)",
+        "modelOrAlias": {
+          "model": "MODEL_GPT_OSS_120B"
+        },
+        "creditMultiplier": 0.25,
+        "disabled": false,
+        "supportsImages": false,
+        "supportsLegacy": false,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_OPENAI",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "DeepSeek R1 (0528)",
+        "modelOrAlias": {
+          "model": "MODEL_DEEPSEEK_R1"
+        },
+        "creditMultiplier": 0,
+        "disabled": false,
+        "supportsImages": false,
+        "supportsLegacy": false,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_DEEPSEEK",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "xAI Grok-3",
+        "modelOrAlias": {
+          "model": "MODEL_XAI_GROK_3"
+        },
+        "creditMultiplier": 1,
+        "disabled": false,
+        "supportsImages": false,
+        "supportsLegacy": true,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_XAI",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      },
+      {
+        "label": "xAI Grok-3 mini (Thinking)",
+        "modelOrAlias": {
+          "model": "MODEL_XAI_GROK_3_MINI_REASONING"
+        },
+        "creditMultiplier": 0.125,
+        "disabled": false,
+        "supportsImages": false,
+        "supportsLegacy": true,
+        "isPremium": true,
+        "betaWarningMessage": "",
+        "isBeta": false,
+        "provider": "MODEL_PROVIDER_XAI",
+        "isRecommended": false,
+        "allowedTiers": [],
+        "pricingType": "MODEL_PRICING_TYPE_STATIC_CREDIT",
+        "apiProvider": "API_PROVIDER_UNSPECIFIED",
+        "isNew": false,
+        "partialRollout": false,
+        "rolloutFraction": 0
+      }
+    ],
+    "cachedCascadeModelSorts": [
+      {
+        "name": "Recommended",
+        "groups": [
+          {
+            "groupName": "",
+            "modelLabels": [
+              "SWE-1.5 (Promo)",
+              "Claude Sonnet 4.5",
+              "Claude Sonnet 4.5 Thinking",
+              "GPT-5 (low reasoning)",
+              "Claude Sonnet 4"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Provider",
+        "groups": [
+          {
+            "groupName": "Windsurf",
+            "modelLabels": [
+              "SWE-1.5 (Promo)",
+              "SWE-1"
+            ]
+          },
+          {
+            "groupName": "OpenAI",
+            "modelLabels": [
+              "GPT-5 (low reasoning)",
+              "GPT-4.1",
+              "o3",
+              "o3 (high reasoning)",
+              "GPT-5-Codex",
+              "GPT-5 (medium reasoning)",
+              "GPT-5 (high reasoning)",
+              "GPT-4o",
+              "GPT-OSS 120B (Medium)"
+            ]
+          },
+          {
+            "groupName": "Anthropic",
+            "modelLabels": [
+              "Claude Haiku 4.5",
+              "Claude Sonnet 4.5",
+              "Claude Sonnet 4.5 Thinking",
+              "Claude 3.7 Sonnet",
+              "Claude 3.7 Sonnet (BYOK)",
+              "Claude 3.7 Sonnet",
+              "Claude 3.7 Sonnet (Thinking)",
+              "Claude 3.7 Sonnet (Thinking) (BYOK)",
+              "Claude 3.7 Sonnet (Thinking)",
+              "Claude 3.5 Sonnet",
+              "Claude 3.5 Sonnet (BYOK)",
+              "Claude Sonnet 4 (BYOK)",
+              "Claude Sonnet 4",
+              "Claude Sonnet 4 (Thinking, BYOK)",
+              "Claude Sonnet 4 (Thinking)",
+              "Claude Opus 4 (BYOK)",
+              "Claude Opus 4 (Thinking, BYOK)"
+            ]
+          },
+          {
+            "groupName": "Google",
+            "modelLabels": [
+              "Gemini 2.5 Pro"
+            ]
+          },
+          {
+            "groupName": "xAI",
+            "modelLabels": [
+              "Grok Code Fast 1",
+              "xAI Grok-3",
+              "xAI Grok-3 mini (Thinking)"
+            ]
+          },
+          {
+            "groupName": "DeepSeek",
+            "modelLabels": [
+              "DeepSeek V3 (0324)",
+              "DeepSeek R1 (0528)"
+            ]
+          },
+          {
+            "groupName": "Other",
+            "modelLabels": [
+              "Kimi K2",
+              "Qwen3-Coder"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Cost",
+        "groups": [
+          {
+            "groupName": "Premium",
+            "modelLabels": [
+              "SWE-1.5 (Promo)",
+              "Claude Haiku 4.5",
+              "Claude Sonnet 4.5",
+              "Claude Sonnet 4.5 Thinking",
+              "GPT-4.1",
+              "Gemini 2.5 Pro",
+              "Claude 3.7 Sonnet",
+              "Claude 3.7 Sonnet",
+              "Claude 3.7 Sonnet (Thinking)",
+              "Claude 3.7 Sonnet (Thinking)",
+              "Claude 3.5 Sonnet",
+              "Claude Sonnet 4",
+              "Claude Sonnet 4 (Thinking)",
+              "o3",
+              "o3 (high reasoning)",
+              "GPT-5 (medium reasoning)",
+              "GPT-5 (high reasoning)",
+              "GPT-4o",
+              "xAI Grok-3"
+            ]
+          },
+          {
+            "groupName": "Value",
+            "modelLabels": [
+              "GPT-5 (low reasoning)",
+              "Kimi K2",
+              "Qwen3-Coder",
+              "GPT-OSS 120B (Medium)",
+              "xAI Grok-3 mini (Thinking)"
+            ]
+          },
+          {
+            "groupName": "BYOK",
+            "modelLabels": [
+              "Claude 3.7 Sonnet (BYOK)",
+              "Claude 3.7 Sonnet (Thinking) (BYOK)",
+              "Claude 3.5 Sonnet (BYOK)",
+              "Claude Sonnet 4 (BYOK)",
+              "Claude Sonnet 4 (Thinking, BYOK)",
+              "Claude Opus 4 (BYOK)",
+              "Claude Opus 4 (Thinking, BYOK)"
+            ]
+          },
+          {
+            "groupName": "Free",
+            "modelLabels": [
+              "SWE-1",
+              "Grok Code Fast 1",
+              "GPT-5-Codex",
+              "DeepSeek V3 (0324)",
+              "DeepSeek R1 (0528)"
+            ]
+          }
+        ]
+      }
+    ],
+    "globalPlanModePreference": "PLAN_MODE_UNSPECIFIED",
+    "isSnoozed": false,
+    "cascadeRunExtensionCode": "CASCADE_RUN_EXTENSION_CODE_UNSPECIFIED",
+    "cascadeRunExtensionCodeAutoRun": "CASCADE_RUN_EXTENSION_CODE_AUTO_RUN_UNSPECIFIED",
+    "lastModelDefaultOverrideVersionId": "gpt-5-low-0927",
+    "autoContinueOnMaxGeneratorInvocations": "AUTO_CONTINUE_ON_MAX_GENERATOR_INVOCATIONS_UNSPECIFIED",
+    "seenNuxUids": {},
+    "recentlyUsedCascadeModels": [
+      "221",
+      "0",
+      "314"
+    ],
+    "cascadeDismissedSuggestionWorkspaces": [],
+    "annotationsConfig": "ANNOTATIONS_CONFIG_UNSPECIFIED",
+    "enableAutomaticScreenshot": false,
+    "browserExperimentalFeaturesConfig": "BROWSER_EXPERIMENTAL_FEATURES_CONFIG_UNSPECIFIED",
+    "commandPopupAutocomplete": "COMMAND_POPUP_AUTOCOMPLETE_UNSPECIFIED",
+    "claudeCodeCliPath": "",
+    "claudeCodeSystemPrompt": "",
+    "claudeCodeMaxTurns": 0,
+    "claudeCodeMcpConfig": "",
+    "claudeCodeDirectories": [],
+    "claudeCodeSystemPromptAppend": "",
+    "claudeCodeModel": "",
+    "enableInstantContextAgent": false,
+    "disableInstantContextAgent": false
+  },
+  "extensionLogs": [
+    "2025-11-13 23:42:40.746 [info] 2025/11/13 23:42:40 maxprocs: Leaving GOMAXPROCS=8: CPU quota undefined",
+    "2025-11-13 23:42:41.035 [info] I1113 23:42:41.034900  3779 main.go:623] Setting GOMAXPROCS to 4",
+    "2025-11-13 23:42:41.036 [info] I1113 23:42:41.036001  3779 main.go:836] Starting language server process with pid 3779",
+    "2025-11-13 23:42:41.038 [info] I1113 23:42:41.038601  3779 server.go:352] Language server will attempt to listen on host 127.0.0.1",
+    "2025-11-13 23:42:41.039 [info] I1113 23:42:41.039148  3779 server.go:359] Language server listening on random port at 33799",
+    "2025-11-13 23:42:41.052 [info] I1113 23:42:41.052027  3779 server.go:492] Created extension server client at port 43551",
+    "2025-11-13 23:42:41.193 [info] (Windsurf) 2025-11-13 23:42:41.180 [INFO]: Language server started",
+    "2025-11-13 23:42:41.389 [info] (Windsurf) 2025-11-13 23:42:41.389 [INFO]: LS lspClient started successfully",
+    "2025-11-13 23:43:56.578 [info] E1113 23:43:56.578251  3779 interceptor.go:74] /exa.language_server_pb.LanguageServerService/MountCascadeFilesystem (unknown): failed to mount filesystem for cascade 9cf5ec71-2548-45e4-bc72-a8235b1d41d9: filesystem is not a RedirectFS, got <nil>"
+  ],
+  "languageServerDiagnostics": {
+    "logs": [
+      "I1113 23:42:41.034900  3779 main.go:623] Setting GOMAXPROCS to 4\n",
+      "I1113 23:42:41.036001  3779 main.go:836] Starting language server process with pid 3779\n",
+      "I1113 23:42:41.038601  3779 server.go:352] Language server will attempt to listen on host 127.0.0.1\n",
+      "I1113 23:42:41.039148  3779 server.go:359] Language server listening on random port at 33799\n",
+      "I1113 23:42:41.052027  3779 server.go:492] Created extension server client at port 43551\n",
+      "E1113 23:43:56.578251  3779 interceptor.go:74] /exa.language_server_pb.LanguageServerService/MountCascadeFilesystem (unknown): failed to mount filesystem for cascade 9cf5ec71-2548-45e4-bc72-a8235b1d41d9: filesystem is not a RedirectFS, got <nil>\n"
+    ]
+  },
+  "recentTrajectories": [
+    {
+      "cascadeId": "9cf5ec71-2548-45e4-bc72-a8235b1d41d9",
+      "trajectoryId": "d6b19bb8-3f5e-4dd6-b6e0-e917c0b5473f",
+      "summary": "Project Structure Overview",
+      "lastStepIndex": 16,
+      "lastModifiedTime": "2025-11-13T18:15:06.879Z"
+    }
+  ],
+  "installedExtensions": [
+    {
+      "id": "ms-vscode.js-debug",
+      "version": "1.105.0",
+      "isActive": false,
+      "name": "JavaScript Debugger"
+    },
+    {
+      "id": "ms-vscode.js-debug-companion",
+      "version": "1.1.3",
+      "isActive": false,
+      "name": "JavaScript Debugger Companion Extension"
+    },
+    {
+      "id": "ms-vscode.vscode-js-profile-table",
+      "version": "1.0.10",
+      "isActive": false,
+      "name": "Table Visualizer for JavaScript Profiles"
+    },
+    {
+      "id": "miguelsolorio.symbols",
+      "version": "0.0.21",
+      "isActive": false,
+      "name": "Symbols"
+    },
+    {
+      "id": "RobbOwen.synthwave-vscode",
+      "version": "0.1.17",
+      "isActive": false,
+      "name": "SynthWave '84"
+    },
+    {
+      "id": "enkia.tokyo-night",
+      "version": "1.0.9",
+      "isActive": false,
+      "name": "Tokyo Night"
+    },
+    {
+      "id": "codeium.windsurf",
+      "version": "0.2.0",
+      "isActive": true,
+      "name": "Windsurf"
+    },
+    {
+      "id": "codeium.windsurf-code-executor",
+      "version": "0.0.1",
+      "isActive": false,
+      "name": "Windsurf Code Executor"
+    },
+    {
+      "id": "Codeium.windsurf-dev-containers",
+      "version": "0.0.1",
+      "isActive": true,
+      "name": "Windsurf Remote - Dev Containers"
+    },
+    {
+      "id": "codeium.windsurf-remote-openssh",
+      "version": "0.0.1",
+      "isActive": false,
+      "name": "Windsurf Remote - SSH"
+    },
+    {
+      "id": "codeium.windsurf-remote-wsl",
+      "version": "0.0.1",
+      "isActive": false,
+      "name": "Windsurf Remote - WSL"
+    }
+  ],
+  "fields": {
+    "cascadeId": "9cf5ec71-2548-45e4-bc72-a8235b1d41d9",
+    "currentLatestStepIndex": 16,
+    "trajectoryId": "d6b19bb8-3f5e-4dd6-b6e0-e917c0b5473f",
+    "consoleLogs": [
+      "[ERROR] 2025-11-13 23:42:42.978 ConnectError: [unavailable] unavailable: dial tcp: lookup server.self-serve.windsurf.com on 127.0.0.53:53: server misbehaving",
+      "[ERROR] 2025-11-13 23:42:43.14 Unleash: unable to fetch feature toggles TypeError: Failed to fetch",
+      "[LOG] 2025-11-13 23:42:43.39 Cascade config: [object Object]",
+      "[ERROR] 2025-11-13 23:42:43.53 ConnectError: [unavailable] unavailable: dial tcp: lookup server.self-serve.windsurf.com on 127.0.0.53:53: server misbehaving",
+      "[ERROR] 2025-11-13 23:42:43.61 Error fetching model statuses: ConnectError: [unavailable] unavailable: dial tcp: lookup server.self-serve.windsurf.com on 127.0.0.53:53: server misbehaving",
+      "[ERROR] 2025-11-13 23:42:43.74 Unleash: unable to fetch feature toggles TypeError: Failed to fetch",
+      "[LOG] 2025-11-13 23:42:43.75 Cascade config: [object Object]",
+      "[ERROR] 2025-11-13 23:42:43.99 ConnectError: [unavailable] unavailable: dial tcp: lookup server.self-serve.windsurf.com on 127.0.0.53:53: server misbehaving",
+      "[ERROR] 2025-11-13 23:42:43.99 Unleash: unable to fetch feature toggles TypeError: Failed to fetch",
+      "[ERROR] 2025-11-13 23:42:44.957 Unleash: unable to send feature metrics TypeError: Failed to fetch",
+      "[LOG] 2025-11-13 23:42:49.995 Cascade config: [object Object]",
+      "[ERROR] 2025-11-13 23:42:50.15 ConnectError: [unavailable] unavailable: dial tcp: lookup server.self-serve.windsurf.com on 127.0.0.53:53: server misbehaving",
+      "[ERROR] 2025-11-13 23:43:12.960 Error fetching model statuses: ConnectError: [unavailable] unavailable: dial tcp: lookup server.self-serve.windsurf.com on 127.0.0.53:53: server misbehaving",
+      "[ERROR] 2025-11-13 23:43:14.953 Unleash: unable to send feature metrics TypeError: Failed to fetch",
+      "[LOG] 2025-11-13 23:43:56.563 Switching from cascade undefined to 9cf5ec71-2548-45e4-bc72-a8235b1d41d9",
+      "[LOG] 2025-11-13 23:43:56.565 Mounting filesystem for cascade 9cf5ec71-2548-45e4-bc72-a8235b1d41d9",
+      "[LOG] 2025-11-13 23:43:56.690 convertFileCitationsToLinks started",
+      "[LOG] 2025-11-13 23:43:56.690 convertFileCitationsToLinks completed in 0.20000000001164153ms",
+      "[LOG] 2025-11-13 23:43:56.704 convertFileCitationsToLinks started",
+      "[LOG] 2025-11-13 23:43:56.704 convertFileCitationsToLinks completed in 0.10000000000582077ms",
+      "[LOG] 2025-11-13 23:43:56.710 convertFileCitationsToLinks started",
+      "[LOG] 2025-11-13 23:43:56.710 convertFileCitationsToLinks completed in 0.10000000000582077ms",
+      "[LOG] 2025-11-13 23:43:56.715 convertFileCitationsToLinks started",
+      "[LOG] 2025-11-13 23:43:56.715 convertFileCitationsToLinks completed in 0ms",
+      "[LOG] 2025-11-13 23:43:56.718 convertFileCitationsToLinks started",
+      "[LOG] 2025-11-13 23:43:56.718 convertFileCitationsToLinks completed in 0ms",
+      "[LOG] 2025-11-13 23:43:56.743 convertFileCitationsToLinks started",
+      "[LOG] 2025-11-13 23:43:56.744 convertFileCitationsToLinks completed in 0.10000000000582077ms",
+      "[LOG] 2025-11-13 23:43:56.746 convertFileCitationsToLinks started",
+      "[LOG] 2025-11-13 23:43:56.746 convertFileCitationsToLinks completed in 0.10000000000582077ms",
+      "[LOG] 2025-11-13 23:43:56.747 convertFileCitationsToLinks started",
+      "[LOG] 2025-11-13 23:43:56.747 convertFileCitationsToLinks completed in 0.20000000001164153ms",
+      "[LOG] 2025-11-13 23:43:56.748 convertFileCitationsToLinks started",
+      "[LOG] 2025-11-13 23:43:56.748 convertFileCitationsToLinks completed in 0.09999999997671694ms",
+      "[LOG] 2025-11-13 23:43:56.749 convertFileCitationsToLinks started",
+      "[LOG] 2025-11-13 23:43:56.749 convertFileCitationsToLinks completed in 0.10000000000582077ms",
+      "[LOG] 2025-11-13 23:43:56.759 convertFileCitationsToLinks started",
+      "[LOG] 2025-11-13 23:43:56.759 convertFileCitationsToLinks completed in 0.10000000000582077ms",
+      "[LOG] 2025-11-13 23:43:56.760 convertFileCitationsToLinks started",
+      "[LOG] 2025-11-13 23:43:56.760 convertFileCitationsToLinks completed in 0.20000000001164153ms",
+      "[LOG] 2025-11-13 23:43:56.763 convertFileCitationsToLinks started",
+      "[LOG] 2025-11-13 23:43:56.763 convertFileCitationsToLinks completed in 0.20000000001164153ms",
+      "[LOG] 2025-11-13 23:43:56.768 convertFileCitationsToLinks started",
+      "[LOG] 2025-11-13 23:43:56.768 convertFileCitationsToLinks completed in 0ms",
+      "[LOG] 2025-11-13 23:43:56.769 convertFileCitationsToLinks started",
+      "[LOG] 2025-11-13 23:43:56.769 convertFileCitationsToLinks completed in 0ms",
+      "[LOG] 2025-11-13 23:43:56.906 Couldn't mount filesystem for cascade (may not be virtual) 9cf5ec71-2548-45e4-bc72-a8235b1d41d9: ConnectError: [unknown] failed to mount filesystem for cascade 9cf5ec71-2548-45e4-bc72-a8235b1d41d9: filesystem is not a RedirectFS, got <nil>",
+      "[LOG] 2025-11-13 23:43:56.906 Successfully switched from cascade undefined to 9cf5ec71-2548-45e4-bc72-a8235b1d41d9",
+      "[LOG] 2025-11-13 23:44:0.321 Sentry initialized",
+      "[WARN] 2025-11-13 23:44:12.239 Lexical ref does not exist.",
+      "[LOG] 2025-11-13 23:44:12.331 Cascade config: [object Object]",
+      "[ERROR] 2025-11-13 23:44:26.198 Error fetching model statuses: ConnectError: [unavailable] unavailable: unexpected EOF",
+      "[WARN] 2025-11-13 23:45:4.596 Lexical ref does not exist.",
+      "[LOG] 2025-11-13 23:45:4.740 Cascade config: [object Object]"
+    ]
+  }
+}
