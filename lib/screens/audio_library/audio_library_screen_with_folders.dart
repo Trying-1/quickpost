@@ -5,6 +5,7 @@ import '../../models/audio_file.dart';
 import '../../models/audio_folder.dart';
 import '../../services/audio_library_service.dart';
 import '../../services/audio_backup_service.dart';
+import '../../widgets/audio_progress_dialog.dart';
 
 class AudioLibraryScreenWithFolders extends StatefulWidget {
   final Function(AudioFile)? onAudioSelected;
@@ -26,6 +27,7 @@ class _AudioLibraryScreenWithFoldersState extends State<AudioLibraryScreenWithFo
   VideoPlayerController? _previewController;
   String? _playingAudioId;
   bool _showFolderView = true;
+  bool _isBackupOperationInProgress = false;
 
   @override
   void initState() {
@@ -853,22 +855,29 @@ class _AudioLibraryScreenWithFoldersState extends State<AudioLibraryScreenWithFo
 
   Future<void> _exportLibrary() async {
     try {
-      // Show loading dialog
+      _isBackupOperationInProgress = true;
+
+      final dialogKey = GlobalKey<AudioProgressDialogState>();
+
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const AlertDialog(
-          content: Row(
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(width: 16),
-              Text('Exporting library...'),
-            ],
-          ),
+        builder: (context) => AudioProgressDialog(
+          key: dialogKey,
+          title: 'Exporting Library',
+          message: 'Preparing audio backup...',
+          onCancel: () {
+            AudioBackupService.cancelCurrentOperation();
+            Navigator.of(context).pop();
+          },
         ),
       );
 
-      final exportPath = await AudioBackupService.exportAudioLibrary();
+      final exportPath = await AudioBackupService.exportAudioLibrary(
+        onProgress: (progress, status, current, total) {
+          dialogKey.currentState?.updateProgress(progress, status, current, total);
+        },
+      );
       
       if (!mounted) return;
       Navigator.pop(context); // Close loading dialog
@@ -917,14 +926,24 @@ class _AudioLibraryScreenWithFoldersState extends State<AudioLibraryScreenWithFo
       );
     } catch (e) {
       if (!mounted) return;
-      Navigator.pop(context); // Close loading dialog
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Export failed: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      try {
+        Navigator.pop(context); // Close progress dialog if open
+      } catch (_) {}
+
+      if (e.toString().contains('CANCELLED')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Export cancelled')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Export failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      _isBackupOperationInProgress = false;
     }
   }
 
@@ -936,13 +955,62 @@ class _AudioLibraryScreenWithFoldersState extends State<AudioLibraryScreenWithFo
       if (!mounted) return;
       
       if (backups.isEmpty) {
+        // Fallback: let user pick a backup folder via SAF and import natively
+        final treeUri = await AudioBackupService.pickBackupFolder();
+        if (treeUri == null || !mounted) return;
+
+        _isBackupOperationInProgress = true;
+
+        final safDialogKey = GlobalKey<AudioProgressDialogState>();
+
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AudioProgressDialog(
+            key: safDialogKey,
+            title: 'Importing Library',
+            message: 'Reading backup...',
+            onCancel: () {
+              AudioBackupService.cancelCurrentOperation();
+              Navigator.of(context).pop();
+            },
+          ),
+        );
+
+        final result = await AudioBackupService.importAudioLibraryFromSafUri(
+          treeUri,
+          onProgress: (progress, status, current, total) {
+            safDialogKey.currentState?.updateProgress(progress, status, current, total);
+          },
+        );
+
+        if (!mounted) return;
+        Navigator.pop(context); // Close loading dialog
+
+        // Reload data
+        await _loadData();
+
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('No Backups Found'),
-            content: const Text(
-              'No backup files found in Downloads/Quick Post Backup/\n\n'
-              'Please export your library first or place a backup folder there.',
+            title: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green),
+                SizedBox(width: 8),
+                Text('Import Successful'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('✓ ${result.importedCount} audio files imported'),
+                if (result.foldersCreated > 0)
+                  Text('✓ ${result.foldersCreated} folders created'),
+                if (result.skippedCount > 0)
+                  Text('⚠ ${result.skippedCount} files skipped', 
+                      style: const TextStyle(color: Colors.orange)),
+              ],
             ),
             actions: [
               TextButton(
@@ -994,22 +1062,30 @@ class _AudioLibraryScreenWithFoldersState extends State<AudioLibraryScreenWithFo
 
       if (selectedBackup == null || !mounted) return;
 
-      // Show loading dialog
+      _isBackupOperationInProgress = true;
+
+      final dialogKey = GlobalKey<AudioProgressDialogState>();
+
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const AlertDialog(
-          content: Row(
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(width: 16),
-              Text('Importing library...'),
-            ],
-          ),
+        builder: (context) => AudioProgressDialog(
+          key: dialogKey,
+          title: 'Importing Library',
+          message: 'Reading backup...',
+          onCancel: () {
+            AudioBackupService.cancelCurrentOperation();
+            Navigator.of(context).pop();
+          },
         ),
       );
 
-      final result = await AudioBackupService.importAudioLibrary(selectedBackup.path);
+      final result = await AudioBackupService.importAudioLibrary(
+        selectedBackup.path,
+        onProgress: (progress, status, current, total) {
+          dialogKey.currentState?.updateProgress(progress, status, current, total);
+        },
+      );
       
       if (!mounted) return;
       Navigator.pop(context); // Close loading dialog
@@ -1059,6 +1135,8 @@ class _AudioLibraryScreenWithFoldersState extends State<AudioLibraryScreenWithFo
           backgroundColor: Colors.red,
         ),
       );
+    } finally {
+      _isBackupOperationInProgress = false;
     }
   }
 
@@ -1068,7 +1146,17 @@ class _AudioLibraryScreenWithFoldersState extends State<AudioLibraryScreenWithFo
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return WillPopScope(
+      onWillPop: () async {
+        if (_isBackupOperationInProgress) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please wait, audio backup is in progress...')),
+          );
+          return false;
+        }
+        return true;
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: Text(_showFolderView ? 'Audio Library' : _folders.firstWhere((f) => f.id == _selectedFolderId, orElse: () => _folders.first).name),
         leading: _showFolderView
@@ -1136,6 +1224,7 @@ class _AudioLibraryScreenWithFoldersState extends State<AudioLibraryScreenWithFo
           : _showFolderView
               ? _buildFolderView()
               : _buildAudioListView(),
+    ),
     );
   }
 

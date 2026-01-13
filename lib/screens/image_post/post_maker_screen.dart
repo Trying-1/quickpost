@@ -12,12 +12,20 @@ import '../image_cropper/image_cropper_screen.dart';
 import '../video_creator/video_creator_screen.dart';
 import '../audio_extraction/audio_extraction_screen.dart';
 import '../audio_library/audio_library_screen_with_folders.dart';
+import '../text_box_overlay/text_box_overlay_screen.dart';
 import '../../widgets/ad_banner_widget.dart';
 import '../../services/ad_service.dart';
 import '../../services/app_review_service.dart';
 
 class PostMakerScreen extends StatefulWidget {
-  const PostMakerScreen({super.key});
+  final List<String>? sharedImagePaths;
+  final String? sharedPurpose;
+
+  const PostMakerScreen({
+    super.key,
+    this.sharedImagePaths,
+    this.sharedPurpose,
+  });
 
   @override
   State<PostMakerScreen> createState() => _PostMakerScreenState();
@@ -34,7 +42,6 @@ class _PostMakerScreenState extends State<PostMakerScreen> {
   FontInfo? _selectedFont;
   String _selectedTemplate = 'single_image_post';
   bool _isLoading = false;
-  int _currentBottomNavIndex = 0;
   bool _isPreviewReady = false; // Track if preview is fully loaded
   bool _showPlaceholder = true; // Control placeholder visibility during save
   
@@ -70,6 +77,57 @@ class _PostMakerScreenState extends State<PostMakerScreen> {
     
     // Set default font to Metrophobic
     _selectedFont = FontInfo(family: 'Metrophobic', displayName: 'Metrophobic');
+    
+    // Load shared images if provided
+    _loadSharedImages();
+  }
+
+  @override
+  void didUpdateWidget(covariant PostMakerScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    final oldPaths = oldWidget.sharedImagePaths;
+    final newPaths = widget.sharedImagePaths;
+    final oldPurpose = oldWidget.sharedPurpose;
+    final newPurpose = widget.sharedPurpose;
+
+    // Reload when new shared images or purpose arrive from share sheet
+    if (newPaths != null && newPaths.isNotEmpty) {
+      final bool wasEmptyBefore = oldPaths == null || oldPaths.isEmpty;
+      final bool lengthChanged = oldPaths == null || oldPaths.length != newPaths.length;
+      final bool firstChanged = oldPaths == null || oldPaths.isEmpty || oldPaths.first != newPaths.first;
+      final bool purposeChanged = oldPurpose != newPurpose;
+
+      if (wasEmptyBefore || lengthChanged || firstChanged || purposeChanged) {
+        _loadSharedImages();
+      }
+    }
+  }
+
+  void _loadSharedImages() {
+    if (widget.sharedImagePaths != null && widget.sharedImagePaths!.isNotEmpty) {
+      final paths = widget.sharedImagePaths!;
+      final purpose = widget.sharedPurpose;
+
+      setState(() {
+        if (purpose == 'grid_post' && paths.length >= 1) {
+          // Load images into grid
+          for (int i = 0; i < paths.length && i < 4; i++) {
+            _gridImages[i] = File(paths[i]);
+          }
+          _selectedTemplate = 'grid_post';
+        } else if (purpose == 'single_image_post' || paths.length == 1) {
+          // Single image post
+          _selectedImage = File(paths.first);
+          _selectedTemplate = 'single_image_post';
+        }
+
+        // Whenever we load images from a share, force preview to reload
+        _isPreviewReady = false;
+      });
+
+      print('[PostMakerScreen] Loaded ${paths.length} shared image(s) for purpose: $purpose, template: $_selectedTemplate');
+    }
   }
 
   Future<void> _requestPermissions() async {
@@ -447,62 +505,7 @@ class _PostMakerScreenState extends State<PostMakerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      body: _currentBottomNavIndex == 0
-          ? _buildPostMakerBody()
-          : _currentBottomNavIndex == 1
-              ? const ImageCropperScreen()
-              : _currentBottomNavIndex == 2
-                  ? const VideoCreatorScreen()
-                  : const AudioLibraryScreenWithFolders(),
-      floatingActionButton: _currentBottomNavIndex == 3
-          ? FloatingActionButton.extended(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const AudioExtractionScreen(),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.add),
-              label: const Text('Extract New'),
-              backgroundColor: Colors.purple,
-            )
-          : null,
-      bottomNavigationBar: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Banner Ad
-          AdBannerWidget(screenName: 'post_maker'),
-          // Navigation Bar
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 4,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-            ),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildNavItem(0, Icons.create, 'Post Maker'),
-                  _buildNavItem(1, Icons.crop, 'Image Cropper'),
-                  _buildNavItem(2, Icons.video_call, 'Image to Video'),
-                  _buildNavItem(3, Icons.library_music, 'My Audios'),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    return _buildPostMakerBody();
   }
 
   Widget _buildPostMakerBody() {
@@ -805,13 +808,33 @@ class _PostMakerScreenState extends State<PostMakerScreen> {
                     ? _savePost
                     : null,
                 icon: const Icon(Icons.save, size: 18),
-                label: Text(_isPreviewReady ? 'Save' : 'Loading...'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green[600],
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                // Show 'Loading...' only when we actually have an image and preview is not ready yet.
+                // If no image is selected, keep the button disabled but label it as 'Save'.
+                label: Text(
+                  (_selectedImage != null || _gridImages.any((img) => img != null)) && !_isPreviewReady
+                      ? 'Loading...'
+                      : 'Save',
+                ),
+                style: ButtonStyle(
+                  backgroundColor: MaterialStateProperty.resolveWith<Color>((states) {
+                    if (states.contains(MaterialState.disabled)) {
+                      return Colors.grey.shade300;
+                    }
+                    return Colors.green.shade600;
+                  }),
+                  foregroundColor: MaterialStateProperty.resolveWith<Color>((states) {
+                    if (states.contains(MaterialState.disabled)) {
+                      return Colors.grey.shade600;
+                    }
+                    return Colors.white;
+                  }),
+                  padding: MaterialStateProperty.all(
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                  shape: MaterialStateProperty.all(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                 ),
               ),
@@ -2427,39 +2450,6 @@ class _PostMakerScreenState extends State<PostMakerScreen> {
         const SizedBox(height: 12),
         child,
       ],
-    );
-  }
-
-  Widget _buildNavItem(int index, IconData icon, String label) {
-    final isSelected = _currentBottomNavIndex == index;
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _currentBottomNavIndex = index;
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? Colors.purple : Colors.grey[600],
-              size: 24,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? Colors.purple : Colors.grey[600],
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

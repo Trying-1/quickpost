@@ -2,7 +2,7 @@ name: quickpost
 description: Create stunning social posts, crop images in bulk, and make videos easily.
 publish_to: 'none'
 
-version: 1.0.0+2
+version: 1.0.6+10
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -33,7 +33,11 @@ dependencies:
   in_app_update: ^4.2.3
   in_app_review: ^2.0.9
 
-  # ffmpeg_kit_flutter: ^5.1.0  # Temporarily disabled due to build issues
+  # Profile & Settings
+  package_info_plus: ^4.0.0
+  url_launcher: ^6.1.0
+  share_plus: ^12.0.1
+
 
 dev_dependencies:
   flutter_test:

@@ -17,7 +17,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.quickpost.app"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = "27.3.13750724"
 
     compileOptions {
@@ -37,6 +37,11 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        
+        // NDK configuration for JNI - only arm64-v8a for FFmpeg
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     signingConfigs {
@@ -53,14 +58,38 @@ android {
             signingConfig = signingConfigs.getByName("release")
             
             // Enable ProGuard/R8
-            isMinifyEnabled = true
-            isShrinkResources = true
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
     }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
+    }
+
+    // Support 16 KB memory page sizes (required for Android 15+)
+    // Google Play requirement as of Nov 1, 2025
+    packagingOptions {
+        resources {
+            // Preserve 16 KB page alignment
+            pickFirsts += listOf(
+                "lib/arm64-v8a/libc++_shared.so",
+                "lib/armeabi-v7a/libc++_shared.so",
+                "lib/x86/libc++_shared.so",
+                "lib/x86_64/libc++_shared.so"
+            )
+        }
+    }
+}
+ 
+dependencies {
+    implementation("androidx.documentfile:documentfile:1.0.1")
 }
 
 flutter {

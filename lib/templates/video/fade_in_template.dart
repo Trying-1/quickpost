@@ -40,13 +40,13 @@ class FadeInTemplate extends VideoTemplateBase {
             labelText: 'Fade In Duration (seconds)',
             border: OutlineInputBorder(),
             contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            helperText: 'Range: 0.5 - 3.0 seconds',
+            helperText: 'Range: 0 - 10 seconds (decimals allowed)',
           ),
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           enabled: !isProcessing,
           onChanged: (value) {
             final parsed = double.tryParse(value);
-            if (parsed != null && parsed >= 0.5 && parsed <= 3.0) {
+            if (parsed != null && parsed >= 0 && parsed <= 10) {
               onSettingsChanged({'fadeInDuration': parsed});
             }
           },

@@ -13,7 +13,12 @@ import '../../services/ad_service.dart';
 import '../../services/app_review_service.dart';
 
 class ImageCropperScreen extends StatefulWidget {
-  const ImageCropperScreen({super.key});
+  final List<String>? sharedImagePaths;
+
+  const ImageCropperScreen({
+    super.key,
+    this.sharedImagePaths,
+  });
 
   @override
   State<ImageCropperScreen> createState() => _ImageCropperScreenState();
@@ -68,6 +73,15 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
   void initState() {
     super.initState();
     _requestPermissions();
+    _loadSharedImages();
+  }
+
+  void _loadSharedImages() {
+    if (widget.sharedImagePaths != null && widget.sharedImagePaths!.isNotEmpty) {
+      _selectedImages = widget.sharedImagePaths!.map((p) => File(p)).toList();
+      _currentImageIndex = 0;
+      print('[ImageCropperScreen] Loaded ${_selectedImages.length} shared image(s)');
+    }
   }
 
   Future<void> _requestPermissions() async {

@@ -8,16 +8,102 @@ import android.os.Looper
 import android.content.Intent
 import android.app.Activity
 import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
+import org.json.JSONArray
+import org.json.JSONObject
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.quickpost.app/processor"
     private val PICK_AUDIO_REQUEST = 1001
     private val PICK_VIDEO_REQUEST = 1002
     private val PICK_MULTIPLE_VIDEOS_REQUEST = 1003
+    private val PICK_BACKUP_FOLDER_REQUEST = 1004
     private var methodChannel: MethodChannel? = null
     private var pendingResult: MethodChannel.Result? = null
     private var audioSource: String = "audio"
     private var mediaPlayer: android.media.MediaPlayer? = null
+    private var sharedImagePaths: MutableList<String> = mutableListOf()
+    private var sharedImageUris: MutableList<Uri> = mutableListOf()
+    private var sharedPurpose: String? = null
+    private var shareIntentProcessed = false
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (!shareIntentProcessed) {
+            handleShareIntent(intent)
+            shareIntentProcessed = true
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        shareIntentProcessed = false
+        handleShareIntent(intent)
+        shareIntentProcessed = true
+    }
+
+    private fun handleShareIntent(intent: Intent) {
+        android.util.Log.d("MainActivity", "handleShareIntent called with action: ${intent.action}")
+        
+        // Check for direct purpose from intent extras (for direct share targets)
+        sharedPurpose = intent.getStringExtra("share_purpose")
+        
+        if (intent.action == Intent.ACTION_SEND) {
+            val imageUri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            if (imageUri != null) {
+                android.util.Log.d("MainActivity", "Processing single image share: $imageUri")
+                sharedImageUris.clear()
+                sharedImagePaths.clear()
+                sharedImageUris.add(imageUri)
+                val imagePath = getPathFromUri(imageUri)
+                android.util.Log.d("MainActivity", "Converted URI to path: $imagePath")
+                if (imagePath != null) {
+                    sharedImagePaths.add(imagePath)
+                    android.util.Log.d("MainActivity", "Added image path, total: ${sharedImagePaths.size}")
+                }
+                android.util.Log.d("MainActivity", "Received single image share: $imagePath, purpose: $sharedPurpose")
+                notifyFlutterOfSharedImages()
+            } else {
+                android.util.Log.d("MainActivity", "No image URI found in SEND intent")
+            }
+        } else if (intent.action == Intent.ACTION_SEND_MULTIPLE) {
+            val imageUris = intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
+            android.util.Log.d("MainActivity", "Processing multiple images share: ${imageUris?.size} URIs")
+            if (imageUris != null && imageUris.isNotEmpty()) {
+                sharedImageUris.clear()
+                sharedImagePaths.clear()
+                for (uri in imageUris) {
+                    sharedImageUris.add(uri)
+                    val imagePath = getPathFromUri(uri)
+                    android.util.Log.d("MainActivity", "Converted URI to path: $imagePath")
+                    if (imagePath != null) {
+                        sharedImagePaths.add(imagePath)
+                    }
+                }
+                android.util.Log.d("MainActivity", "Received ${imageUris.size} images share, converted to ${sharedImagePaths.size} paths, purpose: $sharedPurpose")
+                notifyFlutterOfSharedImages()
+            } else {
+                android.util.Log.d("MainActivity", "No image URIs found in SEND_MULTIPLE intent")
+            }
+        } else {
+            android.util.Log.d("MainActivity", "Intent action not recognized: ${intent.action}")
+        }
+        
+        // Clear the intent action to prevent re-processing
+        intent.action = null
+    }
+
+    private fun notifyFlutterOfSharedImages() {
+        if (sharedImagePaths.isNotEmpty()) {
+            Handler(Looper.getMainLooper()).postDelayed({
+                methodChannel?.invokeMethod("onImagesShared", mapOf(
+                    "paths" to sharedImagePaths,
+                    "count" to sharedImagePaths.size,
+                    "purpose" to (sharedPurpose ?: "")
+                ))
+            }, 500) // Delay to ensure Flutter is ready
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -106,6 +192,33 @@ class MainActivity : FlutterActivity() {
                     pendingResult = result
                     pickMultipleVideos()
                 }
+                "pickBackupFolder" -> {
+                    pendingResult = result
+                    pickBackupFolder()
+                }
+                "importBackupFromSaf" -> {
+                    val treeUri = call.argument<String>("treeUri")
+                    val audioDestDir = call.argument<String>("audioDestDir")
+                    val thumbDestDir = call.argument<String>("thumbDestDir")
+
+                    if (treeUri == null || audioDestDir == null || thumbDestDir == null) {
+                        result.error("INVALID_ARGUMENT", "treeUri, audioDestDir and thumbDestDir are required", null)
+                    } else {
+                        Thread {
+                            try {
+                                val importResult = importBackupFromSaf(treeUri, audioDestDir, thumbDestDir)
+                                runOnUiThread {
+                                    result.success(importResult)
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.e("MainActivity", "SAF import failed", e)
+                                runOnUiThread {
+                                    result.error("IMPORT_ERROR", e.message, null)
+                                }
+                            }
+                        }.start()
+                    }
+                }
                 "extractAudioFromVideo" -> {
                     val videoPath = call.argument<String>("videoPath")
                     if (videoPath != null) {
@@ -141,6 +254,126 @@ class MainActivity : FlutterActivity() {
                     val outputPath = getVideoOutputPath(filename)
                     result.success(outputPath)
                 }
+                "createVideoWithFFmpeg" -> {
+                    val imagePath = call.argument<String>("imagePath")
+                    val duration = call.argument<Int>("duration") ?: 3
+                    val template = call.argument<String>("template") ?: "fade_in"
+                    val fadeInDuration = call.argument<Double>("fadeInDuration") ?: 1.0
+                    val zoomScale = call.argument<Double>("zoomScale") ?: 1.1
+                    val zoomDuration = call.argument<Double>("zoomDuration") ?: duration.toDouble()
+                    val audioPath = call.argument<String>("audioPath")
+                    
+                    if (imagePath != null) {
+                        try {
+                            val videoProcessor = VideoProcessor(this)
+                            val callback = object : VideoProcessor.ProgressCallback {
+                                override fun onProgress(progress: Double) {
+                                    runOnUiThread {
+                                        methodChannel?.invokeMethod("onProgress", progress)
+                                    }
+                                }
+                            }
+                            
+                            val filename = "QuickPost_${System.currentTimeMillis()}.mp4"
+                            val outputPath = getVideoOutputPath(filename)
+                            
+                            Thread {
+                                try {
+                                    val resultPath = videoProcessor.createVideoWithFFmpegFull(
+                                        imagePath, 
+                                        duration, 
+                                        template,
+                                        fadeInDuration,
+                                        zoomScale,
+                                        zoomDuration,
+                                        audioPath,
+                                        outputPath, 
+                                        callback
+                                    )
+                                    runOnUiThread {
+                                        methodChannel?.invokeMethod("onComplete", resultPath)
+                                        result.success(resultPath)
+                                    }
+                                } catch (e: Exception) {
+                                    runOnUiThread {
+                                        methodChannel?.invokeMethod("onError", "FFmpeg video creation failed: ${e.message}")
+                                        result.error("FFMPEG_ERROR", e.message, null)
+                                    }
+                                }
+                            }.start()
+                        } catch (e: Exception) {
+                            result.error("FFMPEG_ERROR", "Failed to start FFmpeg video creation: ${e.message}", null)
+                        }
+                    } else {
+                        result.error("INVALID_ARGUMENT", "Image path is required", null)
+                    }
+                }
+                "addTextToVideo" -> {
+                    val inputPath = call.argument<String>("inputPath")
+                    val outputPath = call.argument<String>("outputPath")
+                    val text = call.argument<String>("text") ?: ""
+                    val x = call.argument<Int>("x") ?: 50
+                    val y = call.argument<Int>("y") ?: 50
+                    val fontSize = call.argument<Int>("fontSize") ?: 48
+                    val fontColor = call.argument<String>("fontColor") ?: "white"
+                    val boxColor = call.argument<String>("boxColor") ?: "white"
+                    val position = call.argument<String>("position") ?: "top"
+                    val fontPath = call.argument<String>("fontPath") ?: ""
+                    val preset = call.argument<String>("preset") ?: "veryfast"
+                    val crf = call.argument<Int>("crf") ?: 23
+
+                    if (inputPath == null || outputPath == null || fontPath.isEmpty()) {
+                        result.error(
+                            "INVALID_ARGUMENT",
+                            "inputPath, outputPath and fontPath are required",
+                            null
+                        )
+                    } else {
+                        Thread {
+                            try {
+                                val overlay = FFmpegTextOverlay(this)
+                                val ret = overlay.addTextToVideo(
+                                    inputPath,
+                                    outputPath,
+                                    text,
+                                    x,
+                                    y,
+                                    fontSize,
+                                    fontColor,
+                                    boxColor,
+                                    position,
+                                    fontPath,
+                                    preset,
+                                    crf
+                                )
+                                runOnUiThread {
+                                    if (ret == 0) {
+                                        // Move the processed video to gallery (same logic as fade-in videos)
+                                        val finalPath = moveVideoToGallery(outputPath) ?: outputPath
+                                        result.success(finalPath)
+                                    } else {
+                                        result.error("FFMPEG_ERROR", "FFmpeg returned code $ret", null)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                runOnUiThread {
+                                    result.error("FFMPEG_ERROR", e.message, null)
+                                }
+                            }
+                        }.start()
+                    }
+                }
+                "getSharedImages" -> {
+                    result.success(mapOf(
+                        "paths" to sharedImagePaths,
+                        "count" to sharedImagePaths.size,
+                        "purpose" to (sharedPurpose ?: "")
+                    ))
+                    // Clear after retrieval
+                    sharedImagePaths.clear()
+                    sharedImageUris.clear()
+                    sharedPurpose = null
+                }
                 else -> result.notImplemented()
             }
         }
@@ -169,6 +402,24 @@ class MainActivity : FlutterActivity() {
             putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
         }
         startActivityForResult(Intent.createChooser(intent, "Select Videos"), PICK_MULTIPLE_VIDEOS_REQUEST)
+    }
+
+    private fun pickBackupFolder() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            android.util.Log.d("MainActivity", "Launching folder picker for backup")
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                addFlags(
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                )
+            }
+            startActivityForResult(intent, PICK_BACKUP_FOLDER_REQUEST)
+        } else {
+            android.util.Log.e("MainActivity", "pickBackupFolder not supported on this Android version")
+            pendingResult?.error("UNSUPPORTED", "Folder picker requires Android 5.0 or higher", null)
+            pendingResult = null
+        }
     }
     
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -233,7 +484,170 @@ class MainActivity : FlutterActivity() {
                 }
                 pendingResult = null
             }
+            PICK_BACKUP_FOLDER_REQUEST -> {
+                if (resultCode == Activity.RESULT_OK && data != null) {
+                    val uri = data.data
+                    if (uri != null) {
+                        android.util.Log.d("MainActivity", "Folder picker returned URI: $uri")
+                        pendingResult?.success(uri.toString())
+                    } else {
+                        pendingResult?.success(null)
+                    }
+                } else {
+                    pendingResult?.success(null)
+                }
+                pendingResult = null
+            }
         }
+    }
+
+    private fun importBackupFromSaf(treeUriStr: String, audioDestDir: String, thumbDestDir: String): Map<String, Any?> {
+        val uri = Uri.parse(treeUriStr)
+        val treeDoc = DocumentFile.fromTreeUri(this, uri)
+            ?: throw IllegalStateException("Invalid backup folder URI")
+
+        fun findManifest(doc: DocumentFile): DocumentFile? {
+            doc.listFiles().forEach { child ->
+                if (child.isFile && child.name == "manifest.json") {
+                    return child
+                }
+            }
+            // As a fallback, search one level deeper
+            doc.listFiles().forEach { child ->
+                if (child.isDirectory) {
+                    val found = findManifest(child)
+                    if (found != null) return found
+                }
+            }
+            return null
+        }
+
+        val manifestDoc = findManifest(treeDoc)
+            ?: throw IllegalStateException("manifest.json not found in selected folder")
+
+        val manifestJson = contentResolver.openInputStream(manifestDoc.uri)?.use { input ->
+            input.bufferedReader().use { it.readText() }
+        } ?: throw IllegalStateException("Unable to read manifest.json")
+
+        val manifest = JSONObject(manifestJson)
+        android.util.Log.d("MainActivity", "Manifest read successfully")
+
+        val backupRoot = manifestDoc.parentFile ?: treeDoc
+        android.util.Log.d("MainActivity", "Backup root: ${backupRoot.name}")
+        android.util.Log.d("MainActivity", "Backup root contents: ${backupRoot.listFiles().joinToString { "${it.name} (${if (it.isDirectory) "dir" else "file"})" }}")
+        
+        val audioDirDoc = backupRoot.listFiles().firstOrNull { it.isDirectory && it.name == "audio" }
+        val thumbDirDoc = backupRoot.listFiles().firstOrNull { it.isDirectory && it.name == "thumbnails" }
+        
+        android.util.Log.d("MainActivity", "Audio dir found: ${audioDirDoc != null}, Thumb dir found: ${thumbDirDoc != null}")
+        if (audioDirDoc != null) {
+            val audioFiles = audioDirDoc.listFiles()
+            android.util.Log.d("MainActivity", "Audio directory has ${audioFiles.size} files")
+            audioFiles.forEach { file ->
+                android.util.Log.d("MainActivity", "  - ${file.name} (${file.length()} bytes)")
+            }
+        }
+
+        val foldersArray = manifest.optJSONArray("folders") ?: JSONArray()
+        val audioArray = manifest.optJSONArray("audio") ?: JSONArray()
+        android.util.Log.d("MainActivity", "Manifest contains ${audioArray.length()} audio entries and ${foldersArray.length()} folders")
+
+        val foldersResult = mutableListOf<Map<String, Any?>>()
+        val audioResult = mutableListOf<Map<String, Any?>>()
+
+        for (i in 0 until foldersArray.length()) {
+            val folderObj = foldersArray.getJSONObject(i)
+            val folderMap = mutableMapOf<String, Any?>(
+                "id" to folderObj.getString("id"),
+                "name" to folderObj.getString("name"),
+                "description" to if (folderObj.has("description") && !folderObj.isNull("description")) folderObj.getString("description") else null,
+                "iconName" to if (folderObj.has("iconName") && !folderObj.isNull("iconName")) folderObj.getString("iconName") else null,
+                "colorValue" to folderObj.optInt("colorValue", 0xFF9C27B0.toInt()),
+            )
+            foldersResult.add(folderMap)
+        }
+
+        fun copyDocumentFileTo(destinationDir: String, doc: DocumentFile, fileName: String): String {
+            val destDir = java.io.File(destinationDir)
+            if (!destDir.exists()) {
+                destDir.mkdirs()
+            }
+            val destFile = java.io.File(destDir, fileName)
+            android.util.Log.d("MainActivity", "Copying ${doc.name} to ${destFile.absolutePath}")
+            contentResolver.openInputStream(doc.uri)?.use { input ->
+                destFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            } ?: throw IllegalStateException("Unable to open input stream for ${doc.uri}")
+            android.util.Log.d("MainActivity", "File copied successfully. Size: ${destFile.length()} bytes")
+            return destFile.absolutePath
+        }
+
+        var importedCount = 0
+        var skippedCount = 0
+
+        for (i in 0 until audioArray.length()) {
+            val audioObj = audioArray.getJSONObject(i)
+            try {
+                val audioFileName = audioObj.getString("audioFileName")
+                android.util.Log.d("MainActivity", "Processing audio entry $i: $audioFileName")
+                
+                if (audioDirDoc == null) {
+                    android.util.Log.w("MainActivity", "Audio directory not found in backup")
+                    skippedCount++
+                    continue
+                }
+
+                val audioDoc = audioDirDoc.listFiles().firstOrNull { it.isFile && it.name == audioFileName }
+                if (audioDoc == null) {
+                    android.util.Log.w("MainActivity", "Audio file not found: $audioFileName in ${audioDirDoc.name}")
+                    skippedCount++
+                    continue
+                }
+
+                val audioDestName = "audio_${System.currentTimeMillis()}_${i}.m4a"
+                android.util.Log.d("MainActivity", "Copying audio file: $audioFileName -> $audioDestName")
+                val audioPath = copyDocumentFileTo(audioDestDir, audioDoc, audioDestName)
+
+                var thumbnailPath: String? = null
+                val thumbnailFileName = if (audioObj.has("thumbnailFileName") && !audioObj.isNull("thumbnailFileName")) {
+                    audioObj.getString("thumbnailFileName")
+                } else null
+
+                if (thumbnailFileName != null && thumbDirDoc != null) {
+                    val thumbDoc = thumbDirDoc.listFiles().firstOrNull { it.isFile && it.name == thumbnailFileName }
+                    if (thumbDoc != null) {
+                        val thumbDestName = "thumb_${System.currentTimeMillis()}_${i}.jpg"
+                        thumbnailPath = copyDocumentFileTo(thumbDestDir, thumbDoc, thumbDestName)
+                    }
+                }
+
+                val audioMap = mutableMapOf<String, Any?>(
+                    "name" to audioObj.getString("name"),
+                    "durationMs" to audioObj.getInt("durationMs"),
+                    "folderId" to audioObj.optString("folderId", "default"),
+                    "originalVideoPath" to if (audioObj.has("originalVideoPath") && !audioObj.isNull("originalVideoPath")) audioObj.getString("originalVideoPath") else null,
+                    "audioPath" to audioPath,
+                    "thumbnailPath" to thumbnailPath,
+                )
+
+                audioResult.add(audioMap)
+                importedCount++
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "Error importing audio entry", e)
+                skippedCount++
+            }
+        }
+
+        android.util.Log.d("MainActivity", "SAF import complete: imported=$importedCount, skipped=$skippedCount, folders=${foldersResult.size}")
+        
+        return mapOf(
+            "folders" to foldersResult,
+            "audio" to audioResult,
+            "importedCount" to importedCount,
+            "skippedCount" to skippedCount,
+            "folderCount" to foldersResult.size,
+        )
     }
     
     private fun extractAudioFromVideo(videoUri: Uri) {
@@ -448,28 +862,45 @@ class MainActivity : FlutterActivity() {
     }
     
     private fun getPathFromUri(uri: Uri): String? {
-        val cursor = contentResolver.query(uri, null, null, null, null)
-        return cursor?.use {
-            if (it.moveToFirst()) {
-                val columnIndex = it.getColumnIndex(android.provider.MediaStore.Audio.Media.DATA)
-                if (columnIndex >= 0) {
-                    it.getString(columnIndex)
-                } else {
+        return when (uri.scheme) {
+            "content" -> {
+                // Try to get path from MediaStore
+                val projection = arrayOf(android.provider.MediaStore.MediaColumns.DATA)
+                val cursor = contentResolver.query(uri, projection, null, null, null)
+                cursor?.use {
+                    if (it.moveToFirst()) {
+                        val columnIndex = it.getColumnIndex(android.provider.MediaStore.MediaColumns.DATA)
+                        if (columnIndex >= 0) {
+                            val path = it.getString(columnIndex)
+                            if (path != null && java.io.File(path).exists()) {
+                                return@use path
+                            }
+                        }
+                    }
+                    null
+                } ?: run {
                     // Fallback: copy to cache
                     copyUriToCache(uri)
                 }
-            } else null
+            }
+            "file" -> uri.path
+            else -> {
+                // Fallback: copy to cache
+                copyUriToCache(uri)
+            }
         }
     }
     
     private fun copyUriToCache(uri: Uri): String {
         val inputStream = contentResolver.openInputStream(uri)
-        val cacheFile = java.io.File(cacheDir, "temp_audio_${System.currentTimeMillis()}.mp3")
+        val fileName = uri.lastPathSegment ?: "temp_image_${System.currentTimeMillis()}.jpg"
+        val cacheFile = java.io.File(cacheDir, fileName)
         inputStream?.use { input ->
             cacheFile.outputStream().use { output ->
                 input.copyTo(output)
             }
         }
+        android.util.Log.d("MainActivity", "Copied URI to cache: ${cacheFile.absolutePath}")
         return cacheFile.absolutePath
     }
 

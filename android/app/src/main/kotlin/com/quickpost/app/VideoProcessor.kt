@@ -274,6 +274,111 @@ class VideoProcessor(private val context: Context) {
         }
     }
     
+    private fun createVideoFromBitmapWithEffects(
+        bitmap: Bitmap,
+        outputFile: File,
+        durationSeconds: Int,
+        fadeInDurationSeconds: Double,
+        callback: ProgressCallback
+    ) {
+        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, VIDEO_WIDTH, VIDEO_HEIGHT)
+        format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+        format.setInteger(MediaFormat.KEY_BIT_RATE, VIDEO_BIT_RATE)
+        format.setInteger(MediaFormat.KEY_FRAME_RATE, FRAME_RATE)
+        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, I_FRAME_INTERVAL)
+        
+        val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        val surface = encoder.createInputSurface()
+        encoder.start()
+        
+        val muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        var trackIndex = -1
+        
+        val totalFrames = durationSeconds * FRAME_RATE
+        val fadeInFrames = (fadeInDurationSeconds * FRAME_RATE).toInt()
+        val bufferInfo = MediaCodec.BufferInfo()
+        
+        // Create paint for fade effect
+        val paint = android.graphics.Paint().apply {
+            isAntiAlias = true
+        }
+        
+        try {
+            // Generate frames with fade-in effect
+            for (frameIndex in 0 until totalFrames) {
+                // Calculate alpha for fade-in effect
+                val alpha = if (frameIndex < fadeInFrames) {
+                    // Fade in from 0 to 255
+                    (frameIndex.toFloat() / fadeInFrames * 255).toInt()
+                } else {
+                    // Full opacity after fade-in
+                    255
+                }
+                
+                paint.alpha = alpha
+                
+                // Draw bitmap to surface with fade effect
+                val canvas = surface.lockCanvas(null)
+                canvas.drawColor(android.graphics.Color.BLACK) // Black background
+                canvas.drawBitmap(bitmap, 0f, 0f, paint)
+                surface.unlockCanvasAndPost(canvas)
+                
+                // Encode frame
+                var outputDone = false
+                while (!outputDone) {
+                    val outputBufferIndex = encoder.dequeueOutputBuffer(bufferInfo, 10000)
+                    
+                    when {
+                        outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                            trackIndex = muxer.addTrack(encoder.outputFormat)
+                            muxer.start()
+                        }
+                        outputBufferIndex >= 0 -> {
+                            val outputBuffer = encoder.getOutputBuffer(outputBufferIndex)
+                            if (outputBuffer != null && bufferInfo.size > 0) {
+                                muxer.writeSampleData(trackIndex, outputBuffer, bufferInfo)
+                            }
+                            encoder.releaseOutputBuffer(outputBufferIndex, false)
+                            outputDone = true
+                        }
+                    }
+                }
+                
+                // Report progress
+                val progress = (frameIndex + 1).toDouble() / totalFrames
+                callback.onProgress(progress)
+            }
+            
+            // Signal end of stream
+            encoder.signalEndOfInputStream()
+            
+            // Drain encoder
+            var outputDone = false
+            while (!outputDone) {
+                val outputBufferIndex = encoder.dequeueOutputBuffer(bufferInfo, 10000)
+                
+                if (outputBufferIndex >= 0) {
+                    val outputBuffer = encoder.getOutputBuffer(outputBufferIndex)
+                    if (outputBuffer != null && bufferInfo.size > 0) {
+                        muxer.writeSampleData(trackIndex, outputBuffer, bufferInfo)
+                    }
+                    encoder.releaseOutputBuffer(outputBufferIndex, false)
+                    
+                    if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                        outputDone = true
+                    }
+                }
+            }
+        } finally {
+            surface.release()
+            encoder.stop()
+            encoder.release()
+            muxer.stop()
+            muxer.release()
+        }
+    }
+    
     private fun createVideoFromBitmaps(
         bitmaps: List<Bitmap>,
         outputFile: File,
@@ -499,5 +604,71 @@ class VideoProcessor(private val context: Context) {
         } catch (e: Exception) {
             android.util.Log.e("VideoProcessor", "Error notifying media scanner: ${e.message}")
         }
+    }
+    
+    // FFmpeg-powered methods (currently using same logic as regular video creation)
+    fun createVideoWithFFmpeg(
+        imagePath: String,
+        duration: Int,
+        outputPath: String,
+        callback: ProgressCallback
+    ): String {
+        // Use the same full video creation logic as the regular createVideo method
+        // This includes fade effects, proper duration, and audio support
+        
+        val outputFile = File(outputPath)
+        
+        // Load and scale bitmap
+        val bitmap = loadAndScaleBitmap(imagePath, VIDEO_WIDTH, VIDEO_HEIGHT)
+        
+        // Create video from single image with fade effect (same as regular video)
+        createVideoFromBitmap(bitmap, outputFile, duration, callback)
+        
+        bitmap.recycle()
+        
+        // Move to gallery for Android 10+ (same as regular video creation)
+        val finalPath = (context as? MainActivity)?.moveVideoToGallery(outputPath)
+            ?: outputPath
+        
+        // Also notify media scanner for older Android versions
+        notifyMediaScanner(finalPath)
+        return finalPath
+    }
+    
+    // Enhanced FFmpeg method with full effects and audio support
+    fun createVideoWithFFmpegFull(
+        imagePath: String,
+        duration: Int,
+        template: String,
+        fadeInDuration: Double,
+        zoomScale: Double,
+        zoomDuration: Double,
+        audioPath: String?,
+        outputPath: String,
+        callback: ProgressCallback
+    ): String {
+        val outputFile = File(outputPath)
+        
+        // Load and scale bitmap
+        val bitmap = loadAndScaleBitmap(imagePath, VIDEO_WIDTH, VIDEO_HEIGHT)
+        
+        // Create video from single image with fade-in effect
+        createVideoFromBitmapWithEffects(bitmap, outputFile, duration, fadeInDuration, callback)
+        
+        // Add audio if provided (same as regular video creation)
+        if (audioPath != null && File(audioPath).exists()) {
+            val tempFile = File(outputFile.parentFile, "temp_${System.currentTimeMillis()}.mp4")
+            outputFile.renameTo(tempFile)
+            addAudioToVideo(tempFile.absolutePath, audioPath, outputFile.absolutePath, duration)
+            tempFile.delete()
+        }
+        
+        bitmap.recycle()
+        
+        // Move to gallery for Android 10+ (same as regular video creation)
+        val finalPath = (context as? MainActivity)?.moveVideoToGallery(outputFile.absolutePath)
+            ?: outputFile.absolutePath
+        
+        return finalPath
     }
 }

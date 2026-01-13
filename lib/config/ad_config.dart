@@ -38,7 +38,7 @@ class AdConfig {
   static const bool showBannerInPostMaker = true;
   static const bool showBannerInImageCropper = true;
   static const bool showBannerInVideoCreator = true;
-  static const bool showBannerInAudioLibrary = false; 
+  static const bool showBannerInAudioLibrary = true; 
   
   // Interstitial ad controls
   static const bool showInterstitialAfterExport = true;

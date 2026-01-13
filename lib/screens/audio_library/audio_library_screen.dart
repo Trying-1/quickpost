@@ -86,6 +86,57 @@ class _AudioLibraryScreenState extends State<AudioLibraryScreen> {
     setState(() => _playingAudioId = null);
   }
 
+  Future<void> _renameAudio(AudioFile audioFile) async {
+    final controller = TextEditingController(text: audioFile.name);
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename Audio'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: 'Enter new name',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CANCEL'),
+          ),
+          TextButton(
+            onPressed: () {
+              if (controller.text.isNotEmpty) {
+                Navigator.pop(context, controller.text);
+              }
+            },
+            child: const Text('RENAME'),
+          ),
+        ],
+      ),
+    );
+
+    if (newName != null && newName.isNotEmpty && newName != audioFile.name) {
+      try {
+        await AudioLibraryService.renameAudioFile(audioFile.id, newName);
+        await _loadAudioFiles();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Audio renamed')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error renaming audio: $e')),
+          );
+        }
+      }
+    }
+    controller.dispose();
+  }
+
   Future<void> _deleteAudio(AudioFile audioFile) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -304,6 +355,12 @@ class _AudioLibraryScreenState extends State<AudioLibraryScreen> {
                           _playAudio(audioFile);
                         }
                       },
+                    ),
+                    // Rename button
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined),
+                      color: Colors.blue[400],
+                      onPressed: () => _renameAudio(audioFile),
                     ),
                     // Delete button
                     IconButton(

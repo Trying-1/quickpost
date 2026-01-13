@@ -16,7 +16,14 @@ import '../../services/ad_service.dart';
 import '../../services/app_review_service.dart';
 
 class VideoCreatorScreen extends StatefulWidget {
-  const VideoCreatorScreen({Key? key}) : super(key: key);
+  final List<String>? sharedImagePaths;
+  final String? sharedPurpose;
+
+  const VideoCreatorScreen({
+    Key? key,
+    this.sharedImagePaths,
+    this.sharedPurpose,
+  }) : super(key: key);
 
   @override
   State<VideoCreatorScreen> createState() => _VideoCreatorScreenState();
@@ -47,6 +54,53 @@ class _VideoCreatorScreenState extends State<VideoCreatorScreen> {
     super.initState();
     _initializeTemplateSettings();
     _setupMethodCallHandler();
+    _loadSharedImages();
+  }
+
+  @override
+  void didUpdateWidget(covariant VideoCreatorScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    final oldPaths = oldWidget.sharedImagePaths;
+    final newPaths = widget.sharedImagePaths;
+    final oldPurpose = oldWidget.sharedPurpose;
+    final newPurpose = widget.sharedPurpose;
+
+    if (newPaths != null && newPaths.isNotEmpty) {
+      final bool wasEmptyBefore = oldPaths == null || oldPaths.isEmpty;
+      final bool lengthChanged = oldPaths == null || oldPaths.length != newPaths.length;
+      final bool firstChanged = oldPaths == null || oldPaths.isEmpty || oldPaths.first != newPaths.first;
+      final bool purposeChanged = oldPurpose != newPurpose;
+
+      if (wasEmptyBefore || lengthChanged || firstChanged || purposeChanged) {
+        _loadSharedImages();
+      }
+    }
+  }
+
+  void _loadSharedImages() {
+    if (widget.sharedImagePaths != null && widget.sharedImagePaths!.isNotEmpty) {
+      final paths = widget.sharedImagePaths!;
+      final purpose = widget.sharedPurpose;
+
+      if (paths.length == 1) {
+        // Single image - use for fade_in or zoom_in
+        _selectedImage = File(paths.first);
+        
+        // Set template based on purpose
+        if (purpose == 'video_zoom_in') {
+          _selectedTemplateId = 'zoom_in';
+        } else {
+          _selectedTemplateId = 'fade_in';
+        }
+      } else {
+        // Multiple images - use for sequence
+        _selectedImages = paths.map((p) => File(p)).toList();
+        _selectedTemplateId = 'image_sequence';
+      }
+      
+      print('[VideoCreatorScreen] Loaded ${paths.length} shared image(s) for purpose: $purpose');
+    }
   }
   
   void _initializeTemplateSettings() {

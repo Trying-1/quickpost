@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
@@ -7,6 +8,8 @@ import '../models/audio_folder.dart';
 class AudioLibraryService {
   static const String _audioBoxName = 'audio_library';
   static const String _folderBoxName = 'audio_folders';
+  static const String _persistentRootFolderName = 'QuickPostAudio';
+  static const String _indexFileName = 'index.json';
   static Box<AudioFile>? _audioBox;
   static Box<AudioFolder>? _folderBox;
 
@@ -30,18 +33,21 @@ class AudioLibraryService {
       await _initializeDefaultFolders();
     } else {
       // Check if "All Audio" folder exists, if not add it
-      if (!_folderBox!.containsKey('all_audio')) {
+      if (!_folderBox!.containsKey(AudioFolder.allAudioFolderId)) {
         final allAudioFolder = AudioFolder(
-          id: 'all_audio',
+          id: AudioFolder.allAudioFolderId,
           name: 'All Audio',
           description: 'View all extracted audio',
           dateCreated: DateTime.now(),
           colorValue: 0xFF9C27B0, // Purple
           iconName: 'library_music',
         );
-        await _folderBox!.put('all_audio', allAudioFolder);
+        await _folderBox!.put(AudioFolder.allAudioFolderId, allAudioFolder);
       }
     }
+
+    // Attempt to restore library from persistent public index on fresh installs
+    await _restoreFromPersistentIndexIfNeeded();
   }
   
   /// Initialize default folders
@@ -113,6 +119,7 @@ class AudioLibraryService {
     );
 
     await box.put(id, audioFile);
+    await _persistIndex();
     return audioFile;
   }
 
@@ -147,6 +154,22 @@ class AudioLibraryService {
 
       // Remove from Hive
       await box.delete(id);
+      await _persistIndex();
+    }
+  }
+
+  /// Rename an audio file
+  static Future<void> renameAudioFile(String id, String newName) async {
+    final audioFile = box.get(id);
+    if (audioFile != null) {
+      // Update the name in the audio file object
+      audioFile.name = newName;
+      
+      // Save the updated audio file back to Hive
+      await box.put(id, audioFile);
+      
+      // Persist the changes
+      await _persistIndex();
     }
   }
 
@@ -169,6 +192,11 @@ class AudioLibraryService {
 
     // Clear the box
     await box.clear();
+
+    // Also clear all folders except the default set, then persist an empty index
+    await folderBox.clear();
+    await _initializeDefaultFolders();
+    await _persistIndex();
   }
 
   /// Get total storage used by audio library
@@ -236,12 +264,14 @@ class AudioLibraryService {
     );
     
     await folderBox.put(id, folder);
+    await _persistIndex();
     return folder;
   }
   
   /// Update folder
   static Future<void> updateFolder(AudioFolder folder) async {
     await folderBox.put(folder.id, folder);
+    await _persistIndex();
   }
   
   /// Delete folder (moves audio to default folder)
@@ -259,6 +289,7 @@ class AudioLibraryService {
     
     // Delete the folder
     await folderBox.delete(folderId);
+    await _persistIndex();
   }
   
   /// Get audio files by folder
@@ -273,6 +304,7 @@ class AudioLibraryService {
     if (audio != null) {
       audio.folderId = folderId;
       await box.put(audioId, audio);
+      await _persistIndex();
     }
   }
   
@@ -289,5 +321,238 @@ class AudioLibraryService {
       'folder': folder,
       'count': count,
     };
+  }
+
+  /// Get the root directory for persistent audio storage on Android
+  static Future<Directory> _getPersistentRootDirectory() async {
+    if (Platform.isAndroid) {
+      final dir = Directory('/storage/emulated/0/$_persistentRootFolderName');
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      return dir;
+    } else {
+      final appDir = await getApplicationDocumentsDirectory();
+      final dir = Directory('${appDir.path}/$_persistentRootFolderName');
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      return dir;
+    }
+  }
+
+  /// Get the index file that mirrors the audio library state in the persistent directory
+  static Future<File> _getIndexFile() async {
+    final rootDir = await _getPersistentRootDirectory();
+    final indexFile = File('${rootDir.path}/$_indexFileName');
+    if (!await indexFile.exists()) {
+      await indexFile.create(recursive: true);
+    }
+    return indexFile;
+  }
+
+  /// Persist the current Hive audio library and folders into index.json in the persistent directory
+  static Future<void> _persistIndex() async {
+    try {
+      final rootDir = await _getPersistentRootDirectory();
+      final indexFile = await _getIndexFile();
+
+      final allAudio = getAllAudioFiles();
+      final allFolders = getAllFolders();
+
+      final audioList = <Map<String, dynamic>>[];
+      for (var audio in allAudio) {
+        String relativeAudioPath;
+        if (audio.audioPath.startsWith(rootDir.path)) {
+          relativeAudioPath = audio.audioPath.substring(rootDir.path.length + 1);
+        } else {
+          relativeAudioPath = audio.audioPath;
+        }
+
+        String? relativeThumbPath;
+        if (audio.thumbnailPath != null) {
+          if (audio.thumbnailPath!.startsWith(rootDir.path)) {
+            relativeThumbPath = audio.thumbnailPath!.substring(rootDir.path.length + 1);
+          } else {
+            relativeThumbPath = audio.thumbnailPath;
+          }
+        }
+
+        audioList.add({
+          'id': audio.id,
+          'name': audio.name,
+          'relativeAudioPath': relativeAudioPath,
+          'relativeThumbnailPath': relativeThumbPath,
+          'durationMs': audio.durationMs,
+          'dateExtracted': audio.dateExtracted.toIso8601String(),
+          'originalVideoPath': audio.originalVideoPath,
+          'fileSizeBytes': audio.fileSizeBytes,
+          'folderId': audio.folderId,
+        });
+      }
+
+      final foldersList = allFolders
+          .where((f) => f.id != AudioFolder.allAudioFolderId)
+          .map((folder) => {
+                'id': folder.id,
+                'name': folder.name,
+                'description': folder.description,
+                'dateCreated': folder.dateCreated.toIso8601String(),
+                'colorValue': folder.colorValue,
+                'iconName': folder.iconName,
+              })
+          .toList();
+
+      final index = {
+        'version': '1.0',
+        'lastUpdated': DateTime.now().toIso8601String(),
+        'audioCount': audioList.length,
+        'folderCount': foldersList.length,
+        'folders': foldersList,
+        'audio': audioList,
+      };
+
+      await indexFile.writeAsString(json.encode(index));
+    } catch (_) {
+      // If persisting the index fails, we don't want to break the app
+    }
+  }
+
+  /// On fresh installs (empty Hive boxes), attempt to rebuild the library from the persistent index
+  static Future<void> _restoreFromPersistentIndexIfNeeded() async {
+    try {
+      if (box.isNotEmpty) {
+        return;
+      }
+
+      final rootDir = await _getPersistentRootDirectory();
+      final indexFile = File('${rootDir.path}/$_indexFileName');
+      if (!await indexFile.exists()) {
+        return;
+      }
+
+      final content = await indexFile.readAsString();
+      if (content.isEmpty) {
+        return;
+      }
+
+      final data = json.decode(content) as Map<String, dynamic>;
+
+      final foldersData = data['folders'] as List<dynamic>?;
+      final audioData = data['audio'] as List<dynamic>?;
+
+      if ((foldersData == null || foldersData.isEmpty) &&
+          (audioData == null || audioData.isEmpty)) {
+        return;
+      }
+
+      // Rebuild folders from index (excluding the virtual All Audio folder)
+      await folderBox.clear();
+
+      if (foldersData != null) {
+        for (var folder in foldersData) {
+          final map = folder as Map<String, dynamic>;
+          final id = map['id'] as String;
+          final name = map['name'] as String;
+          final description = map['description'] as String?;
+          final dateCreatedStr = map['dateCreated'] as String?;
+          DateTime dateCreated;
+          try {
+            dateCreated = dateCreatedStr != null
+                ? DateTime.parse(dateCreatedStr)
+                : DateTime.now();
+          } catch (_) {
+            dateCreated = DateTime.now();
+          }
+          final colorValue = map['colorValue'] as int? ?? 0xFF9C27B0;
+          final iconName = map['iconName'] as String?;
+
+          final folderObj = AudioFolder(
+            id: id,
+            name: name,
+            description: description,
+            dateCreated: dateCreated,
+            colorValue: colorValue,
+            iconName: iconName,
+          );
+
+          await folderBox.put(id, folderObj);
+        }
+      }
+
+      // Ensure the virtual All Audio folder exists
+      if (!folderBox.containsKey(AudioFolder.allAudioFolderId)) {
+        final allAudioFolder = AudioFolder(
+          id: AudioFolder.allAudioFolderId,
+          name: 'All Audio',
+          description: 'View all extracted audio',
+          dateCreated: DateTime.now(),
+          colorValue: 0xFF9C27B0,
+          iconName: 'library_music',
+        );
+        await folderBox.put(AudioFolder.allAudioFolderId, allAudioFolder);
+      }
+
+      // Rebuild audio entries from index
+      if (audioData != null) {
+        for (var entry in audioData) {
+          final map = entry as Map<String, dynamic>;
+
+          final id = map['id'] as String;
+          final name = map['name'] as String;
+          final relativeAudioPath = map['relativeAudioPath'] as String;
+          final relativeThumbPath = map['relativeThumbnailPath'] as String?;
+          final durationMs = map['durationMs'] as int;
+          final dateExtractedStr = map['dateExtracted'] as String?;
+          final originalVideoPath = map['originalVideoPath'] as String?;
+          final folderId = map['folderId'] as String? ?? AudioFolder.defaultFolderId;
+
+          final audioFile = File('${rootDir.path}/$relativeAudioPath');
+          if (!await audioFile.exists()) {
+            continue;
+          }
+
+          String? thumbnailPath;
+          if (relativeThumbPath != null) {
+            final thumbFile = File('${rootDir.path}/$relativeThumbPath');
+            if (await thumbFile.exists()) {
+              thumbnailPath = thumbFile.path;
+            }
+          }
+
+          DateTime dateExtracted;
+          try {
+            dateExtracted = dateExtractedStr != null
+                ? DateTime.parse(dateExtractedStr)
+                : DateTime.now();
+          } catch (_) {
+            dateExtracted = DateTime.now();
+          }
+
+          int fileSizeBytes;
+          try {
+            fileSizeBytes = map['fileSizeBytes'] as int? ?? await audioFile.length();
+          } catch (_) {
+            fileSizeBytes = 0;
+          }
+
+          final audioObj = AudioFile(
+            id: id,
+            name: name,
+            audioPath: audioFile.path,
+            durationMs: durationMs,
+            dateExtracted: dateExtracted,
+            thumbnailPath: thumbnailPath,
+            originalVideoPath: originalVideoPath,
+            fileSizeBytes: fileSizeBytes,
+            folderId: folderId,
+          );
+
+          await box.put(id, audioObj);
+        }
+      }
+    } catch (_) {
+      // If restore fails, fall back to an empty/default library
+    }
   }
 }

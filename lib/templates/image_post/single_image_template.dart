@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import '../../models/template_config.dart';
 
-/// Single Image Post Template (1080x1350)
-/// Classic post with single image and text overlay
-const singleImageTemplate = TemplateConfig(
+/// Single image post template configuration
+/// Instagram-style single image with text overlay (1080x1350)
+const TemplateConfig singleImageTemplate = TemplateConfig(
   id: 'single_image_post',
   name: 'Single Image',
-  description: '1080x1350 - Single image post',
-  width: 1080.0,
-  height: 1350.0,
-  icon: Icons.crop_square,
-  color: Colors.purple,
+  description: 'Instagram-style single image post with text overlay',
+  width: 1080,
+  height: 1350,
+  icon: Icons.image,
+  color: Color(0xFF6366F1),
   isGrid: false,
 );
