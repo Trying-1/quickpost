@@ -1,22 +1,38 @@
 import 'package:flutter/material.dart';
+import '../video_text_overlay/video_text_overlay_screen.dart';
+import '../video_cropper/video_cropper_screen.dart';
 import '../image_post/post_maker_screen.dart';
+import '../image_post/post_maker_templates_screen.dart';
 import '../image_cropper/image_cropper_screen.dart';
 import '../video_creator/video_creator_screen.dart';
-import '../audio_extraction/audio_extraction_screen.dart';
 import '../audio_library/audio_library_screen_with_folders.dart';
 import '../text_box_overlay/text_box_overlay_screen.dart';
 import '../profile/profile_screen.dart';
-import '../../widgets/ad_banner_widget.dart';
+import '../arise_automation/arise_automation_screen.dart';
+import '../caption_store/caption_store_screen.dart';
 
 class HomeShellScreen extends StatefulWidget {
   final List<String>? sharedImagePaths;
   final String? sharedPurpose;
 
-  const HomeShellScreen({
-    super.key,
+  static final GlobalKey<_HomeShellScreenState> shellKey = GlobalKey<_HomeShellScreenState>();
+
+  static void navigateToTab(int index, {List<String>? paths, String? purpose}) {
+    debugPrint('[HomeShellScreen] navigateToTab called: index=$index, paths=$paths, purpose=$purpose');
+    final state = shellKey.currentState;
+    if (state != null) {
+      debugPrint('[HomeShellScreen] State found via GlobalKey, calling state.navigateToTab');
+      state.navigateToTab(index, paths: paths, purpose: purpose);
+    } else {
+      debugPrint('[HomeShellScreen] ERROR: GlobalKey state is null. currentState is not available.');
+    }
+  }
+
+  HomeShellScreen({
+    Key? key,
     this.sharedImagePaths,
     this.sharedPurpose,
-  });
+  }) : super(key: key ?? shellKey);
 
   @override
   State<HomeShellScreen> createState() => _HomeShellScreenState();
@@ -25,12 +41,16 @@ class HomeShellScreen extends StatefulWidget {
 class _HomeShellScreenState extends State<HomeShellScreen> {
   int _currentBottomNavIndex = 0;
   DateTime? _lastBackPressTime;
+  List<String>? _currentPaths;
+  String? _currentPurpose;
+  Key _stackKey = UniqueKey();
 
   @override
   void initState() {
     super.initState();
-    // Handle shared images if provided at startup
-    if (widget.sharedImagePaths != null && widget.sharedImagePaths!.isNotEmpty) {
+    _currentPaths = widget.sharedImagePaths;
+    _currentPurpose = widget.sharedPurpose;
+    if (_currentPaths != null && _currentPaths!.isNotEmpty) {
       _handleSharedImages();
     }
   }
@@ -41,36 +61,74 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
 
     final oldPaths = oldWidget.sharedImagePaths;
     final newPaths = widget.sharedImagePaths;
+    final oldPurpose = oldWidget.sharedPurpose;
+    final newPurpose = widget.sharedPurpose;
 
-    // When new shared images arrive from ShareIntentHandler, route to the correct tab
     if (newPaths != null && newPaths.isNotEmpty) {
       final bool wasEmptyBefore = oldPaths == null || oldPaths.isEmpty;
       final bool lengthChanged = oldPaths == null || oldPaths.length != newPaths.length;
       final bool firstChanged = oldPaths == null || oldPaths.isEmpty || oldPaths.first != newPaths.first;
+      final bool purposeChanged = oldPurpose != newPurpose;
 
-      if (wasEmptyBefore || lengthChanged || firstChanged) {
+      if (wasEmptyBefore || lengthChanged || firstChanged || purposeChanged) {
+        setState(() {
+          _currentPaths = newPaths;
+          _currentPurpose = newPurpose;
+          _stackKey = UniqueKey();
+        });
         _handleSharedImages();
       }
     }
   }
 
+  void navigateToTab(int index, {List<String>? paths, String? purpose}) {
+    debugPrint('[HomeShellScreen] state.navigateToTab called: index=$index, paths=$paths');
+    setState(() {
+      _currentBottomNavIndex = index;
+      if (paths != null) {
+        _currentPaths = List.from(paths);
+        debugPrint('[HomeShellScreen] _currentPaths updated to: $_currentPaths');
+      }
+      if (purpose != null) {
+        _currentPurpose = purpose;
+        debugPrint('[HomeShellScreen] _currentPurpose updated to: $_currentPurpose');
+      }
+      _stackKey = UniqueKey();
+      debugPrint('[HomeShellScreen] _stackKey refreshed to force child rebuild');
+    });
+  }
+
   void _handleSharedImages() {
-    final purpose = widget.sharedPurpose;
-    final paths = widget.sharedImagePaths;
+    final purpose = _currentPurpose;
+    final paths = _currentPaths;
 
     if (paths == null || paths.isEmpty) return;
 
-    // Route to appropriate screen based on purpose
     setState(() {
       switch (purpose) {
+        case 'cropper':
+          _currentBottomNavIndex = 1;
+          break;
+        case 'video_cropper':
+          _currentBottomNavIndex = 2;
+          break;
+        case 'text_box':
+          _currentBottomNavIndex = 4;
+          break;
+        case 'automation':
+          _currentBottomNavIndex = 8;
+          break;
+        case 'captions':
+          _currentBottomNavIndex = 6;
+          break;
         case 'single_image_post':
-          _currentBottomNavIndex = 0; // Post Maker
+          _currentBottomNavIndex = 0;
           break;
         case 'video_fade_in':
-          _currentBottomNavIndex = 2; // Video Creator (fade-in template)
+          _currentBottomNavIndex = 3;
           break;
         case 'video_zoom_in':
-          _currentBottomNavIndex = 2; // Video Creator (plain/zoom template)
+          _currentBottomNavIndex = 3;
           break;
         default:
           _currentBottomNavIndex = 0;
@@ -81,6 +139,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('[HomeShellScreen] build called with _currentBottomNavIndex=$_currentBottomNavIndex');
     return WillPopScope(
       onWillPop: () async {
         // If not on the first tab, go back to the main tab instead of exiting
@@ -106,36 +165,24 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
       child: Scaffold(
         backgroundColor: Colors.grey[50],
         body: IndexedStack(
+          key: _stackKey,
           index: _currentBottomNavIndex,
           children: [
-            PostMakerScreen(sharedImagePaths: widget.sharedImagePaths, sharedPurpose: widget.sharedPurpose),
-            ImageCropperScreen(sharedImagePaths: widget.sharedImagePaths),
-            VideoCreatorScreen(sharedImagePaths: widget.sharedImagePaths, sharedPurpose: widget.sharedPurpose),
-            const TextBoxOverlayScreen(),
+            _buildPostMakerTab(),
+            ImageCropperScreen(sharedImagePaths: _currentPaths),
+            VideoCropperScreen(sharedVideoPaths: _currentPaths),
+            VideoCreatorScreen(sharedImagePaths: _currentPaths, sharedPurpose: _currentPurpose),
+            TextBoxOverlayScreen(sharedImagePaths: _currentPaths),
+            VideoTextOverlayScreen(sharedVideoPaths: _currentPaths),
+            const CaptionStoreScreen(),
             const AudioLibraryScreenWithFolders(),
+            AriseAutomationScreen(sharedImagePaths: _currentPaths, sharedPurpose: _currentPurpose),
             const ProfileScreen(),
           ],
         ),
-        floatingActionButton: _currentBottomNavIndex == 4
-            ? FloatingActionButton.extended(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const AudioExtractionScreen(),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.add),
-                label: const Text('Extract New'),
-                backgroundColor: Colors.purple,
-              )
-            : null,
         bottomNavigationBar: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Banner Ad
-            const AdBannerWidget(screenName: 'post_maker'),
             // Navigation Bar
             Container(
               decoration: BoxDecoration(
@@ -152,12 +199,16 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
-                    _buildNavItem(0, Icons.create, 'Post Maker'),
-                    _buildNavItem(1, Icons.crop, 'Image Cropper'),
-                    _buildNavItem(2, Icons.video_call, 'Image to Video'),
-                    _buildNavItem(3, Icons.text_fields, 'Text Box'),
-                    _buildNavItem(4, Icons.library_music, 'My Audios'),
-                    _buildNavItem(5, Icons.person, 'Profile'),
+            _buildNavItem(0, Icons.create, 'Post Maker'),
+            _buildNavItem(1, Icons.crop, 'Image Cropper'),
+            _buildNavItem(2, Icons.video_library, 'Video Cropper'),
+            _buildNavItem(3, Icons.video_call, 'Image to Video'),
+            _buildNavItem(4, Icons.text_fields, 'Text Box'),
+            _buildNavItem(5, Icons.movie_filter, 'Video Text'),
+            _buildNavItem(6, Icons.closed_caption, 'Captions'),
+            _buildNavItem(7, Icons.library_music, 'My Audios'),
+            _buildNavItem(8, Icons.auto_awesome, 'Automation'),
+            _buildNavItem(9, Icons.person, 'Profile'),
                   ],
                 ),
               ),
@@ -166,6 +217,27 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildPostMakerTab() {
+    final paths = _currentPaths;
+    final purpose = _currentPurpose;
+
+    // When the app is opened via share intent or deep link with images,
+    // route into the appropriate post maker template via PostMakerScreen.
+    if (purpose == 'post_maker_templates') {
+      return PostMakerTemplatesScreen(sharedImagePaths: paths);
+    }
+
+    if (paths != null && paths.isNotEmpty) {
+      return PostMakerScreen(
+        sharedImagePaths: _currentPaths,
+        sharedPurpose: _currentPurpose,
+      );
+    }
+
+    // Normal in-app usage: show the template picker grid.
+    return const PostMakerTemplatesScreen();
   }
 
   Widget _buildNavItem(int index, IconData icon, String label) {

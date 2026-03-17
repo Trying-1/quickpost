@@ -11,18 +11,22 @@ import 'widgets/audio_selector_widget.dart';
 import 'widgets/template_selector_widget.dart';
 import 'widgets/duration_selector_widget.dart';
 import 'widgets/create_button_widget.dart';
-import '../../widgets/ad_banner_widget.dart';
-import '../../services/ad_service.dart';
 import '../../services/app_review_service.dart';
 
 class VideoCreatorScreen extends StatefulWidget {
   final List<String>? sharedImagePaths;
   final String? sharedPurpose;
+  final String? initialTemplateId;
+  final Map<String, dynamic>? automationSettings;
+  final bool autoPopOnSuccess;
 
   const VideoCreatorScreen({
     Key? key,
     this.sharedImagePaths,
     this.sharedPurpose,
+    this.initialTemplateId,
+    this.automationSettings,
+    this.autoPopOnSuccess = false,
   }) : super(key: key);
 
   @override
@@ -52,6 +56,17 @@ class _VideoCreatorScreenState extends State<VideoCreatorScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialTemplateId != null && widget.initialTemplateId!.isNotEmpty) {
+      _selectedTemplateId = widget.initialTemplateId!;
+    }
+
+    // Override duration if automation settings provided
+    if (widget.automationSettings != null) {
+      if (widget.automationSettings!.containsKey('videoDuration')) {
+        _duration = widget.automationSettings!['videoDuration'] as int;
+      }
+    }
+
     _initializeTemplateSettings();
     _setupMethodCallHandler();
     _loadSharedImages();
@@ -187,7 +202,10 @@ class _VideoCreatorScreenState extends State<VideoCreatorScreen> {
     });
     
     try {
-      final nativeSettings = template.getNativeSettings(_templateSettings);
+      final nativeSettings = template.getNativeSettings(
+        _templateSettings,
+        automationSettings: widget.automationSettings,
+      );
       
       // Prepare parameters based on template type
       final params = <String, dynamic>{
@@ -197,6 +215,7 @@ class _VideoCreatorScreenState extends State<VideoCreatorScreen> {
         'zoomScale': nativeSettings['zoomScale'],
         'zoomDuration': nativeSettings['zoomDuration'],
         'audioPath': _selectedAudio?.path,
+        'automationSettings': widget.automationSettings,
       };
       
       // Add image(s) based on template
@@ -249,9 +268,6 @@ class _VideoCreatorScreenState extends State<VideoCreatorScreen> {
   }
   
   void _showSuccessDialog() {
-    // Show interstitial ad after video creation
-    AdService().showInterstitialAfterExport();
-    
     // Increment export count and check for review request
     AppReviewService().incrementExportCount();
     AppReviewService().checkAndRequestReview();
@@ -290,12 +306,20 @@ class _VideoCreatorScreenState extends State<VideoCreatorScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              Navigator.pop(context);
+              if (widget.autoPopOnSuccess) {
+                Navigator.of(this.context).pop();
+              }
+            },
             child: const Text('OK'),
           ),
           ElevatedButton.icon(
             onPressed: () {
               Navigator.pop(context);
+              if (widget.autoPopOnSuccess) {
+                Navigator.of(this.context).pop();
+              }
               if (_outputPath != null) {
                 OpenFile.open(_outputPath!);
               }
@@ -471,10 +495,6 @@ class _VideoCreatorScreenState extends State<VideoCreatorScreen> {
                     : _selectedImage != null,
               ),
             ),
-            
-            // Banner Ad
-            AdBannerWidget(screenName: 'video_creator'),
-            const SizedBox(height: 16),
             ],
           ),
         ),

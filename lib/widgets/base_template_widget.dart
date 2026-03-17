@@ -51,6 +51,9 @@ class InstagramPostTemplate extends StatefulWidget {
   final Color shadowColor;
   final Color glowColor;
   final double glowRadius;
+  final double shadowOffsetX;
+  final double shadowOffsetY;
+  final double shadowBlurRadius;
   final double letterSpacing;
   final double fontSizeMultiplier;
   final TextEditingController? textController;
@@ -77,6 +80,9 @@ class InstagramPostTemplate extends StatefulWidget {
     this.shadowColor = Colors.black,
     this.glowColor = Colors.white,
     this.glowRadius = 10.0,
+    this.shadowOffsetX = 2.0,
+    this.shadowOffsetY = 2.0,
+    this.shadowBlurRadius = 4.0,
     this.letterSpacing = 0.0,
     this.fontSizeMultiplier = 1.0,
     this.textController,
@@ -223,72 +229,53 @@ class _InstagramPostTemplateState extends State<InstagramPostTemplate> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-            Container(
-              width: templateWidth,
-              height: textBoxHeight,
-              color: widget.textBoxColor,
+              Container(
+                width: templateWidth,
+                height: textBoxHeight,
+                color: widget.textBoxColor,
                 child: Center(
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
-                    child: widget.isPreview
-                        ? TextField(
-                            controller: widget.textController,
-                            maxLines: null,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontFamily: widget.selectedFont?.family,
-                              fontWeight: widget.selectedFont?.weight ?? FontWeight.w600,
-                              fontStyle: widget.selectedFont?.style ?? FontStyle.normal,
-                              color: widget.textColor,
-                              fontSize: _calculateFontSize(widget.text.isEmpty ? 'Sample' : widget.text, templateWidth) * widget.fontSizeMultiplier,
-                              height: 1.2,
-                              letterSpacing: widget.letterSpacing,
-                              shadows: _buildTextShadows(),
-                            ),
-                            decoration: InputDecoration(
-                              hintText: widget.showPlaceholder ? 'Tap to add text...' : null,
-                              hintStyle: TextStyle(
-                                color: Colors.grey[400],
-                                fontFamily: widget.selectedFont?.family,
-                                fontWeight: widget.selectedFont?.weight ?? FontWeight.w600,
-                              ),
-                              border: InputBorder.none,
-                              contentPadding: EdgeInsets.zero,
-                              isDense: true,
-                            ),
-                            onChanged: widget.onTextChanged,
-                          )
-                        : FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(
-                                maxWidth: templateWidth - 32,
-                              ),
-                              child: Text(
-                                widget.text,
-                                style: TextStyle(
-                                  fontFamily: widget.selectedFont?.family,
-                                  fontWeight: widget.selectedFont?.weight ?? FontWeight.w600,
-                                  fontStyle: widget.selectedFont?.style ?? FontStyle.normal,
-                                  color: widget.textColor,
-                                  fontSize: _calculateFontSize(widget.text, templateWidth) * widget.fontSizeMultiplier,
-                                  height: 1.2,
-                                  letterSpacing: widget.letterSpacing,
-                                  shadows: _buildTextShadows(),
-                                ),
-                                textAlign: TextAlign.center,
-                                maxLines: 4,
-                                overflow: TextOverflow.visible,
-                              ),
-                            ),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: templateWidth - 32,
+                        ),
+                        child: Text(
+                          widget.text.isEmpty && widget.showPlaceholder
+                              ? 'Your text here'
+                              : widget.text,
+                          style: TextStyle(
+                            fontFamily: widget.selectedFont?.family,
+                            fontWeight: widget.selectedFont?.weight ?? FontWeight.w600,
+                            fontStyle: widget.selectedFont?.style ?? FontStyle.normal,
+                            color: widget.text.isEmpty && widget.showPlaceholder
+                                ? Colors.grey[400]
+                                : widget.textColor,
+                            fontSize: _calculateFontSize(
+                                    widget.text.isEmpty && widget.showPlaceholder
+                                        ? 'Your text here'
+                                        : widget.text,
+                                    templateWidth) *
+                                widget.fontSizeMultiplier,
+                            height: 1.2,
+                            letterSpacing: widget.letterSpacing,
+                            shadows: _buildTextShadows(),
                           ),
+                          textAlign: TextAlign.center,
+                          maxLines: 4,
+                          overflow: TextOverflow.visible,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-            ),
-            Container(
-              width: templateWidth,
-              height: imageHeight,
-              color: Colors.grey[300],
+              ),
+              Container(
+                width: templateWidth,
+                height: imageHeight,
+                color: Colors.grey[300],
                 child: widget.isGridMode
                     ? _buildGridLayout(templateWidth)
                     : widget.image != null && _isImageLoaded
@@ -484,8 +471,8 @@ class _InstagramPostTemplateState extends State<InstagramPostTemplate> {
     if (widget.enableTextShadow) {
       shadows.add(
         Shadow(
-          offset: const Offset(2, 2),
-          blurRadius: 4,
+          offset: Offset(widget.shadowOffsetX, widget.shadowOffsetY),
+          blurRadius: widget.shadowBlurRadius,
           color: widget.shadowColor.withOpacity(0.5),
         ),
       );

@@ -8,8 +8,7 @@ import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:open_file/open_file.dart';
-import '../../widgets/ad_banner_widget.dart';
-import '../../services/ad_service.dart';
+import '../home/home_shell_screen.dart';
 import '../../services/app_review_service.dart';
 
 class ImageCropperScreen extends StatefulWidget {
@@ -76,10 +75,22 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
     _loadSharedImages();
   }
 
+  @override
+  void didUpdateWidget(covariant ImageCropperScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.sharedImagePaths != oldWidget.sharedImagePaths) {
+      _loadSharedImages();
+    }
+  }
+
   void _loadSharedImages() {
     if (widget.sharedImagePaths != null && widget.sharedImagePaths!.isNotEmpty) {
-      _selectedImages = widget.sharedImagePaths!.map((p) => File(p)).toList();
-      _currentImageIndex = 0;
+      setState(() {
+        _selectedImages = widget.sharedImagePaths!.map((p) => File(p)).toList();
+        _croppedImages = List.generate(_selectedImages.length, (index) => CroppedImageData());
+        _currentImageIndex = 0;
+      });
+      _loadCurrentImage();
       print('[ImageCropperScreen] Loaded ${_selectedImages.length} shared image(s)');
     }
   }
@@ -742,9 +753,6 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
       }
       
       if (exportedCount > 0 && savedPath != null) {
-        // Show interstitial ad after export
-        AdService().showInterstitialAfterExport();
-        
         // Increment export count and check for review request
         AppReviewService().incrementExportCount();
         AppReviewService().checkAndRequestReview();
@@ -822,6 +830,7 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
   }
 
   void _showSingleCropSuccessDialog(String path) {
+    debugPrint('[ImageCropper] Showing success dialog for path: $path');
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -904,6 +913,42 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          debugPrint('[ImageCropper] Sending to Text Box: $path');
+                          final file = File(path);
+                          if (await file.exists()) {
+                            final length = await file.length();
+                            debugPrint('[ImageCropper] File exists, size: $length bytes');
+                            if (length > 0) {
+                              Navigator.of(context).pop();
+                              HomeShellScreen.navigateToTab(
+                                4, // Text Box Tab
+                                paths: [path],
+                                purpose: 'cropper',
+                              );
+                            } else {
+                              debugPrint('[ImageCropper] ERROR: File is empty');
+                            }
+                          } else {
+                            debugPrint('[ImageCropper] ERROR: File does not exist at path: $path');
+                          }
+                        },
+                        icon: const Icon(Icons.text_fields, size: 18),
+                        label: const Text('Add Text'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.purple[600],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          elevation: 0,
                         ),
                       ),
                     ),
@@ -1026,6 +1071,44 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          // Get the first cropped image file path for the text box
+                          final firstCroppedPath = _croppedImages.firstWhere((img) => img.file != null).file!.path;
+                          debugPrint('[ImageCropper-Bulk] Sending to Text Box: $firstCroppedPath');
+                          final file = File(firstCroppedPath);
+                          if (await file.exists()) {
+                            final length = await file.length();
+                            debugPrint('[ImageCropper-Bulk] File exists, size: $length bytes');
+                            if (length > 0) {
+                              Navigator.of(context).pop();
+                              HomeShellScreen.navigateToTab(
+                                4, // Text Box Tab
+                                paths: [firstCroppedPath],
+                                purpose: 'cropper',
+                              );
+                            } else {
+                              debugPrint('[ImageCropper-Bulk] ERROR: File is empty');
+                            }
+                          } else {
+                            debugPrint('[ImageCropper-Bulk] ERROR: File does not exist at path: $firstCroppedPath');
+                          }
+                        },
+                        icon: const Icon(Icons.text_fields, size: 18),
+                        label: const Text('Add Text'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.purple[600],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          elevation: 0,
                         ),
                       ),
                     ),
@@ -1335,8 +1418,6 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Banner Ad
-        AdBannerWidget(screenName: 'image_cropper'),
         // Bottom Nav Bar
         Container(
           padding: const EdgeInsets.all(16),

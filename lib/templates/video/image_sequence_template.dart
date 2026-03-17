@@ -250,15 +250,19 @@ class ImageSequenceTemplate extends VideoTemplateBase {
   }
   
   @override
-  Map<String, dynamic> getNativeSettings(Map<String, dynamic> settings) {
-    return {
+  Map<String, dynamic> getNativeSettings(Map<String, dynamic> settings, {Map<String, dynamic>? automationSettings}) {
+    final Map<String, dynamic> native = {
       'fadeInDuration': 1.0,
       'zoomScale': 1.2,
       'zoomDuration': 2.0,
-      'durationPerImage': settings['durationPerImage'] ?? 0.2,
+      'durationPerImage': settings['durationPerImage'] ?? 2.0,
       'sequenceMode': settings['sequenceMode'] ?? 'sequential',
       'allowRepeat': settings['allowRepeat'] ?? true,
     };
+    if (automationSettings != null) {
+      native['automationSettings'] = automationSettings;
+    }
+    return native;
   }
 }
 

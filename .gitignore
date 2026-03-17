@@ -153,6 +153,17 @@ $RECYCLE.BIN/
 *.seed
 *.pid.lock
 
+# Local scratch/backup source files (avoid accidentally committing copies)
+*_backup*.dart
+*_backup*.kt
+*_backup*.cpp
+*_backup*.h
+*backup_*.dart
+
+# Common local “copy” variants
+*screen1.dart
+*screen2.dart
+
 # Coverage and test reports
 coverage/
 .nyc_output/
@@ -175,6 +186,8 @@ htmlcov/
 
 # Flutter Linux
 /linux/
+
+/ariseautomation
 
 # Flutter macOS
 /macos/

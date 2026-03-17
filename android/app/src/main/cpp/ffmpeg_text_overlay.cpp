@@ -1,6 +1,11 @@
 #include "ffmpeg_text_overlay.h"
 #include <cstring>
 #include <cstdio>
+#include <unistd.h>
+
+static bool file_exists(const char* path) {
+    return (path && path[0] != '\0' && access(path, F_OK) == 0);
+}
 
 #define BOX_HEIGHT 80
 #define TEXT_PADDING_TOP 20
@@ -23,12 +28,24 @@ int text_overlay_init_context(TextOverlayContext* ctx) {
 
 int text_overlay_setup_filter(TextOverlayContext* ctx,
                               const char* overlay_text,
+                              const char* text_file_path,
                               const char* text_color,
                               const char* box_color,
+                              float boxOpacity,
+                              int boxHeight,
+                              int horizontalPadding,
+                              int verticalPadding,
+                              const char* hAlign,
+                              const char* vAlign,
+                              float lineHeight,
                               const char* position,
                               const char* font,
-                              int fontSize) {
-    if (!ctx || !overlay_text || !text_color || !box_color || !font) {
+                              int fontSize,
+                              bool showShadow,
+                              const char* shadowColor,
+                              int shadowX,
+                              int shadowY) {
+    if (!ctx || !text_color || !box_color || !font) {
         LOGE("Invalid parameters for text overlay filter setup");
         return -1;
     }
@@ -39,7 +56,7 @@ int text_overlay_setup_filter(TextOverlayContext* ctx,
         return -1;
     }
     
-    // Determine if box should be at top or bottom
+    // Legacy support for Top/Bottom positions with boxes
     bool place_top = true;
     if (position && position[0] != '\0') {
         if (strcasecmp(position, "bottom") == 0) {
@@ -47,51 +64,189 @@ int text_overlay_setup_filter(TextOverlayContext* ctx,
         }
     }
     
-    // Build filter string
-    char filter_str[1024];
+    char x_expr[128];
+    snprintf(x_expr, sizeof(x_expr), "(w-tw)/2");
+
+    char y_expr[128];
     if (place_top) {
-        snprintf(
-            filter_str,
-            sizeof(filter_str),
-            "pad=w=%d:h=%d:x=0:y=%d:color=%s@1.0,"
-            "drawbox=x=0:y=0:w=%d:h=%d:color=%s@1.0:t=fill,"
-            "drawtext=fontfile='%s':text='%s':fontcolor=%s:fontsize=%d:x=(w-text_w)/2:y=%d",
-            dec_ctx->width,
-            dec_ctx->height + BOX_HEIGHT,
-            BOX_HEIGHT,
-            box_color,
-            dec_ctx->width,
-            BOX_HEIGHT,
-            box_color,
-            font,
-            overlay_text,
-            text_color,
-            fontSize,
-            TEXT_PADDING_TOP);
+        snprintf(y_expr, sizeof(y_expr), "(%d-th)/2", boxHeight);
     } else {
-        // Box at bottom: pad video height, keep original video at top, add box at bottom
-        snprintf(
-            filter_str,
-            sizeof(filter_str),
-            "pad=w=%d:h=%d:x=0:y=0:color=%s@1.0,"
-            "drawbox=x=0:y=%d:w=%d:h=%d:color=%s@1.0:t=fill,"
-            "drawtext=fontfile='%s':text='%s':fontcolor=%s:fontsize=%d:x=(w-text_w)/2:y=%d",
-            dec_ctx->width,
-            dec_ctx->height + BOX_HEIGHT,
-            box_color,
-            dec_ctx->height,
-            dec_ctx->width,
-            BOX_HEIGHT,
-            box_color,
-            font,
-            overlay_text,
-            text_color,
-            fontSize,
-            dec_ctx->height + TEXT_PADDING_TOP);
-        
-        LOGI("Bottom position: video_height=%d, box_y=%d, text_y=%d, total_height=%d",
-             dec_ctx->height, dec_ctx->height, dec_ctx->height + TEXT_PADDING_TOP, 
-             dec_ctx->height + BOX_HEIGHT);
+        snprintf(y_expr, sizeof(y_expr), "H-th-(%d-th)/2", boxHeight);
+    }
+    
+    bool use_textfile = (text_file_path && text_file_path[0] != '\0');
+    if (!use_textfile && (!overlay_text || overlay_text[0] == '\0')) {
+        LOGE("No overlay_text or text_file_path provided");
+        return -1;
+    }
+
+    char escaped_text[2048];
+    if (!use_textfile) {
+        int j = 0;
+        for (int i = 0; overlay_text[i] != '\0' && j < 2040; i++) {
+            const char c = overlay_text[i];
+            // drawtext uses ':' as option separator and supports %{} expansions.
+            // We pass text inside double quotes (text="..."), so we must escape
+            // special characters to prevent filter parsing / unexpected expansions.
+            if (c == '\\') {
+                // Escape backslash itself.
+                escaped_text[j++] = '\\';
+                escaped_text[j++] = '\\';
+            } else if (c == '\'') {
+                // Escape apostrophe as FFmpeg filter parser may treat it as a quoting character.
+                escaped_text[j++] = '\\';
+                escaped_text[j++] = '\'';
+            } else if (c == '"') {
+                escaped_text[j++] = '\\';
+                escaped_text[j++] = '"';
+            } else if (c == ':') {
+                // Escape ':' so it doesn't terminate the drawtext option.
+                escaped_text[j++] = '\\';
+                escaped_text[j++] = ':';
+            } else if (c == '%') {
+                // Escape '%' to avoid %{...} expansions.
+                escaped_text[j++] = '\\';
+                escaped_text[j++] = '%';
+            } else {
+                escaped_text[j++] = c;
+            }
+        }
+        escaped_text[j] = '\0';
+    }
+
+    char filter_str[4096];
+    
+    // Convert alignment to FFmpeg drawtext equivalent
+    const char* text_align_val = "center";
+    if (hAlign) {
+        if (strcasecmp(hAlign, "left") == 0) text_align_val = "left";
+        else if (strcasecmp(hAlign, "right") == 0) text_align_val = "right";
+    }
+
+    const bool have_fontfile = file_exists(font);
+    if (!have_fontfile) {
+        LOGE("Font file missing/unreadable, falling back to default: %s", (font ? font : "<null>"));
+    }
+
+    char effects_str[256] = {0};
+    if (showShadow) {
+        const char* sc = (shadowColor && shadowColor[0] != '\0') ? shadowColor : "0x000000";
+        snprintf(effects_str, sizeof(effects_str), ":shadowcolor=%s:shadowx=%d:shadowy=%d", sc, shadowX, shadowY);
+    }
+
+    char escaped_textfile[2048];
+    if (use_textfile) {
+        int k = 0;
+        for (int i = 0; text_file_path[i] != '\0' && k < 2040; i++) {
+            const char c = text_file_path[i];
+            if (c == '\\') {
+                escaped_textfile[k++] = '\\';
+                escaped_textfile[k++] = '\\';
+            } else if (c == '\'') {
+                escaped_textfile[k++] = '\\';
+                escaped_textfile[k++] = '\'';
+            } else {
+                escaped_textfile[k++] = c;
+            }
+        }
+        escaped_textfile[k] = '\0';
+    }
+
+    if (place_top) {
+        // Pad the frame to match encoder height (ih + boxHeight). Place original video below the top box.
+        // This avoids uninitialized pixels (green belt) in the padded area.
+        if (use_textfile) {
+            if (have_fontfile) {
+                snprintf(filter_str, sizeof(filter_str),
+                    "pad=iw:ih+%d:0:%d:color=black,"
+                    "drawbox=x=0:y=0:w=iw:h=%d:color=%s@%.2f:t=fill,"
+                    "drawtext=fontfile='%s':textfile='%s':reload=1:fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=(%d-th)/2:text_align=%s%s,"
+                    "format=pix_fmts=yuv420p",
+                    boxHeight, boxHeight,
+                    boxHeight, box_color, boxOpacity,
+                    font, escaped_textfile, text_color, fontSize,
+                    (int)((lineHeight - 1.0f) * fontSize), boxHeight, text_align_val, effects_str);
+            } else {
+                snprintf(filter_str, sizeof(filter_str),
+                    "pad=iw:ih+%d:0:%d:color=black,"
+                    "drawbox=x=0:y=0:w=iw:h=%d:color=%s@%.2f:t=fill,"
+                    "drawtext=textfile='%s':reload=1:fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=(%d-th)/2:text_align=%s%s,"
+                    "format=pix_fmts=yuv420p",
+                    boxHeight, boxHeight,
+                    boxHeight, box_color, boxOpacity,
+                    escaped_textfile, text_color, fontSize,
+                    (int)((lineHeight - 1.0f) * fontSize), boxHeight, text_align_val, effects_str);
+            }
+        } else {
+            if (have_fontfile) {
+                snprintf(filter_str, sizeof(filter_str),
+                    "pad=iw:ih+%d:0:%d:color=black,"
+                    "drawbox=x=0:y=0:w=iw:h=%d:color=%s@%.2f:t=fill,"
+                    "drawtext=fontfile='%s':text=\"%s\":fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=(%d-th)/2:text_align=%s%s,"
+                    "format=pix_fmts=yuv420p",
+                    boxHeight, boxHeight,
+                    boxHeight, box_color, boxOpacity,
+                    font, escaped_text, text_color, fontSize,
+                    (int)((lineHeight - 1.0f) * fontSize), boxHeight, text_align_val, effects_str);
+            } else {
+                snprintf(filter_str, sizeof(filter_str),
+                    "pad=iw:ih+%d:0:%d:color=black,"
+                    "drawbox=x=0:y=0:w=iw:h=%d:color=%s@%.2f:t=fill,"
+                    "drawtext=text=\"%s\":fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=(%d-th)/2:text_align=%s%s,"
+                    "format=pix_fmts=yuv420p",
+                    boxHeight, boxHeight,
+                    boxHeight, box_color, boxOpacity,
+                    escaped_text, text_color, fontSize,
+                    (int)((lineHeight - 1.0f) * fontSize), boxHeight, text_align_val, effects_str);
+            }
+        }
+    } else {
+        // Pad the frame to match encoder height (ih + boxHeight). Place original video at top, box at bottom.
+        if (use_textfile) {
+            if (have_fontfile) {
+                snprintf(filter_str, sizeof(filter_str),
+                    "pad=iw:ih+%d:0:0:color=black,"
+                    "drawbox=x=0:y=H-%d:w=iw:h=%d:color=%s@%.2f:t=fill,"
+                    "drawtext=fontfile='%s':textfile='%s':reload=1:fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=H-%d+(%d-th)/2:text_align=%s%s,"
+                    "format=pix_fmts=yuv420p",
+                    boxHeight,
+                    boxHeight, boxHeight, box_color, boxOpacity,
+                    font, escaped_textfile, text_color, fontSize,
+                    (int)((lineHeight - 1.0f) * fontSize), boxHeight, boxHeight, text_align_val, effects_str);
+            } else {
+                snprintf(filter_str, sizeof(filter_str),
+                    "pad=iw:ih+%d:0:0:color=black,"
+                    "drawbox=x=0:y=H-%d:w=iw:h=%d:color=%s@%.2f:t=fill,"
+                    "drawtext=textfile='%s':reload=1:fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=H-%d+(%d-th)/2:text_align=%s%s,"
+                    "format=pix_fmts=yuv420p",
+                    boxHeight,
+                    boxHeight, boxHeight, box_color, boxOpacity,
+                    escaped_textfile, text_color, fontSize,
+                    (int)((lineHeight - 1.0f) * fontSize), boxHeight, boxHeight, text_align_val, effects_str);
+            }
+        } else {
+            if (have_fontfile) {
+                snprintf(filter_str, sizeof(filter_str),
+                    "pad=iw:ih+%d:0:0:color=black,"
+                    "drawbox=x=0:y=H-%d:w=iw:h=%d:color=%s@%.2f:t=fill,"
+                    "drawtext=fontfile='%s':text=\"%s\":fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=H-%d+(%d-th)/2:text_align=%s%s,"
+                    "format=pix_fmts=yuv420p",
+                    boxHeight,
+                    boxHeight, boxHeight, box_color, boxOpacity,
+                    font, escaped_text, text_color, fontSize,
+                    (int)((lineHeight - 1.0f) * fontSize), boxHeight, boxHeight, text_align_val, effects_str);
+            } else {
+                snprintf(filter_str, sizeof(filter_str),
+                    "pad=iw:ih+%d:0:0:color=black,"
+                    "drawbox=x=0:y=H-%d:w=iw:h=%d:color=%s@%.2f:t=fill,"
+                    "drawtext=text=\"%s\":fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=H-%d+(%d-th)/2:text_align=%s%s,"
+                    "format=pix_fmts=yuv420p",
+                    boxHeight,
+                    boxHeight, boxHeight, box_color, boxOpacity,
+                    escaped_text, text_color, fontSize,
+                    (int)((lineHeight - 1.0f) * fontSize), boxHeight, boxHeight, text_align_val, effects_str);
+            }
+        }
     }
     
     LOGI("Filter string: %s", filter_str);
@@ -154,8 +309,9 @@ int text_overlay_setup_filter(TextOverlayContext* ctx,
     inputs->pad_idx = 0;
     inputs->next = nullptr;
     
-    if (avfilter_graph_parse_ptr(ctx->filter_graph, filter_str, &inputs, &outputs, nullptr) < 0) {
-        LOGE("Cannot parse filter graph");
+    int parse_ret = avfilter_graph_parse_ptr(ctx->filter_graph, filter_str, &inputs, &outputs, nullptr);
+    if (parse_ret < 0) {
+        LOGE("Cannot parse filter graph, ffmpeg error=%d", parse_ret);
         avfilter_inout_free(&inputs);
         avfilter_inout_free(&outputs);
         return -16;

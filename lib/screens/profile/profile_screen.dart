@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:quickpost/utils/watermark_settings.dart';
 import 'whats_new_screen.dart';
 import 'language_screen.dart';
 import 'notifications_screen.dart';
@@ -20,6 +21,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   late PackageInfo _packageInfo;
   bool _isLoading = true;
+  bool _showWatermark = WatermarkSettings.showWatermark;
 
   @override
   void initState() {
@@ -119,21 +121,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     children: [
                       _buildListTile(
                         icon: Icons.info,
-                        title: 'App Version',
-                        subtitle: _packageInfo.version,
-                        trailing: Text(
-                          'Build ${_packageInfo.buildNumber}',
-                          style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                        ),
-                      ),
-                      _buildListTile(
-                        icon: Icons.update,
-                        title: 'Check for Updates',
-                        subtitle: 'View on Play Store',
-                        onTap: () => _launchUrl('https://play.google.com/store/apps/details?id=com.quickpost.app'),
-                      ),
-                      _buildListTile(
-                        icon: Icons.description,
                         title: 'What\'s New',
                         subtitle: 'View latest features and improvements',
                         onTap: () => Navigator.push(
@@ -180,6 +167,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         title: 'Theme',
                         subtitle: 'Light',
                         onTap: () => _showComingSoon(context),
+                      ),
+                      SwitchListTile(
+                        value: _showWatermark,
+                        onChanged: (value) {
+                          setState(() {
+                            _showWatermark = value;
+                            WatermarkSettings.setShowWatermark(value);
+                          });
+                        },
+                        title: const Text('Show watermark on posts'),
+                        subtitle: const Text('"made in Quick Post Maker" label'),
+                        secondary: const Icon(Icons.water_drop_outlined),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                       ),
                       _buildListTile(
                         icon: Icons.language,
@@ -300,12 +300,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: Column(
                         children: [
                           Text(
-                            'QuickPost v${_packageInfo.version}',
+                            'Meme Flow v${_packageInfo.version}',
                             style: TextStyle(color: Colors.grey[600], fontSize: 12),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '© 2024 QuickPost. All rights reserved.',
+                            '© 2024 Meme Flow. All rights reserved.',
                             style: TextStyle(color: Colors.grey[600], fontSize: 12),
                             textAlign: TextAlign.center,
                           ),
@@ -321,123 +321,121 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildProfileHeader() {
     return Container(
-      color: Colors.grey[50],
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.purple[300]!, Colors.purple[500]!],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.purple.withOpacity(0.2),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(color: Colors.grey.withOpacity(0.1), width: 1),
         ),
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          children: [
-            // Avatar with shadow
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.25),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.5),
-                  width: 3,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.15),
-                    blurRadius: 20,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: const Center(
-                child: Icon(
-                  Icons.person,
-                  size: 50,
+      ),
+      padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
+      child: Column(
+        children: [
+          Stack(
+            children: [
+              Container(
+                width: 110,
+                height: 110,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
                   color: Colors.white,
+                  border: Border.all(
+                    color: Colors.purple.withOpacity(0.1),
+                    width: 4,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.purple.withOpacity(0.08),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.person_rounded,
+                    size: 56,
+                    color: Colors.purple,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
-            
-            // Name
-            const Text(
-              'QuickPost User',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-                letterSpacing: 0.5,
-              ),
-            ),
-            const SizedBox(height: 8),
-            
-            // Email
-            Text(
-              'user@quickpost.app',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.white.withOpacity(0.85),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 20),
-            
-            // Plan Badge with better styling
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.25),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.5),
-                  width: 1.5,
+              Positioned(
+                bottom: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: const BoxDecoration(
+                    color: Colors.purple,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.camera_alt_rounded,
+                    size: 18,
+                    color: Colors.white,
+                  ),
                 ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Free Plan',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ],
+            ],
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Meme Flow User',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF1A1A1A),
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'user@memeflow.app',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.purple.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(
+                color: Colors.purple.withOpacity(0.1),
+                width: 1,
               ),
             ),
-          ],
-        ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.verified_rounded,
+                  size: 16,
+                  color: Colors.purple,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Free Plan Member',
+                  style: TextStyle(
+                    color: Colors.purple[700],
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -450,18 +448,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
           child: Text(
-            title,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey,
+            title.toUpperCase(),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: Colors.grey[400],
+              letterSpacing: 1.2,
             ),
           ),
         ),
         Container(
-          color: Colors.white,
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.grey.withOpacity(0.1), width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.02),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
           child: Column(
             children: children,
           ),
@@ -479,18 +491,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
     VoidCallback? onTap,
   }) {
     return ListTile(
-      leading: Icon(icon, color: titleColor ?? Colors.purple),
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: (titleColor ?? Colors.purple).withOpacity(0.08),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(
+          icon,
+          size: 20,
+          color: titleColor ?? Colors.purple,
+        ),
+      ),
       title: Text(
         title,
         style: TextStyle(
+          fontSize: 15,
           fontWeight: FontWeight.w600,
-          color: titleColor,
+          color: titleColor ?? const Color(0xFF2D2D2D),
         ),
       ),
-      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-      trailing: trailing ?? const Icon(Icons.chevron_right, color: Colors.grey),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(
+          fontSize: 12,
+          color: Colors.grey[500],
+          fontWeight: FontWeight.w400,
+        ),
+      ),
+      trailing: trailing ?? Icon(Icons.chevron_right_rounded, color: Colors.grey[400], size: 20),
       onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
     );
   }
 
@@ -682,7 +713,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       scheme: 'mailto',
       path: 'arisesoloapp@gmail.com',
       queryParameters: {
-        'subject': 'QuickPost Feedback - v${_packageInfo.version}',
+        'subject': 'Meme Flow Feedback - v${_packageInfo.version}',
         'body': 'User Feedback:\n\n$feedback\n\nApp Version: ${_packageInfo.version}\nBuild: ${_packageInfo.buildNumber}',
       },
     );
@@ -702,8 +733,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _shareApp() async {
     await Share.share(
-      'Check out QuickPost - Create stunning social media posts, videos, and more!\n\nhttps://play.google.com/store/apps/details?id=com.quickpost.app',
-      subject: 'Download QuickPost - Social Media Creator',
+      'Check out Meme Flow - Create stunning social media posts, videos, and more!\n\nhttps://play.google.com/store/apps/details?id=com.quickpost.app',
+      subject: 'Download Meme Flow - Social Media Creator',
     );
   }
 
@@ -712,8 +743,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       scheme: 'mailto',
       path: 'arisesoloapp@gmail.com',
       queryParameters: {
-        'subject': 'QuickPost Support - v${_packageInfo.version}',
-        'body': 'Hello,\n\nI need help with QuickPost.\n\nApp Version: ${_packageInfo.version}\nBuild: ${_packageInfo.buildNumber}\n\nPlease describe your issue:\n',
+        'subject': 'Meme Flow Support - v${_packageInfo.version}',
+        'body': 'Hello,\n\nI need help with Meme Flow.\n\nApp Version: ${_packageInfo.version}\nBuild: ${_packageInfo.buildNumber}\n\nPlease describe your issue:\n',
       },
     );
     

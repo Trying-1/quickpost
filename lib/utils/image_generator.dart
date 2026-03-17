@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:image/image.dart' as img;
+import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
@@ -29,6 +30,28 @@ class TemplateTransform {
   });
 }
 
+class _ResizeParams {
+  final Uint8List pngBytes;
+  final int width;
+  final int height;
+
+  const _ResizeParams(this.pngBytes, this.width, this.height);
+}
+
+class _PostImageParams {
+  final String text;
+  final Uint8List imageBytes;
+  final TemplateTransform? transform;
+  final FontInfo? selectedFont;
+
+  const _PostImageParams({
+    required this.text,
+    required this.imageBytes,
+    required this.transform,
+    required this.selectedFont,
+  });
+}
+
 class ImageGenerator {
   static const MethodChannel _channel = MethodChannel('com.quickpost.app/processor');
   
@@ -43,12 +66,75 @@ class ImageGenerator {
     }
   }
   
+  static Uint8List? _resizeAndEncodePng(_ResizeParams params) {
+    final img.Image? pngImage = img.decodeImage(params.pngBytes);
+    if (pngImage == null) return null;
+
+    final img.Image resized = img.copyResize(
+      pngImage,
+      width: params.width,
+      height: params.height,
+      interpolation: img.Interpolation.cubic,
+    );
+
+    return img.encodePng(resized, level: 6);
+  }
+
+  static Uint8List? _generatePostImageSync(_PostImageParams params) {
+    final img.Image? src = img.decodeImage(params.imageBytes);
+    if (src == null) return null;
+
+    final img.Image canvas = img.Image(width: 1080, height: 1350);
+    img.fill(canvas, color: img.ColorRgb8(255, 255, 255));
+
+    img.Image lower;
+    final transform = params.transform;
+    if (transform != null && transform.imagePixelWidth > 0 && transform.imagePixelHeight > 0) {
+      final double s = transform.scale;
+      final double areaW = transform.areaWidth;
+      final double areaH = transform.areaHeight;
+      final double offX = transform.offsetX;
+      final double offY = transform.offsetY;
+      final double srcW = areaW / s;
+      final double srcH = areaH / s;
+      final double srcX = ((transform.imagePixelWidth * s - areaW) / 2 - offX) / s;
+      final double srcY = ((transform.imagePixelHeight * s - areaH) / 2 - offY) / s;
+
+      final int ix = srcX.clamp(0, transform.imagePixelWidth.toDouble()).floor();
+      final int iy = srcY.clamp(0, transform.imagePixelHeight.toDouble()).floor();
+      final int iw = srcW.clamp(1, (transform.imagePixelWidth - ix).toDouble()).floor();
+      final int ih = srcH.clamp(1, (transform.imagePixelHeight - iy).toDouble()).floor();
+
+      final img.Image cropped = img.copyCrop(src, x: ix, y: iy, width: iw, height: ih);
+      lower = img.copyResize(cropped, width: 1080, height: 1080, interpolation: img.Interpolation.cubic);
+    } else {
+      final double srcRatio = src.width / src.height;
+      img.Image resized;
+      if (srcRatio > 1) {
+        resized = img.copyResize(src, height: 1080, interpolation: img.Interpolation.cubic);
+        final int x = ((resized.width - 1080) / 2).round();
+        lower = img.copyCrop(resized, x: x, y: 0, width: 1080, height: 1080);
+      } else {
+        resized = img.copyResize(src, width: 1080, interpolation: img.Interpolation.cubic);
+        final int y = ((resized.height - 1080) / 2).round();
+        lower = img.copyCrop(resized, x: 0, y: y, width: 1080, height: 1080);
+      }
+    }
+
+    img.compositeImage(canvas, lower, dstX: 0, dstY: 270);
+    _drawTextTopBox(canvas, params.text, params.selectedFont);
+
+    return _encodeValidJpg(canvas);
+  }
+  
   static Future<String?> savePostToGallery({
     required String text,
     File? imageFile,
     TemplateTransform? transform,
     FontInfo? selectedFont,
     GlobalKey? templateKey,
+    int? outputWidth,
+    int? outputHeight,
   }) async {
     // Request minimally invasive permissions; avoid MANAGE_EXTERNAL_STORAGE which can kick to Settings
     final photosStatus = await Permission.photos.request();
@@ -62,7 +148,11 @@ class ImageGenerator {
     
     // Try to capture from widget first (for custom fonts and grid mode)
     if (templateKey != null) {
-      imageBytes = await _captureWidgetAsImage(templateKey);
+      imageBytes = await _captureWidgetAsImage(
+        templateKey,
+        targetWidth: outputWidth,
+        targetHeight: outputHeight,
+      );
     }
     
     // Fallback to traditional image generation (only for single image mode)
@@ -198,81 +288,46 @@ class ImageGenerator {
     return baseSize.clamp(20.0, 80.0); // Higher minimum and maximum sizes
   }
   
-  static Future<Uint8List?> _captureWidgetAsImage(GlobalKey key) async {
+  static Future<Uint8List?> _captureWidgetAsImage(
+    GlobalKey key, {
+    int? targetWidth,
+    int? targetHeight,
+  }) async {
     try {
       final RenderRepaintBoundary boundary = key.currentContext!.findRenderObject() as RenderRepaintBoundary;
       
       // Capture at 4x resolution for maximum quality
       final ui.Image image = await boundary.toImage(pixelRatio: 4.0);
       final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      
+
       if (byteData == null) return null;
-      
-      // Decode the high-res PNG
-      final img.Image? pngImage = img.decodeImage(byteData.buffer.asUint8List());
-      if (pngImage == null) return null;
-      
-      // Resize to exact dimensions with highest quality interpolation
-      final img.Image resized = img.copyResize(
-        pngImage,
-        width: 1080,
-        height: 1350,
-        interpolation: img.Interpolation.cubic,
+
+      final Uint8List pngBytes = byteData.buffer.asUint8List();
+
+      // Offload decoding, resizing, and encoding to a background isolate
+      final int width = targetWidth ?? 1080;
+      final int height = targetHeight ?? 1350;
+      return compute<_ResizeParams, Uint8List?>(
+        _resizeAndEncodePng,
+        _ResizeParams(pngBytes, width, height),
       );
-      
-      // Encode as PNG for lossless quality
-      return img.encodePng(resized, level: 6); // Level 6 = good compression with quality
     } catch (e) {
       // Return null on error - caller will handle
       return null;
     }
   }
-
+  
   static Future<Uint8List?> _generatePostImage(String text, File imageFile, {TemplateTransform? transform, FontInfo? selectedFont}) async {
     final Uint8List bytes = await imageFile.readAsBytes();
-    final img.Image? src = img.decodeImage(bytes);
-    if (src == null) return null;
-
-    final img.Image canvas = img.Image(width: 1080, height: 1350);
-    img.fill(canvas, color: img.ColorRgb8(255, 255, 255));
-
-    img.Image lower;
-    if (transform != null && transform.imagePixelWidth > 0 && transform.imagePixelHeight > 0) {
-      final double s = transform.scale;
-      final double areaW = transform.areaWidth;
-      final double areaH = transform.areaHeight;
-      final double offX = transform.offsetX;
-      final double offY = transform.offsetY;
-      final double srcW = areaW / s;
-      final double srcH = areaH / s;
-      final double srcX = ((transform.imagePixelWidth * s - areaW) / 2 - offX) / s;
-      final double srcY = ((transform.imagePixelHeight * s - areaH) / 2 - offY) / s;
-
-      final int ix = srcX.clamp(0, transform.imagePixelWidth.toDouble()).floor();
-      final int iy = srcY.clamp(0, transform.imagePixelHeight.toDouble()).floor();
-      final int iw = srcW.clamp(1, (transform.imagePixelWidth - ix).toDouble()).floor();
-      final int ih = srcH.clamp(1, (transform.imagePixelHeight - iy).toDouble()).floor();
-
-      final img.Image cropped = img.copyCrop(src, x: ix, y: iy, width: iw, height: ih);
-      lower = img.copyResize(cropped, width: 1080, height: 1080, interpolation: img.Interpolation.cubic);
-    } else {
-      final double srcRatio = src.width / src.height;
-      img.Image resized;
-      if (srcRatio > 1) {
-        resized = img.copyResize(src, height: 1080, interpolation: img.Interpolation.cubic);
-        final int x = ((resized.width - 1080) / 2).round();
-        lower = img.copyCrop(resized, x: x, y: 0, width: 1080, height: 1080);
-      } else {
-        resized = img.copyResize(src, width: 1080, interpolation: img.Interpolation.cubic);
-        final int y = ((resized.height - 1080) / 2).round();
-        lower = img.copyCrop(resized, x: 0, y: y, width: 1080, height: 1080);
-      }
-    }
-
-    img.compositeImage(canvas, lower, dstX: 0, dstY: 270);
-    _drawTextTopBox(canvas, text, selectedFont);
-
-    return _encodeValidJpg(canvas);
+    return compute<_PostImageParams, Uint8List?>(
+      _generatePostImageSync,
+      _PostImageParams(
+        text: text,
+        imageBytes: bytes,
+        transform: transform,
+        selectedFont: selectedFont,
+      ),
+    );
   }
 
   static Future<String?> _saveImageToGallery(Uint8List imageBytes) async {

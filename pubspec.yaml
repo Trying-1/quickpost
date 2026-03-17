@@ -2,7 +2,7 @@ name: quickpost
 description: Create stunning social posts, crop images in bulk, and make videos easily.
 publish_to: 'none'
 
-version: 1.0.6+10
+version: 1.0.9+14
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -18,6 +18,8 @@ dependencies:
   device_info_plus: ^9.1.1
   video_player: ^2.8.1
   open_file: ^3.3.2
+  file_picker: ^8.0.0
+  csv: ^6.0.0
   
   # Database
   hive: ^2.2.3
@@ -25,9 +27,6 @@ dependencies:
   
   # Video thumbnail
   video_thumbnail: ^0.5.3
-  
-  # AdMob
-  google_mobile_ads: ^5.1.0
   
   # In-app updates and reviews
   in_app_update: ^4.2.3
@@ -49,6 +48,13 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/images/post_template_images/qp_preview1.jpeg
+    - assets/images/post_template_images/qp_preview2.jpeg
+    - assets/images/post_template_images/qp_preview3.jpeg
+    - assets/images/post_template_images/single_image_post.jpg
+    - assets/images/post_template_images/grid_image_post.jpg
+    - assets/images/post_template_images/simple_text_post.jpg
   fonts:
     - family: Akony
       fonts:
@@ -247,6 +253,6 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: false
-  image_path: "assets/images/app_icon.png"
+  image_path: "assets/images/memeflow_logo.png"
   adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/images/app_icon_foreground.png"
+  adaptive_icon_foreground: "assets/images/memeflow_logo.png"

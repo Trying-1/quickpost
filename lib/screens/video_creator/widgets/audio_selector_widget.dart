@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 import '../../../models/audio_file.dart';
 import '../../../services/audio_library_service.dart';
 import '../../audio_library/audio_library_screen_with_folders.dart';
@@ -104,23 +105,28 @@ class AudioSelectorWidget extends StatelessWidget {
     if (shouldExtract != true) return;
     
     try {
-      final result = await platform.invokeMethod('pickAudioFile', {'source': 'video'});
-      if (result != null) {
-        final audioPath = result as String;
-        final durationResult = await platform.invokeMethod('getAudioDuration', {'audioPath': audioPath});
-        
-        // Save to library
-        await _saveToLibrary(audioPath, durationResult as String?);
-        
-        onAudioSelected(File(audioPath), durationResult);
-        
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Audio extracted and saved to library'),
-              backgroundColor: Colors.green,
-            ),
-          );
+      final ImagePicker picker = ImagePicker();
+      final XFile? video = await picker.pickVideo(source: ImageSource.gallery);
+      
+      if (video != null) {
+        final result = await platform.invokeMethod('extractAudioFromVideo', {'videoPath': video.path});
+        if (result != null) {
+          final audioPath = result as String;
+          final durationResult = await platform.invokeMethod('getAudioDuration', {'audioPath': audioPath});
+          
+          // Save to library
+          await _saveToLibrary(audioPath, durationResult as String?);
+          
+          onAudioSelected(File(audioPath), durationResult);
+          
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Audio extracted and saved to library'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
         }
       }
     } catch (e) {

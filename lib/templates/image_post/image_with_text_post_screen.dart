@@ -337,7 +337,6 @@ class _SingleImagePostScreenState extends State<SingleImagePostScreen> {
       if (!mounted) return;
       Navigator.of(context).pop();
 
-      AdService().showInterstitialAfterExport();
       AppReviewService().incrementExportCount();
       AppReviewService().checkAndRequestReview();
 

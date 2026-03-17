@@ -25,7 +25,7 @@ class AudioFileAdapter extends TypeAdapter<AudioFile> {
       thumbnailPath: fields[5] as String?,
       originalVideoPath: fields[6] as String?,
       fileSizeBytes: fields[7] as int,
-      folderId: fields[8] as String? ?? 'default',
+      folderId: fields[8] as String,
     );
   }
 

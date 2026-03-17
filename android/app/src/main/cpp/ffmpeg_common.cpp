@@ -96,7 +96,7 @@ int ffmpeg_setup_decoder(FFmpegContext* ctx) {
 }
 
 int ffmpeg_setup_encoder(FFmpegContext* ctx, const char* output_file,
-                         const char* preset, int crf) {
+                         const char* preset, int crf, int added_height) {
     if (!ctx || !output_file) return -1;
     
     // Create output format context
@@ -113,15 +113,32 @@ int ffmpeg_setup_encoder(FFmpegContext* ctx, const char* output_file,
         return -8;
     }
     
-    ctx->enc_ctx = avcodec_alloc_context3(ctx->encoder);
     if (!ctx->enc_ctx) {
-        LOGE("Cannot allocate encoder context");
-        return -9;
+        ctx->enc_ctx = avcodec_alloc_context3(ctx->encoder);
+        if (!ctx->enc_ctx) {
+            LOGE("Cannot allocate encoder context");
+            return -9;
+        }
     }
     
-    // Copy codec parameters and set encoder options
-    ctx->enc_ctx->height = ctx->dec_ctx->height;
-    ctx->enc_ctx->width = ctx->dec_ctx->width;
+    // Set encoder parameters
+    int target_width = ctx->dec_ctx->width;
+    int target_height = ctx->dec_ctx->height + added_height;
+
+    // Check if dimensions were already hinted (e.g., by cropping)
+    // ONLY if enc_ctx was pre-allocated and has valid dimensions
+    if (ctx->enc_ctx->width > 0 && ctx->enc_ctx->height > 0 && added_height == 0) {
+        target_width = ctx->enc_ctx->width;
+        target_height = ctx->enc_ctx->height;
+    }
+
+    ctx->enc_ctx->width = target_width;
+    ctx->enc_ctx->height = target_height;
+    
+    // Ensure dimensions are even (required for yuv420p)
+    if (ctx->enc_ctx->width % 2 != 0) ctx->enc_ctx->width--;
+    if (ctx->enc_ctx->height % 2 != 0) ctx->enc_ctx->height--;
+    
     ctx->enc_ctx->sample_aspect_ratio = ctx->dec_ctx->sample_aspect_ratio;
     ctx->enc_ctx->pix_fmt = AV_PIX_FMT_YUV420P;
     ctx->enc_ctx->time_base = ctx->video_time_base;
@@ -151,9 +168,17 @@ int ffmpeg_setup_encoder(FFmpegContext* ctx, const char* output_file,
         LOGE("Cannot create output stream");
         return -11;
     }
+
+    if (added_height == 0) {
+        // For cropping or simple passthrough, use original time_base
+        ctx->out_stream->time_base = ctx->video_time_base;
+        ctx->enc_ctx->time_base = ctx->video_time_base;
+    } else {
+        // For text overlay which might change frame rates or needs a standard TB
+        ctx->out_stream->time_base = ctx->enc_ctx->time_base;
+    }
     
     avcodec_parameters_from_context(ctx->out_stream->codecpar, ctx->enc_ctx);
-    ctx->out_stream->time_base = ctx->enc_ctx->time_base;
     
     return 0;
 }

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import '../audio_extraction/audio_extraction_screen.dart';
 import '../../models/audio_file.dart';
 import '../../models/audio_folder.dart';
 import '../../services/audio_library_service.dart';
@@ -1165,66 +1166,93 @@ class _AudioLibraryScreenWithFoldersState extends State<AudioLibraryScreenWithFo
                 icon: const Icon(Icons.arrow_back),
                 onPressed: _backToFolders,
               ),
-        actions: [
-          if (_showFolderView) ...[
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert),
-              onSelected: (value) {
-                switch (value) {
-                  case 'export':
-                    _exportLibrary();
-                    break;
-                  case 'import':
-                    _importLibrary();
-                    break;
-                  case 'create_folder':
-                    _createFolder();
-                    break;
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'export',
-                  child: Row(
-                    children: [
-                      Icon(Icons.upload, size: 20),
-                      SizedBox(width: 12),
-                      Text('Export Library'),
-                    ],
-                  ),
+          actions: [
+            if (_showFolderView) ...[
+              TextButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AudioExtractionScreen(),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Extract New'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.purple,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                 ),
-                const PopupMenuItem(
-                  value: 'import',
-                  child: Row(
-                    children: [
-                      Icon(Icons.download, size: 20),
-                      SizedBox(width: 12),
-                      Text('Import Library'),
-                    ],
+              ),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert),
+                onSelected: (value) {
+                  switch (value) {
+                    case 'export':
+                      _exportLibrary();
+                      break;
+                    case 'import':
+                      _importLibrary();
+                      break;
+                    case 'create_folder':
+                      _createFolder();
+                      break;
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'export',
+                    child: Row(
+                      children: [
+                        Icon(Icons.upload, size: 20),
+                        SizedBox(width: 12),
+                        Text('Export Library'),
+                      ],
+                    ),
                   ),
-                ),
-                const PopupMenuDivider(),
-                const PopupMenuItem(
-                  value: 'create_folder',
-                  child: Row(
-                    children: [
-                      Icon(Icons.create_new_folder, size: 20),
-                      SizedBox(width: 12),
-                      Text('Create Folder'),
-                    ],
+                  const PopupMenuItem(
+                    value: 'import',
+                    child: Row(
+                      children: [
+                        Icon(Icons.download, size: 20),
+                        SizedBox(width: 12),
+                        Text('Import Library'),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(
+                    value: 'create_folder',
+                    child: Row(
+                      children: [
+                        Icon(Icons.create_new_folder, size: 20),
+                        SizedBox(width: 12),
+                        Text('Create Folder'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
-        ],
+        ),
+        body: WillPopScope(
+          onWillPop: () async {
+            if (_isBackupOperationInProgress) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Please wait, audio backup is in progress...')),
+              );
+              return false;
+            }
+            return true;
+          },
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _showFolderView
+                  ? _buildFolderView()
+                  : _buildAudioListView(),
+        ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _showFolderView
-              ? _buildFolderView()
-              : _buildAudioListView(),
-    ),
     );
   }
 

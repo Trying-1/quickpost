@@ -33,11 +33,23 @@ int text_overlay_init_context(TextOverlayContext* ctx);
 // Setup filter graph for text overlay
 int text_overlay_setup_filter(TextOverlayContext* ctx,
                               const char* overlay_text,
+                              const char* text_file_path,
                               const char* text_color,
                               const char* box_color,
+                              float boxOpacity,
+                              int boxHeight,
+                              int horizontalPadding,
+                              int verticalPadding,
+                              const char* hAlign,
+                              const char* vAlign,
+                              float lineHeight,
                               const char* position,
                               const char* font,
-                              int fontSize);
+                              int fontSize,
+                              bool showShadow,
+                              const char* shadowColor,
+                              int shadowX,
+                              int shadowY);
 
 // Process video frames with text overlay
 int text_overlay_process_frames(TextOverlayContext* ctx, const char* output_file);

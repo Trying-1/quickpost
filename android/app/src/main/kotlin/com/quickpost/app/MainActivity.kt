@@ -1,5 +1,6 @@
 package com.quickpost.app
 
+import android.graphics.BitmapFactory
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -8,6 +9,9 @@ import android.os.Looper
 import android.content.Intent
 import android.app.Activity
 import android.net.Uri
+import android.provider.MediaStore
+import android.util.Log
+import java.io.File
 import androidx.documentfile.provider.DocumentFile
 import org.json.JSONArray
 import org.json.JSONObject
@@ -107,7 +111,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        
+
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         methodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -118,34 +122,43 @@ class MainActivity : FlutterActivity() {
                     val zoomScale = call.argument<Double>("zoomScale") ?: 1.2
                     val zoomDuration = call.argument<Double>("zoomDuration") ?: 2.0
                     val audioPath = call.argument<String>("audioPath")
+                    val automationSettings = call.argument<Map<String, Any>>("automationSettings")
+                    val qualitySettings = call.argument<Map<String, Any>>("qualitySettings")
                     
-                    // Handle both single image and image sequence
-                    if (template == "image_sequence") {
-                        val imagePaths = call.argument<List<String>>("imagePaths")
-                        val durationPerImage = call.argument<Double>("durationPerImage") ?: 2.0
-                        val sequenceMode = call.argument<String>("sequenceMode") ?: "sequential"
-                        val allowRepeat = call.argument<Boolean>("allowRepeat") ?: true
-                        val duration = call.argument<Int>("duration") ?: 3
-                        
-                        android.util.Log.d("MainActivity", "Received params: duration=$duration, durationPerImage=$durationPerImage, images=${imagePaths?.size}")
-                        
-                        if (imagePaths != null && imagePaths.isNotEmpty()) {
-                            createVideoSequence(imagePaths, duration, durationPerImage, sequenceMode, allowRepeat, audioPath, result)
-                        } else {
-                            result.error("INVALID_ARGUMENT", "Image paths are required for image sequence", null)
-                        }
+                    if (automationSettings != null) {
+                        // Use dedicated automation processor
+                        createAutomationVideo(
+                            call.argument<String>("imagePath") ?: "",
+                            duration,
+                            template,
+                            fadeInDuration,
+                            zoomScale,
+                            zoomDuration,
+                            audioPath,
+                            automationSettings,
+                            qualitySettings,
+                            result
+                        )
                     } else {
-                        val imagePath = call.argument<String>("imagePath")
-                        if (imagePath != null) {
-                            createVideo(imagePath, duration, template, fadeInDuration, zoomScale, zoomDuration, audioPath, result)
+                        // Use standard processor
+                        if (template == "image_sequence") {
+                            val imagePaths = call.argument<List<String>>("imagePaths")
+                            val durationPerImage = call.argument<Double>("durationPerImage") ?: 2.0
+                            val sequenceMode = call.argument<String>("sequenceMode") ?: "sequential"
+                            val allowRepeat = call.argument<Boolean>("allowRepeat") ?: true
+                            createVideoSequence(imagePaths ?: listOf(), duration, durationPerImage, sequenceMode, allowRepeat, audioPath, result)
                         } else {
-                            result.error("INVALID_ARGUMENT", "Image path is required", null)
+                            val imagePath = call.argument<String>("imagePath")
+                            if (imagePath != null) {
+                                createVideo(imagePath, duration, template, fadeInDuration, zoomScale, zoomDuration, audioPath, result)
+                            } else {
+                                result.error("INVALID_ARGUMENT", "Image path is required", null)
+                            }
                         }
                     }
                 }
                 "pickAudioFile" -> {
                     pendingResult = result
-                    audioSource = call.argument<String>("source") ?: "audio"
                     pickAudioFile()
                 }
                 "getAudioDuration" -> {
@@ -262,72 +275,86 @@ class MainActivity : FlutterActivity() {
                     val zoomScale = call.argument<Double>("zoomScale") ?: 1.1
                     val zoomDuration = call.argument<Double>("zoomDuration") ?: duration.toDouble()
                     val audioPath = call.argument<String>("audioPath")
+                    val automationSettings = call.argument<Map<String, Any>>("automationSettings")
                     
-                    if (imagePath != null) {
-                        try {
-                            val videoProcessor = VideoProcessor(this)
-                            val callback = object : VideoProcessor.ProgressCallback {
-                                override fun onProgress(progress: Double) {
-                                    runOnUiThread {
-                                        methodChannel?.invokeMethod("onProgress", progress)
-                                    }
-                                }
-                            }
-                            
-                            val filename = "QuickPost_${System.currentTimeMillis()}.mp4"
-                            val outputPath = getVideoOutputPath(filename)
-                            
-                            Thread {
-                                try {
-                                    val resultPath = videoProcessor.createVideoWithFFmpegFull(
-                                        imagePath, 
-                                        duration, 
-                                        template,
-                                        fadeInDuration,
-                                        zoomScale,
-                                        zoomDuration,
-                                        audioPath,
-                                        outputPath, 
-                                        callback
-                                    )
-                                    runOnUiThread {
-                                        methodChannel?.invokeMethod("onComplete", resultPath)
-                                        result.success(resultPath)
-                                    }
-                                } catch (e: Exception) {
-                                    runOnUiThread {
-                                        methodChannel?.invokeMethod("onError", "FFmpeg video creation failed: ${e.message}")
-                                        result.error("FFMPEG_ERROR", e.message, null)
-                                    }
-                                }
-                            }.start()
-                        } catch (e: Exception) {
-                            result.error("FFMPEG_ERROR", "Failed to start FFmpeg video creation: ${e.message}", null)
-                        }
+                    if (automationSettings != null) {
+                        createAutomationVideo(imagePath ?: "", duration, template, fadeInDuration, zoomScale, zoomDuration, audioPath, automationSettings, null, result)
                     } else {
-                        result.error("INVALID_ARGUMENT", "Image path is required", null)
+                        if (imagePath != null) {
+                            try {
+                                val videoProcessor = VideoProcessor(this)
+                                val callback = object : VideoProcessor.ProgressCallback {
+                                    override fun onProgress(progress: Double) {
+                                        runOnUiThread {
+                                            methodChannel?.invokeMethod("onProgress", progress)
+                                        }
+                                    }
+                                }
+                                
+                                val filename = "QuickPost_${System.currentTimeMillis()}.mp4"
+                                val outputPath = getVideoOutputPath(filename)
+                                
+                                Thread {
+                                    try {
+                                        val resultPath = videoProcessor.createVideo(
+                                            imagePath, 
+                                            duration, 
+                                            template,
+                                            fadeInDuration,
+                                            zoomScale,
+                                            zoomDuration,
+                                            audioPath,
+                                            1080, // Default width
+                                            1920, // Default height
+                                            callback
+                                        )
+                                        runOnUiThread {
+                                            methodChannel?.invokeMethod("onComplete", resultPath)
+                                            result.success(resultPath)
+                                        }
+                                    } catch (e: Exception) {
+                                        runOnUiThread {
+                                            methodChannel?.invokeMethod("onError", "FFmpeg video creation failed: ${e.message}")
+                                            result.error("FFMPEG_ERROR", e.message, null)
+                                        }
+                                    }
+                                }.start()
+                            } catch (e: Exception) {
+                                result.error("FFMPEG_ERROR", "Failed to start FFmpeg video creation: ${e.message}", null)
+                            }
+                        } else {
+                            result.error("INVALID_ARGUMENT", "Image path is required", null)
+                        }
                     }
                 }
                 "addTextToVideo" -> {
                     val inputPath = call.argument<String>("inputPath")
                     val outputPath = call.argument<String>("outputPath")
                     val text = call.argument<String>("text") ?: ""
-                    val x = call.argument<Int>("x") ?: 50
-                    val y = call.argument<Int>("y") ?: 50
-                    val fontSize = call.argument<Int>("fontSize") ?: 48
-                    val fontColor = call.argument<String>("fontColor") ?: "white"
-                    val boxColor = call.argument<String>("boxColor") ?: "white"
+                    val x = call.argument<Int>("x") ?: 0
+                    val y = call.argument<Int>("y") ?: 0
+                    val fontSize = call.argument<Int>("fontSize") ?: 40
+                    val fontColor = call.argument<String>("fontColor") ?: "#000000"
+                    val boxColor = call.argument<String>("boxColor") ?: "#FFFFFF"
+                    val boxHeight = call.argument<Int>("boxHeight") ?: 80
+                    val horizontalPadding = call.argument<Int>("horizontalPadding") ?: 12
+                    val verticalPadding = call.argument<Int>("verticalPadding") ?: 8
+                    val hAlign = call.argument<String>("hAlign") ?: "center"
+                    val vAlign = call.argument<String>("vAlign") ?: "middle"
+                    val lineHeight = call.argument<Double>("lineHeight")?.toFloat() ?: 1.2f
                     val position = call.argument<String>("position") ?: "top"
                     val fontPath = call.argument<String>("fontPath") ?: ""
                     val preset = call.argument<String>("preset") ?: "veryfast"
                     val crf = call.argument<Int>("crf") ?: 23
+                    val audioPath = call.argument<String>("audioPath")
 
-                    if (inputPath == null || outputPath == null || fontPath.isEmpty()) {
-                        result.error(
-                            "INVALID_ARGUMENT",
-                            "inputPath, outputPath and fontPath are required",
-                            null
-                        )
+                    val showShadow = call.argument<Boolean>("showShadow") ?: false
+                    val shadowColor = call.argument<String>("shadowColor") ?: "#000000"
+                    val shadowX = call.argument<Int>("shadowX") ?: 2
+                    val shadowY = call.argument<Int>("shadowY") ?: 2
+
+                    if (inputPath == null || outputPath == null) {
+                        result.error("INVALID_ARGUMENTS", "Missing input or output path", null)
                     } else {
                         Thread {
                             try {
@@ -341,19 +368,199 @@ class MainActivity : FlutterActivity() {
                                     fontSize,
                                     fontColor,
                                     boxColor,
+                                    boxHeight,
+                                    horizontalPadding,
+                                    verticalPadding,
+                                    hAlign,
+                                    vAlign,
+                                    lineHeight,
                                     position,
                                     fontPath,
                                     preset,
-                                    crf
+                                    crf,
+                                    showShadow,
+                                    shadowColor,
+                                    shadowX,
+                                    shadowY,
                                 )
+
                                 runOnUiThread {
                                     if (ret == 0) {
-                                        // Move the processed video to gallery (same logic as fade-in videos)
-                                        val finalPath = moveVideoToGallery(outputPath) ?: outputPath
-                                        result.success(finalPath)
+                                        scanMediaFile(outputPath)
+                                        if (audioPath.isNullOrEmpty()) {
+                                            result.success(outputPath)
+                                        } else {
+                                            try {
+                                                val mergedPath = getVideoOutputPath("TextBox_Audio_${System.currentTimeMillis()}.mp4")
+                                                val durationSec = ((getVideoMetadata(outputPath)["durationMs"] as? Int) ?: 0) / 1000
+                                                val mergeRet = overlay.nativeMergeAudioVideo(outputPath, audioPath, mergedPath, durationSec)
+                                                if (mergeRet == 0) {
+                                                    scanMediaFile(mergedPath)
+                                                    result.success(mergedPath)
+                                                } else {
+                                                    result.error("FFMPEG_ERROR", "Audio merge failed: $mergeRet", null)
+                                                }
+                                            } catch (e: Exception) {
+                                                result.error("PROCESSING_FAILED", e.message, null)
+                                            }
+                                        }
                                     } else {
-                                        result.error("FFMPEG_ERROR", "FFmpeg returned code $ret", null)
+                                        result.error("FFMPEG_ERROR", "FFmpeg returned error code: $ret", null)
                                     }
+                                }
+                            } catch (e: Exception) {
+                                runOnUiThread {
+                                    result.error("PROCESSING_FAILED", e.message, null)
+                                }
+                            }
+                        }.start()
+                    }
+                }
+                "addTextToImageVideo" -> {
+                    val inputPath = call.argument<String>("inputPath")
+                    val outputPath = call.argument<String>("outputPath")
+                    val text = call.argument<String>("text") ?: ""
+                    val fontSize = call.argument<Int>("fontSize") ?: 40
+                    val fontColor = call.argument<String>("fontColor") ?: "#000000"
+                    val boxColor = call.argument<String>("boxColor") ?: "#FFFFFF"
+                    val boxHeight = call.argument<Int>("boxHeight") ?: 80
+                    val horizontalPadding = call.argument<Int>("horizontalPadding") ?: 12
+                    val verticalPadding = call.argument<Int>("verticalPadding") ?: 8
+                    val hAlign = call.argument<String>("hAlign") ?: "center"
+                    val vAlign = call.argument<String>("vAlign") ?: "middle"
+                    val lineHeight = call.argument<Double>("lineHeight")?.toFloat() ?: 1.2f
+                    val position = call.argument<String>("position") ?: "top"
+                    val fontPath = call.argument<String>("fontPath") ?: ""
+                    val preset = call.argument<String>("preset") ?: "veryfast"
+                    val crf = call.argument<Int>("crf") ?: 23
+                    val duration = call.argument<Double>("duration") ?: 5.0
+                    val fadeInDuration = call.argument<Double>("fadeInDuration") ?: 1.0
+                    val transition = call.argument<String>("transition") ?: "none"
+                    val audioPath = call.argument<String>("audioPath")
+
+                    val showShadow = call.argument<Boolean>("showShadow") ?: false
+                    val shadowColor = call.argument<String>("shadowColor") ?: "#000000"
+                    val shadowX = call.argument<Int>("shadowX") ?: 2
+                    val shadowY = call.argument<Int>("shadowY") ?: 2
+
+                    if (inputPath == null || outputPath == null) {
+                        result.error("INVALID_ARGUMENTS", "Missing input or output path", null)
+                    } else {
+                        Thread {
+                            try {
+                // Two-step pipeline to avoid treating an image as a video stream in native FFmpeg:
+                                // 1) Create a temporary MP4 from the still image.
+                                // 2) Apply the existing addTextToVideo overlay (stable video pipeline).
+                                val videoProcessor = VideoProcessor(this)
+                                
+                                // Calculate dimensions to match the image aspect ratio, similar to video processing
+                                val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                                BitmapFactory.decodeFile(inputPath, options)
+                                var targetWidth = options.outWidth
+                                var targetHeight = options.outHeight
+                                
+                                // Ensure even dimensions for FFmpeg
+                                if (targetWidth % 2 != 0) targetWidth--
+                                if (targetHeight % 2 != 0) targetHeight--
+
+                                val template = if (transition.equals("fade", ignoreCase = true)) "fade_in" else "plain"
+
+                                val createdVideoPath = videoProcessor.createVideo(
+                                    inputPath,
+                                    duration.toInt().coerceAtLeast(1),
+                                    template,
+                                    fadeInDuration,
+                                    1.0,
+                                    duration,
+                                    null,
+                                    targetWidth,
+                                    targetHeight,
+                                    object : VideoProcessor.ProgressCallback {
+                                        override fun onProgress(progress: Double) {
+                                            // no-op
+                                        }
+                                    }
+                                )
+
+                                // Overlay text onto the created video, writing to the requested outputPath
+                                val overlay = FFmpegTextOverlay(this)
+                                val ret = overlay.addTextToVideo(
+                                    createdVideoPath,
+                                    outputPath,
+                                    text,
+                                    0,
+                                    0,
+                                    fontSize,
+                                    fontColor,
+                                    boxColor,
+                                    boxHeight,
+                                    horizontalPadding,
+                                    verticalPadding,
+                                    hAlign,
+                                    vAlign,
+                                    lineHeight,
+                                    position,
+                                    fontPath,
+                                    preset,
+                                    crf,
+                                    showShadow,
+                                    shadowColor,
+                                    shadowX,
+                                    shadowY,
+                                )
+
+                                runOnUiThread {
+                                    if (ret == 0) {
+                                        scanMediaFile(outputPath)
+                                        if (audioPath.isNullOrEmpty()) {
+                                            result.success(outputPath)
+                                        } else {
+                                            try {
+                                                val mergedPath = getVideoOutputPath("TextBox_Audio_${System.currentTimeMillis()}.mp4")
+                                                val durationSec = duration.toInt().coerceAtLeast(1)
+                                                val mergeRet = overlay.nativeMergeAudioVideo(outputPath, audioPath, mergedPath, durationSec)
+                                                if (mergeRet == 0) {
+                                                    scanMediaFile(mergedPath)
+                                                    result.success(mergedPath)
+                                                } else {
+                                                    result.error("FFMPEG_ERROR", "Audio merge failed: $mergeRet", null)
+                                                }
+                                            } catch (e: Exception) {
+                                                result.error("PROCESSING_FAILED", e.message, null)
+                                            }
+                                        }
+                                    } else {
+                                        result.error("FFMPEG_ERROR", "FFmpeg returned error code: $ret", null)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                runOnUiThread {
+                                    result.error("PROCESSING_FAILED", e.message, null)
+                                }
+                            }
+                        }.start()
+                    }
+                }
+                "cropVideosBatch" -> {
+                    val items = call.argument<List<Map<String, Any>>>("items")
+                    val preset = call.argument<String>("preset") ?: "veryfast"
+                    val crf = call.argument<Int>("crf") ?: 23
+
+                    if (items == null || items.isEmpty()) {
+                        result.error("INVALID_ARGUMENT", "Items list is required", null)
+                    } else {
+                        Thread {
+                            try {
+                                val cropper = FFmpegVideoCropper(this)
+                                val results = cropper.cropVideosBatch(items, preset, crf)
+                                
+                                // Move all successful results to gallery
+                                val finalResults = results.map { path ->
+                                    moveVideoToGallery(path) ?: path
+                                }
+                                
+                                runOnUiThread {
+                                    result.success(finalResults)
                                 }
                             } catch (e: Exception) {
                                 runOnUiThread {
@@ -363,16 +570,142 @@ class MainActivity : FlutterActivity() {
                         }.start()
                     }
                 }
-                "getSharedImages" -> {
-                    result.success(mapOf(
-                        "paths" to sharedImagePaths,
-                        "count" to sharedImagePaths.size,
-                        "purpose" to (sharedPurpose ?: "")
-                    ))
-                    // Clear after retrieval
+                "addTextToVideoNew" -> {
+                    val inputPath = call.argument<String>("inputPath")
+                    val outputPath = call.argument<String>("outputPath")
+                    val text = call.argument<String>("text") ?: ""
+                    val x = call.argument<Int>("x") ?: 0
+                    val y = call.argument<Int>("y") ?: 0
+                    val fontSize = call.argument<Int>("fontSize") ?: 40
+                    val fontColor = call.argument<String>("fontColor") ?: "#000000"
+                    val boxColor = call.argument<String>("boxColor") ?: "#FFFFFF"
+                    val boxOpacity = when (val arg = call.argument<Any>("boxOpacity")) {
+                        is Double -> arg.toFloat()
+                        is Int -> arg.toFloat()
+                        else -> 0.0f
+                    }
+                    val boxHeight = call.argument<Int>("boxHeight") ?: 80
+                    val horizontalPadding = call.argument<Int>("horizontalPadding") ?: 12
+                    val verticalPadding = call.argument<Int>("verticalPadding") ?: 8
+                    val hAlign = call.argument<String>("hAlign") ?: "center"
+                    val vAlign = call.argument<String>("vAlign") ?: "middle"
+                    val lineHeight = call.argument<Double>("lineHeight")?.toFloat() ?: 1.2f
+                    val position = call.argument<String>("position") ?: "top"
+                    val fontPath = call.argument<String>("fontPath") ?: ""
+                    val preset = call.argument<String>("preset") ?: "veryfast"
+                    val crf = call.argument<Int>("crf") ?: 23
+                    val audioPath = call.argument<String>("audioPath")
+                    
+                    val showShadow = call.argument<Boolean>("showShadow") ?: true
+                    val shadowColor = call.argument<String>("shadowColor") ?: "#000000"
+                    val shadowX = call.argument<Int>("shadowX") ?: 2
+                    val shadowY = call.argument<Int>("shadowY") ?: 2
+                    val textOpacity = when (val arg = call.argument<Any>("textOpacity")) {
+                        is Double -> arg.toFloat()
+                        is Int -> arg.toFloat()
+                        else -> 1.0f
+                    }
+
+                    if (inputPath == null || outputPath == null) {
+                        result.error("INVALID_ARGUMENTS", "Missing input or output path", null)
+                    } else {
+                        Thread {
+                            try {
+                                val overlay = FFmpegVideoOverlay(this)
+                                val ret = overlay.addTextToVideo(
+                                    inputPath,
+                                    outputPath,
+                                    text,
+                                    x,
+                                    y,
+                                    fontSize,
+                                    fontColor,
+                                    boxColor,
+                                    boxOpacity,
+                                    boxHeight,
+                                    horizontalPadding,
+                                    verticalPadding,
+                                    hAlign,
+                                    vAlign,
+                                    lineHeight,
+                                    position,
+                                    fontPath,
+                                    preset,
+                                    crf,
+                                    showShadow,
+                                    shadowColor,
+                                    shadowX,
+                                    shadowY,
+                                    textOpacity,
+                                )
+
+                                runOnUiThread {
+                                    if (ret == 0) {
+                                        if (audioPath.isNullOrEmpty()) {
+                                            val finalPath = moveVideoToGallery(outputPath) ?: outputPath
+                                            result.success(finalPath)
+                                        } else {
+                                            try {
+                                                val mergedPath = getVideoOutputPath("VideoOverlay_Audio_${System.currentTimeMillis()}.mp4")
+                                                val durationSec = ((getVideoMetadata(outputPath)["durationMs"] as? Int) ?: 0) / 1000
+                                                // Using the merge from existing FFmpegTextOverlay for consistency
+                                                val merger = FFmpegTextOverlay(this)
+                                                val mergeRet = merger.nativeMergeAudioVideo(outputPath, audioPath, mergedPath, durationSec)
+                                                if (mergeRet == 0) {
+                                                    val finalPath = moveVideoToGallery(mergedPath) ?: mergedPath
+                                                    result.success(finalPath)
+                                                } else {
+                                                    result.error("FFMPEG_ERROR", "Audio merge failed: $mergeRet", null)
+                                                }
+                                            } catch (e: Exception) {
+                                                result.error("PROCESSING_FAILED", e.message, null)
+                                            }
+                                        }
+                                    } else {
+                                        result.error("FFMPEG_ERROR", "FFmpeg returned error code: $ret", null)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                runOnUiThread {
+                                    result.error("PROCESSING_FAILED", e.message, null)
+                                }
+                            }
+                        }.start()
+                    }
+                }
+                "getSharedVideos" -> {
+                    val results = mapOf(
+                        "paths" to sharedImagePaths.filter { it.endsWith(".mp4", true) || it.endsWith(".mov", true) || it.endsWith(".mkv", true) },
+                        "count" to sharedImagePaths.size
+                    )
+                    // Clear after retrieval to match getSharedImages behavior
                     sharedImagePaths.clear()
                     sharedImageUris.clear()
                     sharedPurpose = null
+                    result.success(results)
+                }
+                "saveProcessedImage" -> {
+                    val imagePath = call.argument<String>("imagePath")
+                    val automationSettings = call.argument<Map<String, Any>>("automationSettings")
+                    
+                    if (imagePath != null && automationSettings != null) {
+                        Thread {
+                            try {
+                                val processor = AriseAutomationProcessor(this)
+                                processor.setAutomationSettings(automationSettings)
+                                val savedPath = processor.saveProcessedImage(imagePath)
+                                runOnUiThread {
+                                    result.success(savedPath)
+                                }
+                            } catch (e: Exception) {
+                                runOnUiThread {
+                                    result.error("SAVE_IMAGE_ERROR", e.message, null)
+                                }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "imagePath and automationSettings are required", null)
+                    }
                 }
                 else -> result.notImplemented()
             }
@@ -380,19 +713,11 @@ class MainActivity : FlutterActivity() {
     }
     
     private fun pickAudioFile() {
-        if (audioSource == "video") {
-            val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
-                type = "video/*"
-                addCategory(Intent.CATEGORY_OPENABLE)
-            }
-            startActivityForResult(Intent.createChooser(intent, "Select Video"), PICK_VIDEO_REQUEST)
-        } else {
-            val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
-                type = "audio/*"
-                addCategory(Intent.CATEGORY_OPENABLE)
-            }
-            startActivityForResult(Intent.createChooser(intent, "Select Audio"), PICK_AUDIO_REQUEST)
+        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+            type = "audio/*"
+            addCategory(Intent.CATEGORY_OPENABLE)
         }
+        startActivityForResult(Intent.createChooser(intent, "Select Audio"), PICK_AUDIO_REQUEST)
     }
     
     private fun pickMultipleVideos() {
@@ -904,6 +1229,61 @@ class MainActivity : FlutterActivity() {
         return cacheFile.absolutePath
     }
 
+    private fun createAutomationVideo(
+        imagePath: String,
+        duration: Int,
+        template: String,
+        fadeInDuration: Double,
+        zoomScale: Double,
+        zoomDuration: Double,
+        audioPath: String?,
+        automationSettings: Map<String, Any>,
+        qualitySettings: Map<String, Any>?,
+        result: MethodChannel.Result
+    ) {
+        val uiHandler = Handler(Looper.getMainLooper())
+        
+        Thread {
+            try {
+                android.util.Log.d("MainActivity", "Starting Automation Video Thread")
+                val processor = AriseAutomationProcessor(this)
+                processor.setAutomationSettings(automationSettings)
+                
+                val outputPath = processor.createVideo(
+                    imagePath,
+                    duration,
+                    template,
+                    fadeInDuration,
+                    zoomScale,
+                    zoomDuration,
+                    audioPath,
+                    qualitySettings,
+                    object : AriseAutomationProcessor.ProgressCallback {
+                        override fun onProgress(progress: Double) {
+                            uiHandler.post {
+                                android.util.Log.d("MainActivity", "Sending progress to Flutter: $progress")
+                                methodChannel?.invokeMethod("onProgress", progress)
+                            }
+                        }
+                    }
+                )
+                
+                uiHandler.post {
+                    android.util.Log.i("MainActivity", "Automation Video Complete: $outputPath")
+                    methodChannel?.invokeMethod("onProgress", 1.0)
+                    methodChannel?.invokeMethod("onComplete", outputPath)
+                    result.success(outputPath)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "Automation Video Thread Error", e)
+                uiHandler.post {
+                    methodChannel?.invokeMethod("onError", "Automation video failed: ${e.message}")
+                    result.error("AUTOMATION_ERROR", e.message, null)
+                }
+            }
+        }.start()
+    }
+
     private fun createVideo(
         imagePath: String,
         duration: Int,
@@ -926,23 +1306,24 @@ class MainActivity : FlutterActivity() {
                     zoomScale,
                     zoomDuration,
                     audioPath,
+                    1080, // Default width
+                    1920, // Default height
                     object : VideoProcessor.ProgressCallback {
                         override fun onProgress(progress: Double) {
-                            Handler(Looper.getMainLooper()).post {
+                            runOnUiThread {
                                 methodChannel?.invokeMethod("onProgress", progress)
                             }
                         }
                     }
                 )
-                
-                Handler(Looper.getMainLooper()).post {
+                runOnUiThread {
                     methodChannel?.invokeMethod("onComplete", outputPath)
                     result.success(outputPath)
                 }
             } catch (e: Exception) {
-                Handler(Looper.getMainLooper()).post {
-                    methodChannel?.invokeMethod("onError", e.message)
-                    result.error("VIDEO_ERROR", e.message, null)
+                runOnUiThread {
+                    methodChannel?.invokeMethod("onError", "Video creation failed: ${e.message}")
+                    result.error("PROCESSING_ERROR", e.message, null)
                 }
             }
         }.start()
@@ -996,21 +1377,25 @@ class MainActivity : FlutterActivity() {
     }
     
     private fun getVideoMetadata(videoPath: String): Map<String, Any> {
-        val extractor = android.media.MediaExtractor()
-        extractor.setDataSource(videoPath)
+        val retriever = android.media.MediaMetadataRetriever()
+        retriever.setDataSource(videoPath)
         
         val metadata = mutableMapOf<String, Any>()
         
         // Get duration
-        for (i in 0 until extractor.trackCount) {
-            val format = extractor.getTrackFormat(i)
-            if (format.containsKey(android.media.MediaFormat.KEY_DURATION)) {
-                val durationUs = format.getLong(android.media.MediaFormat.KEY_DURATION)
-                metadata["durationMs"] = (durationUs / 1000).toInt()
-                break
-            }
+        val durationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+        if (durationStr != null) {
+            metadata["durationMs"] = durationStr.toInt()
         }
         
+        // Get width and height
+        val widthStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+        val heightStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+        if (widthStr != null && heightStr != null) {
+            metadata["width"] = widthStr.toInt()
+            metadata["height"] = heightStr.toInt()
+        }
+
         // Get file size
         val file = java.io.File(videoPath)
         metadata["fileSizeBytes"] = file.length()
@@ -1018,7 +1403,7 @@ class MainActivity : FlutterActivity() {
         // Get file name
         metadata["fileName"] = file.name
         
-        extractor.release()
+        retriever.release()
         return metadata
     }
     
@@ -1053,7 +1438,7 @@ class MainActivity : FlutterActivity() {
         return null
     }
     
-    private fun scanMediaFile(filePath: String, mimeType: String) {
+    private fun scanMediaFile(filePath: String, mimeType: String = "video/mp4") {
         android.media.MediaScannerConnection.scanFile(
             this,
             arrayOf(filePath),
@@ -1063,6 +1448,18 @@ class MainActivity : FlutterActivity() {
         }
     }
     
+    fun moveImageToGallery(filePath: String): String? {
+        return try {
+            val file = java.io.File(filePath)
+            val imageBytes = file.readBytes()
+            val filename = file.name
+            saveImageToGallery(imageBytes, filename, "Quick Post")
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Error moving image to gallery", e)
+            filePath
+        }
+    }
+
     private fun saveImageToGallery(imageBytes: ByteArray, filename: String, folderName: String): String? {
         return try {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
@@ -1137,34 +1534,16 @@ class MainActivity : FlutterActivity() {
     }
     
     fun getVideoOutputPath(filename: String): String {
-        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            // For Android 10+, use app-specific directory first, then move to MediaStore
-            val outputDir = java.io.File(getExternalFilesDir(null), "Videos")
-            if (!outputDir.exists()) {
-                outputDir.mkdirs()
-            }
-            java.io.File(outputDir, filename).absolutePath
-        } else {
-            // For Android 9 and below, use DCIM directory
-            try {
-                val dcimDir = android.os.Environment.getExternalStoragePublicDirectory(
-                    android.os.Environment.DIRECTORY_DCIM
-                )
-                val outputDir = java.io.File(dcimDir, "Quick Post")
-                if (!outputDir.exists()) {
-                    outputDir.mkdirs()
-                }
-                java.io.File(outputDir, filename).absolutePath
-            } catch (e: Exception) {
-                // Fallback to app-specific directory
-                val outputDir = java.io.File(getExternalFilesDir(null), "Videos")
-                if (!outputDir.exists()) {
-                    outputDir.mkdirs()
-                }
-                java.io.File(outputDir, filename).absolutePath
-            }
+        val dcimDir = android.os.Environment.getExternalStoragePublicDirectory(
+            android.os.Environment.DIRECTORY_DCIM
+        )
+        val outputDir = java.io.File(dcimDir, "Quick Post")
+        if (!outputDir.exists()) {
+            outputDir.mkdirs()
         }
+        return java.io.File(outputDir, filename).absolutePath
     }
+
     
     fun moveVideoToGallery(videoPath: String): String? {
         return try {

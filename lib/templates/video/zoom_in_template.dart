@@ -82,11 +82,15 @@ class ZoomInTemplate extends VideoTemplateBase {
   }
   
   @override
-  Map<String, dynamic> getNativeSettings(Map<String, dynamic> settings) {
-    return {
+  Map<String, dynamic> getNativeSettings(Map<String, dynamic> settings, {Map<String, dynamic>? automationSettings}) {
+    final Map<String, dynamic> native = {
       'fadeInDuration': 1.0,
       'zoomScale': settings['zoomScale'] ?? 1.2,
       'zoomDuration': settings['zoomDuration'] ?? 2.0,
     };
+    if (automationSettings != null) {
+      native['automationSettings'] = automationSettings;
+    }
+    return native;
   }
 }

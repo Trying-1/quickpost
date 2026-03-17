@@ -43,7 +43,7 @@ int ffmpeg_setup_decoder(FFmpegContext* ctx);
 
 // Setup output format and encoder
 int ffmpeg_setup_encoder(FFmpegContext* ctx, const char* output_file, 
-                         const char* preset, int crf);
+                         const char* preset, int crf, int added_height);
 
 // Setup audio stream passthrough
 int ffmpeg_setup_audio_passthrough(FFmpegContext* ctx);

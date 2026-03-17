@@ -27,11 +27,78 @@ class FFmpegTextOverlay(private val context: Context) {
         fontSize: Int,
         fontColor: String,
         boxColor: String,
+        boxHeight: Int,
+        horizontalPadding: Int,
+        verticalPadding: Int,
+        hAlign: String,
+        vAlign: String,
+        lineHeight: Float,
         position: String,
         fontPath: String,
         preset: String,
         crf: Int,
+        showShadow: Boolean,
+        shadowColor: String,
+        shadowX: Int,
+        shadowY: Int,
     ): Int
+
+    external fun nativeMergeAudioVideo(
+        videoPath: String,
+        audioPath: String,
+        outputPath: String,
+        duration: Int
+    ): Int
+
+    external fun nativeAddTextToImageVideo(
+        inputPath: String,
+        outputPath: String,
+        text: String,
+        fontSize: Int,
+        fontColor: String,
+        boxColor: String,
+        boxHeight: Int,
+        horizontalPadding: Int,
+        verticalPadding: Int,
+        hAlign: String,
+        vAlign: String,
+        lineHeight: Float,
+        position: String,
+        fontPath: String,
+        preset: String,
+        crf: Int,
+        duration: Double,
+        transition: String,
+    ): Int
+
+    fun addTextToImageVideo(
+        inputPath: String,
+        outputPath: String,
+        text: String,
+        fontSize: Int,
+        fontColor: String,
+        boxColor: String,
+        boxHeight: Int,
+        horizontalPadding: Int,
+        verticalPadding: Int,
+        hAlign: String,
+        vAlign: String,
+        lineHeight: Float,
+        position: String,
+        fontPath: String,
+        preset: String,
+        crf: Int,
+        duration: Double,
+        transition: String,
+    ): Int {
+        Log.i(TAG, "addTextToImageVideo called: input=$inputPath, duration=$duration, transition=$transition")
+        if (!isNativeLoaded) return -999
+        return nativeAddTextToImageVideo(
+            inputPath, outputPath, text, fontSize, fontColor, boxColor, boxHeight,
+            horizontalPadding, verticalPadding, hAlign, vAlign, lineHeight, position,
+            fontPath, preset, crf, duration, transition
+        )
+    }
 
     fun addTextToVideo(
         inputPath: String,
@@ -42,16 +109,25 @@ class FFmpegTextOverlay(private val context: Context) {
         fontSize: Int,
         fontColor: String,
         boxColor: String,
+        boxHeight: Int,
+        horizontalPadding: Int,
+        verticalPadding: Int,
+        hAlign: String,
+        vAlign: String,
+        lineHeight: Float,
         position: String,
         fontPath: String,
         preset: String,
         crf: Int,
+        showShadow: Boolean,
+        shadowColor: String,
+        shadowX: Int,
+        shadowY: Int,
     ): Int {
         Log.i(TAG, "addTextToVideo called: input=$inputPath, output=$outputPath")
 
         if (!isNativeLoaded) {
             Log.e(TAG, "Native library not loaded, aborting addTextToVideo")
-            // Return non-zero error code so caller can surface a friendly error
             return -999
         }
 
@@ -64,10 +140,20 @@ class FFmpegTextOverlay(private val context: Context) {
             fontSize,
             fontColor,
             boxColor,
+            boxHeight,
+            horizontalPadding,
+            verticalPadding,
+            hAlign,
+            vAlign,
+            lineHeight,
             position,
             fontPath,
             preset,
             crf,
+            showShadow,
+            shadowColor,
+            shadowX,
+            shadowY,
         )
     }
 

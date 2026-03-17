@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'screens/home/home_shell_screen.dart';
+import 'screens/onboarding/onboarding_flow_screen.dart';
 import 'services/audio_library_service.dart';
-import 'services/ad_service.dart';
 import 'services/app_update_service.dart';
 import 'services/app_review_service.dart';
+import 'services/onboarding_service.dart';
 import 'widgets/share_intent_handler.dart';
 
 void main() async {
@@ -11,9 +12,6 @@ void main() async {
   
   // Initialize Audio Library Service
   await AudioLibraryService.init();
-  
-  // Initialize AdMob
-  await AdService().initialize();
   
   // Initialize App Review Service
   await AppReviewService().initialize();
@@ -55,11 +53,25 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   String? _sharedPurpose;
   List<String>? _sharedImagePaths;
+  bool _forceSkipOnboarding = false;
+  Future<bool>? _onboardingCompletedFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _onboardingCompletedFuture = OnboardingService.isCompleted();
+  }
+
+  void _markOnboardingDoneAndShowHome() {
+    setState(() {
+      _onboardingCompletedFuture = Future.value(true);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Instagram Post Maker',
+      title: 'Meme Flow',
       theme: ThemeData(
         primarySwatch: Colors.purple,
         useMaterial3: true,
@@ -73,13 +85,31 @@ class _MyAppState extends State<MyApp> {
           setState(() {
             _sharedImagePaths = imagePaths;
             _sharedPurpose = purpose;
+            _forceSkipOnboarding = true;
           });
+          OnboardingService.setCompleted(true);
           // Navigate to appropriate screen based on purpose
           _handleSharedImages(imagePaths, purpose);
         },
-        child: HomeShellScreen(
-          sharedImagePaths: _sharedImagePaths,
-          sharedPurpose: _sharedPurpose,
+        child: FutureBuilder<bool>(
+          future: _onboardingCompletedFuture,
+          builder: (context, snapshot) {
+            final completed = snapshot.data ?? false;
+            final showOnboarding = !completed && !_forceSkipOnboarding;
+
+            if (showOnboarding) {
+              return OnboardingFlowScreen(
+                onFinished: () {
+                  _markOnboardingDoneAndShowHome();
+                },
+              );
+            }
+
+            return HomeShellScreen(
+              sharedImagePaths: _sharedImagePaths,
+              sharedPurpose: _sharedPurpose,
+            );
+          },
         ),
       ),
     );

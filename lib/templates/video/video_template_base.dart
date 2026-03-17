@@ -31,7 +31,7 @@ abstract class VideoTemplateBase {
   bool validateSettings(Map<String, dynamic> settings);
   
   /// Get settings to pass to native code
-  Map<String, dynamic> getNativeSettings(Map<String, dynamic> settings);
+  Map<String, dynamic> getNativeSettings(Map<String, dynamic> settings, {Map<String, dynamic>? automationSettings});
 }
 
 /// Template settings state

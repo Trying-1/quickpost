@@ -15,6 +15,8 @@ add_library(myffmpeg SHARED
     myffmpeg.cpp
     ffmpeg_common.cpp
     ffmpeg_text_overlay.cpp
+    myvideocrop.cpp
+    video_text_overlay.cpp
 )
 
 ## Linker options
