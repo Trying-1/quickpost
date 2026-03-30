@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -11,6 +12,9 @@ import '../../utils/image_generator.dart';
 import 'package:quickpost/utils/watermark_settings.dart';
 import '../../services/app_review_service.dart';
 import '../../models/instagram_quote_template.dart';
+import '../../services/instagram_quote_template_service.dart';
+import '../quotes/my_quotes_screen.dart';
+import '../../models/quote_item.dart';
 import '../../services/instagram_quote_template_service.dart';
 
 class InstagramQuotePostScreen extends StatefulWidget {
@@ -71,6 +75,13 @@ class _InstagramQuotePostScreenState extends State<InstagramQuotePostScreen> {
   bool _isDraggingIdentity = false;
 
   File? _profileImage;
+  File? _backgroundImage;
+  BoxFit _backgroundFit = BoxFit.cover;
+  Offset _backgroundOffset = Offset.zero;
+  double _backgroundScale = 1.0;
+  double _backgroundBlur = 0.0;
+  double _backgroundBrightness = 1.0;
+  double _backgroundSaturation = 1.0;
 
   // 0: 4:5, 1: 1:1, 2: 9:16, 3: 16:9
   int _selectedAspectIndex = 1;
@@ -96,6 +107,29 @@ class _InstagramQuotePostScreenState extends State<InstagramQuotePostScreen> {
     return luminance > 0.5
         ? Colors.black.withOpacity(0.35)
         : Colors.white.withOpacity(0.35);
+  }
+
+  Future<void> _pickBackgroundImage() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? picked = await picker.pickImage(source: ImageSource.gallery);
+      if (picked == null) return;
+
+      setState(() {
+        _backgroundImage = File(picked.path);
+      });
+    } catch (_) {}
+  }
+
+  void _removeBackgroundImage() {
+    setState(() {
+      _backgroundImage = null;
+      _backgroundOffset = Offset.zero;
+      _backgroundScale = 1.0;
+      _backgroundBlur = 0.0;
+      _backgroundBrightness = 1.0;
+      _backgroundSaturation = 1.0;
+    });
   }
 
   @override
@@ -750,6 +784,51 @@ class _InstagramQuotePostScreenState extends State<InstagramQuotePostScreen> {
                   color: _backgroundColor,
                   child: Stack(
                     children: [
+                      if (_backgroundImage != null)
+                        Positioned.fill(
+                          child: GestureDetector(
+                            onPanUpdate: (details) {
+                              setState(() {
+                                _backgroundOffset += details.delta;
+                              });
+                            },
+                            child: ClipRect(
+                              child: Transform.translate(
+                                offset: _backgroundOffset,
+                                child: Transform.scale(
+                                  scale: _backgroundScale,
+                                  child: ColorFiltered(
+                                    colorFilter: ColorFilter.matrix([
+                                      0.2126 + 0.7874 * _backgroundSaturation, 0.7152 - 0.7152 * _backgroundSaturation, 0.0722 - 0.0722 * _backgroundSaturation, 0, 0,
+                                      0.2126 - 0.2126 * _backgroundSaturation, 0.7152 + 0.2848 * _backgroundSaturation, 0.0722 - 0.0722 * _backgroundSaturation, 0, 0,
+                                      0.2126 - 0.2126 * _backgroundSaturation, 0.7152 - 0.7152 * _backgroundSaturation, 0.0722 + 0.9278 * _backgroundSaturation, 0, 0,
+                                      0, 0, 0, 1, 0,
+                                    ]),
+                                    child: ColorFiltered(
+                                      colorFilter: ColorFilter.matrix([
+                                        _backgroundBrightness, 0, 0, 0, 0,
+                                        0, _backgroundBrightness, 0, 0, 0,
+                                        0, 0, _backgroundBrightness, 0, 0,
+                                        0, 0, 0, 1, 0,
+                                      ]),
+                                      child: ImageFiltered(
+                                        imageFilter: ImageFilter.blur(
+                                          sigmaX: _backgroundBlur,
+                                          sigmaY: _backgroundBlur,
+                                        ),
+                                        child: Image.file(
+                                          _backgroundImage!,
+                                          fit: _backgroundFit,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+
                       // Draggable Quote Section
                       Positioned(
                         left: (constraints.maxWidth / 2) + (_textPosition.x * constraints.maxWidth / 2),
@@ -1059,7 +1138,96 @@ class _InstagramQuotePostScreenState extends State<InstagramQuotePostScreen> {
     if (_selectedTabIndex == 4) return _buildSpacingSection();
     if (_selectedTabIndex == 5) return _buildAlignmentSection();
     if (_selectedTabIndex == 6) return _buildPositionSection();
-    return _buildIdentityPositionSection();
+    if (_selectedTabIndex == 7) return _buildIdentityPositionSection();
+    return _buildBackgroundOptionsSection();
+  }
+
+  Widget _buildBackgroundOptionsSection() {
+    if (_backgroundImage == null) {
+      return const Center(
+        child: Text('Add a background image first to see options'),
+      );
+    }
+
+    final fits = [
+      {'label': 'Cover', 'fit': BoxFit.cover},
+      {'label': 'Contain', 'fit': BoxFit.contain},
+      {'label': 'Fill', 'fit': BoxFit.fill},
+      {'label': 'Fit Width', 'fit': BoxFit.fitWidth},
+      {'label': 'Fit Height', 'fit': BoxFit.fitHeight},
+      {'label': 'None', 'fit': BoxFit.none},
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Image Fit', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          children: fits.map((f) {
+            final isSelected = _backgroundFit == f['fit'];
+            return ChoiceChip(
+              label: Text(f['label'] as String),
+              selected: isSelected,
+              onSelected: (val) {
+                if (val) {
+                  setState(() {
+                    _backgroundFit = f['fit'] as BoxFit;
+                  });
+                }
+              },
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 16),
+        _buildFilterSlider('Scale', _backgroundScale, 0.5, 3.0, (val) => _backgroundScale = val),
+        _buildFilterSlider('Blur', _backgroundBlur, 0.0, 15.0, (val) => _backgroundBlur = val),
+        _buildFilterSlider('Brightness', _backgroundBrightness, 0.0, 2.0, (val) => _backgroundBrightness = val),
+        _buildFilterSlider('Saturation', _backgroundSaturation, 0.0, 2.0, (val) => _backgroundSaturation = val),
+        const SizedBox(height: 8),
+        Center(
+          child: TextButton.icon(
+            onPressed: () {
+              setState(() {
+                _backgroundOffset = Offset.zero;
+                _backgroundScale = 1.0;
+                _backgroundBlur = 0.0;
+                _backgroundBrightness = 1.0;
+                _backgroundSaturation = 1.0;
+              });
+            },
+            icon: const Icon(Icons.refresh),
+            label: const Text('Reset All Filters'),
+          ),
+        ),
+        const Text(
+          'Tip: Drag the background image in the preview to adjust its position.',
+          style: TextStyle(fontSize: 11, color: Colors.grey),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFilterSlider(String label, double value, double min, double max, Function(double) onChanged) {
+    return Row(
+      children: [
+        SizedBox(width: 80, child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold))),
+        Expanded(
+          child: Slider(
+            value: value,
+            min: min,
+            max: max,
+            onChanged: (val) {
+              setState(() {
+                onChanged(val);
+              });
+            },
+          ),
+        ),
+        SizedBox(width: 35, child: Text(value.toStringAsFixed(1))),
+      ],
+    );
   }
 
   Widget _buildControlTabs() {
@@ -1072,6 +1240,7 @@ class _InstagramQuotePostScreenState extends State<InstagramQuotePostScreen> {
       {'icon': Icons.format_align_center, 'label': 'Align', 'color': Colors.blueGrey},
       {'icon': Icons.open_with, 'label': 'Quote Pos', 'color': Colors.brown},
       {'icon': Icons.account_circle, 'label': 'Identity Pos', 'color': Colors.pink},
+      {'icon': Icons.wallpaper, 'label': 'BG Options', 'color': Colors.blue},
     ];
 
     return Container(
@@ -1177,11 +1346,28 @@ class _InstagramQuotePostScreenState extends State<InstagramQuotePostScreen> {
                   Icon(Icons.format_quote, color: Colors.teal[600], size: 22),
                   const SizedBox(width: 8),
                   const Text(
-                    'Content',
+                    'Text Input',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: () {
+                      if (_isBulkMode) {
+                        _importBulkFromMyQuotes();
+                      } else {
+                        _importFromMyQuotes();
+                      }
+                    },
+                    icon: const Icon(Icons.bookmark, size: 16),
+                    label: const Text('My Quotes', style: TextStyle(fontSize: 12)),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
                 ],
@@ -1321,6 +1507,40 @@ class _InstagramQuotePostScreenState extends State<InstagramQuotePostScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _importFromMyQuotes() async {
+    final dynamic selected = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const MyQuotesScreen(selectMode: true),
+      ),
+    );
+    if (selected != null && selected is QuoteItem) {
+      setState(() {
+        _quoteController.text = selected.text;
+        _authorController.text = selected.author;
+      });
+    }
+  }
+
+  Future<void> _importBulkFromMyQuotes() async {
+    final dynamic selected = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const MyQuotesScreen(multiSelectMode: true),
+      ),
+    );
+    if (selected != null && selected is List<QuoteItem> && selected.isNotEmpty) {
+      final List<Map<String, String>> loaded = selected.map((q) => {
+        'quote': q.text,
+        'author': q.author,
+      }).toList();
+      setState(() {
+        _bulkQuotes.addAll(loaded);
+        _currentBulkIndex = 0;
+      });
+    }
   }
 
   Future<void> _importCsv() async {
@@ -1564,6 +1784,22 @@ class _InstagramQuotePostScreenState extends State<InstagramQuotePostScreen> {
                 ),
               ),
             ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _pickBackgroundImage,
+                icon: const Icon(Icons.image, size: 18),
+                label: Text(_backgroundImage == null ? 'Add bg image' : 'Change bg'),
+              ),
+            ),
+            if (_backgroundImage != null) ...[
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Remove background image',
+                onPressed: _removeBackgroundImage,
+                icon: const Icon(Icons.close),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 8),

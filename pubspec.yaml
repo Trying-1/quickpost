@@ -2,7 +2,7 @@ name: quickpost
 description: Create stunning social posts, crop images in bulk, and make videos easily.
 publish_to: 'none'
 
-version: 1.0.9+14
+version: 1.0.11+16
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -20,6 +20,7 @@ dependencies:
   open_file: ^3.3.2
   file_picker: ^8.0.0
   csv: ^6.0.0
+  intl: ^0.18.1
   
   # Database
   hive: ^2.2.3
@@ -36,6 +37,7 @@ dependencies:
   package_info_plus: ^4.0.0
   url_launcher: ^6.1.0
   share_plus: ^12.0.1
+  uuid: ^4.5.3
 
 
 dev_dependencies:

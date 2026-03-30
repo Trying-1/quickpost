@@ -52,7 +52,7 @@ static void crop_cleanup(VideoCropContext* ctx) {
     ffmpeg_cleanup(&ctx->ffmpeg_ctx);
 }
 
-static int crop_setup_filter(VideoCropContext* ctx, int x, int y, int width, int height) {
+static int crop_setup_filter(VideoCropContext* ctx, int x, int y, int width, int height, int rotation, int isFlipped) {
     if (!ctx) return -1;
     AVCodecContext* dec_ctx = ctx->ffmpeg_ctx.dec_ctx;
     if (!dec_ctx) {
@@ -60,8 +60,16 @@ static int crop_setup_filter(VideoCropContext* ctx, int x, int y, int width, int
         return -1;
     }
 
-    char filter_str[256];
-    snprintf(filter_str, sizeof(filter_str), "crop=w=%d:h=%d:x=%d:y=%d", width, height, x, y);
+    char filter_str[512];
+    std::string rot_filter = "";
+    if (rotation == 90) rot_filter = ",transpose=1";
+    else if (rotation == 180) rot_filter = ",transpose=2,transpose=2";
+    else if (rotation == 270) rot_filter = ",transpose=2";
+
+    std::string flip_filter = "";
+    if (isFlipped) flip_filter = ",hflip";
+
+    snprintf(filter_str, sizeof(filter_str), "crop=w=%d:h=%d:x=%d:y=%d%s%s", width, height, x, y, rot_filter.c_str(), flip_filter.c_str());
     LOGI("Crop filter: %s", filter_str);
 
     ctx->filter_graph = avfilter_graph_alloc();
@@ -252,13 +260,15 @@ Java_com_quickpost_app_FFmpegVideoCropper_nativeCropVideo(
         jint width,
         jint height,
         jstring preset,
-        jint crf) {
+        jint crf,
+        jint rotation,
+        jint isFlipped) {
     const char* input_file = env->GetStringUTFChars(inputPath, nullptr);
     const char* output_file = env->GetStringUTFChars(outputPath, nullptr);
     const char* preset_str = env->GetStringUTFChars(preset, nullptr);
 
-    LOGI("nativeCropVideo: input=%s output=%s x=%d y=%d w=%d h=%d preset=%s crf=%d",
-         input_file, output_file, x, y, width, height, preset_str, crf);
+    LOGI("nativeCropVideo: input=%s output=%s x=%d y=%d w=%d h=%d preset=%s crf=%d rotation=%d flip=%d",
+         input_file, output_file, x, y, width, height, preset_str, crf, rotation, isFlipped);
 
     VideoCropContext ctx{};
     int ret = 0;
@@ -274,12 +284,19 @@ Java_com_quickpost_app_FFmpegVideoCropper_nativeCropVideo(
         ret = -9;
         goto cleanup;
     }
-    ctx.ffmpeg_ctx.enc_ctx->width = width;
-    ctx.ffmpeg_ctx.enc_ctx->height = height;
+
+    // If rotation is 90 or 270, the final dimensions will be swapped
+    if (rotation == 90 || rotation == 270) {
+        ctx.ffmpeg_ctx.enc_ctx->width = height;
+        ctx.ffmpeg_ctx.enc_ctx->height = width;
+    } else {
+        ctx.ffmpeg_ctx.enc_ctx->width = width;
+        ctx.ffmpeg_ctx.enc_ctx->height = height;
+    }
     
     if ((ret = ffmpeg_setup_encoder(&ctx.ffmpeg_ctx, output_file, preset_str, crf, 0)) < 0) goto cleanup;
     if ((ret = ffmpeg_setup_audio_passthrough(&ctx.ffmpeg_ctx)) < 0) goto cleanup;
-    if ((ret = crop_setup_filter(&ctx, x, y, width, height)) < 0) goto cleanup;
+    if ((ret = crop_setup_filter(&ctx, x, y, width, height, rotation, isFlipped)) < 0) goto cleanup;
     if ((ret = crop_process(&ctx, output_file)) < 0) goto cleanup;
 
 cleanup:

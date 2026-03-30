@@ -13,6 +13,7 @@ link_directories(${FFMPEG_PREFIX}/lib)
 # Add the native library
 add_library(myffmpeg SHARED
     myffmpeg.cpp
+    arise_automation_jni.cpp
     ffmpeg_common.cpp
     ffmpeg_text_overlay.cpp
     myvideocrop.cpp
@@ -35,6 +36,8 @@ target_link_libraries(myffmpeg
     freetype
     fribidi
     harfbuzz
+    jnigraphics
+    android
     log
 )
 

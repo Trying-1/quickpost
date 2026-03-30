@@ -183,6 +183,7 @@ class _ImageCropEditorState extends State<ImageCropEditor> {
           ),
         ],
       ),
+      ),
     );
   }
 

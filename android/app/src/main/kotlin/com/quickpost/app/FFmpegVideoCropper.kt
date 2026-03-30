@@ -14,6 +14,8 @@ class FFmpegVideoCropper(private val context: Context) {
         height: Int,
         preset: String,
         crf: Int,
+        rotation: Int,
+        isFlipped: Int,
     ): Int
 
     init {
@@ -37,6 +39,7 @@ class FFmpegVideoCropper(private val context: Context) {
             var y = (item["y"] as? Number)?.toInt() ?: 0
             var width = (item["width"] as? Number)?.toInt() ?: 0
             var height = (item["height"] as? Number)?.toInt() ?: 0
+            val rotation = (item["rotation"] as? Number)?.toInt() ?: 0
 
             // Avoid green artifacts / glitches in common H.264 yuv420p pipelines by ensuring
             // crop rectangle is aligned to even pixels.
@@ -67,6 +70,8 @@ class FFmpegVideoCropper(private val context: Context) {
                 height,
                 preset,
                 crf,
+                rotation,
+                if (item["isFlipped"] == true) 1 else 0,
             )
 
             if (ret == 0) {

@@ -10,23 +10,30 @@ class VideoCropEditor extends StatefulWidget {
   final File videoFile;
   final CroppedVideoData initialCrop;
   final ValueChanged<CroppedVideoData> onCropChanged;
-  final bool isMuted;
+   final bool isMuted;
   final VoidCallback onMuteToggle;
+  final String? forcedAspectRatio;
 
   const VideoCropEditor({
-    super.key,
+    Key? key,
     required this.videoFile,
     required this.initialCrop,
     required this.onCropChanged,
     required this.isMuted,
     required this.onMuteToggle,
-  });
+    this.forcedAspectRatio,
+  }) : super(key: key);
+
+  void rotateVideo(GlobalKey<VideoCropEditorState> key) => key.currentState?.rotateVideo();
+  void flipHorizontal(GlobalKey<VideoCropEditorState> key) => key.currentState?.flipHorizontal();
+  void fitToFrame(GlobalKey<VideoCropEditorState> key) => key.currentState?.fitToFrame();
+  void resetPosition(GlobalKey<VideoCropEditorState> key) => key.currentState?.resetPosition();
 
   @override
-  State<VideoCropEditor> createState() => _VideoCropEditorState();
+  VideoCropEditorState createState() => VideoCropEditorState();
 }
 
-class _VideoCropEditorState extends State<VideoCropEditor> {
+class VideoCropEditorState extends State<VideoCropEditor> {
   late VideoPlayerController _controller;
   bool _isInitialized = false;
   bool _showControls = true;
@@ -65,11 +72,25 @@ class _VideoCropEditorState extends State<VideoCropEditor> {
       ..initialize().then((_) {
         if (!mounted) return;
         _controller.play();
+        if (widget.forcedAspectRatio != null) {
+          _selectedAspectRatio = widget.forcedAspectRatio;
+        }
         _initializeCropArea();
         setState(() {
           _isInitialized = true;
         });
       });
+  }
+
+  @override
+  void didUpdateWidget(covariant VideoCropEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.forcedAspectRatio != oldWidget.forcedAspectRatio && widget.forcedAspectRatio != null) {
+      _applyAspectRatio(widget.forcedAspectRatio!);
+    }
+    if (widget.isMuted != oldWidget.isMuted) {
+      _controller.setVolume(widget.isMuted ? 0 : 1);
+    }
   }
 
   void _initializeCropArea() {
@@ -159,6 +180,8 @@ class _VideoCropEditorState extends State<VideoCropEditor> {
       cropY: y,
       cropWidth: w,
       cropHeight: h,
+      rotation: widget.initialCrop.rotation,
+      isFlipped: widget.initialCrop.isFlipped,
     ));
   }
 
@@ -270,13 +293,28 @@ class _VideoCropEditorState extends State<VideoCropEditor> {
     super.dispose();
   }
 
-  void _resetPosition() {
+  void rotateVideo() {
+    setState(() {
+      int newRotation = (widget.initialCrop.rotation + 90) % 360;
+      widget.initialCrop.rotation = newRotation;
+      _updateParentCrop();
+    });
+  }
+
+  void flipHorizontal() {
+    setState(() {
+      widget.initialCrop.isFlipped = !widget.initialCrop.isFlipped;
+      _updateParentCrop();
+    });
+  }
+
+  void resetPosition() {
     setState(() {
       _initializeCropArea();
     });
   }
 
-  void _fitToFrame() {
+  void fitToFrame() {
     setState(() {
       final dynamic ratioValue = _selectedAspectRatio == null
           ? 1.0
@@ -358,33 +396,6 @@ class _VideoCropEditorState extends State<VideoCropEditor> {
                 ? Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: _aspectRatios.entries.map((e) {
-                              final key = e.key;
-                              final name = e.value['name'] as String;
-                              final selected = (_selectedAspectRatio ?? 'free') == key;
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: ChoiceChip(
-                                  label: Text(name),
-                                  selected: selected,
-                                  onSelected: (_) => _applyAspectRatio(key),
-                                  selectedColor: Colors.blue,
-                                  labelStyle: TextStyle(
-                                    color: selected ? Colors.white : Colors.white70,
-                                  ),
-                                  backgroundColor: Colors.grey[900],
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
                       GestureDetector(
                         onPanStart: _onPanStart,
                         onPanUpdate: _onPanUpdate,
@@ -399,12 +410,19 @@ class _VideoCropEditorState extends State<VideoCropEditor> {
                               Positioned.fill(
                                 child: Center(
                                   child: AspectRatio(
-                                    aspectRatio: _controller.value.aspectRatio,
-                                    child: VideoPlayer(_controller),
+                                    aspectRatio: (widget.initialCrop.rotation == 90 || widget.initialCrop.rotation == 270)
+                                        ? 1 / _controller.value.aspectRatio
+                                        : _controller.value.aspectRatio,
+                                    child: Transform.scale(
+                                      scaleX: widget.initialCrop.isFlipped ? -1 : 1,
+                                      child: RotatedBox(
+                                        quarterTurns: widget.initialCrop.rotation ~/ 90,
+                                        child: VideoPlayer(_controller),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
-                              // Dimmed overlay
                               Positioned.fill(
                                 child: CustomPaint(
                                   painter: CropOverlayPainter(
@@ -415,13 +433,11 @@ class _VideoCropEditorState extends State<VideoCropEditor> {
                                   ),
                                 ),
                               ),
-                              // Handles
-                              _buildHandle(_cropX, _cropY), // TL
-                              _buildHandle(_cropX + _cropWidth, _cropY), // TR
-                              _buildHandle(_cropX, _cropY + _cropHeight), // BL
-                              _buildHandle(_cropX + _cropWidth, _cropY + _cropHeight), // BR
-
-                              if (_showControls)
+                              _buildHandle(_cropX, _cropY),
+                              _buildHandle(_cropX + _cropWidth, _cropY),
+                              _buildHandle(_cropX, _cropY + _cropHeight),
+                              _buildHandle(_cropX + _cropWidth, _cropY + _cropHeight),
+                              if (_showControls) ...[
                                 Center(
                                   child: IconButton(
                                     iconSize: 64,
@@ -432,32 +448,27 @@ class _VideoCropEditorState extends State<VideoCropEditor> {
                                     onPressed: _togglePlayPause,
                                   ),
                                 ),
+                                Positioned(
+                                  bottom: 0,
+                                  left: 0,
+                                  right: 0,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                    color: Colors.black26,
+                                    child: VideoProgressIndicator(
+                                      _controller,
+                                      allowScrubbing: true,
+                                      colors: const VideoProgressColors(
+                                        playedColor: Colors.blueAccent,
+                                        bufferedColor: Colors.white24,
+                                        backgroundColor: Colors.white10,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      // Mute toggle & Progress bar
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Row(
-                          children: [
-                            IconButton(
-                              icon: Icon(widget.isMuted ? Icons.volume_off : Icons.volume_up, color: Colors.white70),
-                              onPressed: widget.onMuteToggle,
-                            ),
-                            Expanded(
-                              child: VideoProgressIndicator(
-                                _controller,
-                                allowScrubbing: true,
-                                colors: const VideoProgressColors(
-                                  playedColor: Colors.blue,
-                                  bufferedColor: Colors.white24,
-                                  backgroundColor: Colors.white12,
-                                ),
-                              ),
-                            ),
-                          ],
                         ),
                       ),
                     ],

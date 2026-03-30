@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'screens/home/home_shell_screen.dart';
 import 'screens/onboarding/onboarding_flow_screen.dart';
 import 'services/audio_library_service.dart';
+import 'services/watermark_preset_service.dart';
 import 'services/app_update_service.dart';
 import 'services/app_review_service.dart';
 import 'services/onboarding_service.dart';
@@ -12,6 +13,9 @@ void main() async {
   
   // Initialize Audio Library Service
   await AudioLibraryService.init();
+
+  // Initialize Watermark Preset
+  await WatermarkPresetService.init();
   
   // Initialize App Review Service
   await AppReviewService().initialize();

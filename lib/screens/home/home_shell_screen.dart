@@ -10,6 +10,8 @@ import '../text_box_overlay/text_box_overlay_screen.dart';
 import '../profile/profile_screen.dart';
 import '../arise_automation/arise_automation_screen.dart';
 import '../caption_store/caption_store_screen.dart';
+import '../quotes/my_quotes_screen.dart';
+import '../video_watermark/video_watermark_screen.dart';
 
 class HomeShellScreen extends StatefulWidget {
   final List<String>? sharedImagePaths;
@@ -107,28 +109,32 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     setState(() {
       switch (purpose) {
         case 'cropper':
-          _currentBottomNavIndex = 1;
+          _currentBottomNavIndex = 2; // Offset by 1 for My Quotes
           break;
         case 'video_cropper':
-          _currentBottomNavIndex = 2;
+          _currentBottomNavIndex = 3;
+          break;
+        case 'video_text':
+          _currentBottomNavIndex = 6;
           break;
         case 'text_box':
-          _currentBottomNavIndex = 4;
+          _currentBottomNavIndex = 5;
           break;
         case 'automation':
-          _currentBottomNavIndex = 8;
+          _currentBottomNavIndex = 10;
           break;
         case 'captions':
-          _currentBottomNavIndex = 6;
+          _currentBottomNavIndex = 8;
           break;
         case 'single_image_post':
           _currentBottomNavIndex = 0;
           break;
         case 'video_fade_in':
-          _currentBottomNavIndex = 3;
-          break;
         case 'video_zoom_in':
-          _currentBottomNavIndex = 3;
+          _currentBottomNavIndex = 4;
+          break;
+        case 'watermark':
+          _currentBottomNavIndex = 7;
           break;
         default:
           _currentBottomNavIndex = 0;
@@ -169,14 +175,16 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           index: _currentBottomNavIndex,
           children: [
             _buildPostMakerTab(),
+            const MyQuotesScreen(),
             ImageCropperScreen(sharedImagePaths: _currentPaths),
             VideoCropperScreen(sharedVideoPaths: _currentPaths),
             VideoCreatorScreen(sharedImagePaths: _currentPaths, sharedPurpose: _currentPurpose),
             TextBoxOverlayScreen(sharedImagePaths: _currentPaths),
             VideoTextOverlayScreen(sharedVideoPaths: _currentPaths),
+            VideoWatermarkScreen(sharedVideoPaths: _currentPaths),
             const CaptionStoreScreen(),
             const AudioLibraryScreenWithFolders(),
-            AriseAutomationScreen(sharedImagePaths: _currentPaths, sharedPurpose: _currentPurpose),
+            AriseAutomationScreen(sharedPaths: _currentPaths, sharedPurpose: _currentPurpose),
             const ProfileScreen(),
           ],
         ),
@@ -200,15 +208,17 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                 child: Row(
                   children: [
             _buildNavItem(0, Icons.create, 'Post Maker'),
-            _buildNavItem(1, Icons.crop, 'Image Cropper'),
-            _buildNavItem(2, Icons.video_library, 'Video Cropper'),
-            _buildNavItem(3, Icons.video_call, 'Image to Video'),
-            _buildNavItem(4, Icons.text_fields, 'Text Box'),
-            _buildNavItem(5, Icons.movie_filter, 'Video Text'),
-            _buildNavItem(6, Icons.closed_caption, 'Captions'),
-            _buildNavItem(7, Icons.library_music, 'My Audios'),
-            _buildNavItem(8, Icons.auto_awesome, 'Automation'),
-            _buildNavItem(9, Icons.person, 'Profile'),
+            _buildNavItem(1, Icons.format_quote, 'My Quotes'),
+            _buildNavItem(2, Icons.crop, 'Image Cropper'),
+            _buildNavItem(3, Icons.video_library, 'Video Cropper'),
+            _buildNavItem(4, Icons.video_call, 'Image to Video'),
+            _buildNavItem(5, Icons.text_fields, 'Text Box'),
+            _buildNavItem(6, Icons.movie_filter, 'Video Text'),
+            _buildNavItem(7, Icons.branding_watermark, 'Watermark'),
+            _buildNavItem(8, Icons.closed_caption, 'Captions'),
+            _buildNavItem(9, Icons.library_music, 'My Audios'),
+            _buildNavItem(10, Icons.auto_awesome, 'Automation'),
+            _buildNavItem(11, Icons.person, 'Profile'),
                   ],
                 ),
               ),

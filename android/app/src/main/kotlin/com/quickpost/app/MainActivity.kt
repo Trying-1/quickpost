@@ -30,6 +30,8 @@ class MainActivity : FlutterActivity() {
     private var sharedImageUris: MutableList<Uri> = mutableListOf()
     private var sharedPurpose: String? = null
     private var shareIntentProcessed = false
+    private var currentWatermarkProcessor: OpenGLWatermarkProcessor? = null
+    private var currentVideoCropper: OpenGLVideoCropper? = null
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
@@ -137,6 +139,7 @@ class MainActivity : FlutterActivity() {
                             audioPath,
                             automationSettings,
                             qualitySettings,
+                            call.argument<Boolean>("isVideo") ?: false,
                             result
                         )
                     } else {
@@ -212,14 +215,13 @@ class MainActivity : FlutterActivity() {
                 "importBackupFromSaf" -> {
                     val treeUri = call.argument<String>("treeUri")
                     val audioDestDir = call.argument<String>("audioDestDir")
-                    val thumbDestDir = call.argument<String>("thumbDestDir")
-
-                    if (treeUri == null || audioDestDir == null || thumbDestDir == null) {
-                        result.error("INVALID_ARGUMENT", "treeUri, audioDestDir and thumbDestDir are required", null)
+                    
+                    if (treeUri == null || audioDestDir == null) {
+                        result.error("INVALID_ARGUMENT", "treeUri and audioDestDir are required", null)
                     } else {
                         Thread {
                             try {
-                                val importResult = importBackupFromSaf(treeUri, audioDestDir, thumbDestDir)
+                                val importResult = importBackupFromSaf(treeUri, audioDestDir)
                                 runOnUiThread {
                                     result.success(importResult)
                                 }
@@ -267,6 +269,30 @@ class MainActivity : FlutterActivity() {
                     val outputPath = getVideoOutputPath(filename)
                     result.success(outputPath)
                 }
+                "createCarouselVideo" -> {
+                    val slides = call.argument<List<Map<String, Any?>>>("slides")
+                    val width = call.argument<Int>("width") ?: 1080
+                    val height = call.argument<Int>("height") ?: 1350
+                    val durationPerSlide = call.argument<Double>("durationPerSlide") ?: 3.0
+                    val audioPath = call.argument<String>("audioPath")
+                    
+                    if (slides != null) {
+                        createCarouselVideo(slides, width, height, durationPerSlide, audioPath, result)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "Slides are required", null)
+                    }
+                }
+                "createCarouselImages" -> {
+                    val slides = call.argument<List<Map<String, Any?>>>("slides")
+                    val width = call.argument<Int>("width") ?: 1080
+                    val height = call.argument<Int>("height") ?: 1350
+                    
+                    if (slides != null) {
+                        createCarouselImages(slides, width, height, result)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "Slides are required", null)
+                    }
+                }
                 "createVideoWithFFmpeg" -> {
                     val imagePath = call.argument<String>("imagePath")
                     val duration = call.argument<Int>("duration") ?: 3
@@ -278,7 +304,7 @@ class MainActivity : FlutterActivity() {
                     val automationSettings = call.argument<Map<String, Any>>("automationSettings")
                     
                     if (automationSettings != null) {
-                        createAutomationVideo(imagePath ?: "", duration, template, fadeInDuration, zoomScale, zoomDuration, audioPath, automationSettings, null, result)
+                        createAutomationVideo(imagePath ?: "", duration, template, fadeInDuration, zoomScale, zoomDuration, audioPath, automationSettings, null, false, result)
                     } else {
                         if (imagePath != null) {
                             try {
@@ -287,6 +313,11 @@ class MainActivity : FlutterActivity() {
                                     override fun onProgress(progress: Double) {
                                         runOnUiThread {
                                             methodChannel?.invokeMethod("onProgress", progress)
+                                        }
+                                    }
+                                    override fun onStep(step: String) {
+                                        runOnUiThread {
+                                            methodChannel?.invokeMethod("onStep", step)
                                         }
                                     }
                                 }
@@ -479,6 +510,9 @@ class MainActivity : FlutterActivity() {
                                         override fun onProgress(progress: Double) {
                                             // no-op
                                         }
+                                        override fun onStep(step: String) {
+                                            // no-op
+                                        }
                                     }
                                 )
 
@@ -543,28 +577,100 @@ class MainActivity : FlutterActivity() {
                 }
                 "cropVideosBatch" -> {
                     val items = call.argument<List<Map<String, Any>>>("items")
-                    val preset = call.argument<String>("preset") ?: "veryfast"
-                    val crf = call.argument<Int>("crf") ?: 23
-
                     if (items == null || items.isEmpty()) {
                         result.error("INVALID_ARGUMENT", "Items list is required", null)
                     } else {
                         Thread {
                             try {
-                                val cropper = FFmpegVideoCropper(this)
-                                val results = cropper.cropVideosBatch(items, preset, crf)
+                                val cropper = OpenGLVideoCropper(this)
+                                currentVideoCropper = cropper
+                                val outputPaths = mutableListOf<String>()
                                 
-                                // Move all successful results to gallery
-                                val finalResults = results.map { path ->
-                                    moveVideoToGallery(path) ?: path
+                                for ((index, item) in items.withIndex()) {
+                                    val inputPath = item["inputPath"] as String
+                                    val cropX = (item["x"] as? Number)?.toInt() ?: 0
+                                    val cropY = (item["y"] as? Number)?.toInt() ?: 0
+                                    val cropW = (item["width"] as? Number)?.toInt() ?: 100
+                                    val cropH = (item["height"] as? Number)?.toInt() ?: 100
+                                    val rotation = (item["rotation"] as? Number)?.toInt() ?: 0
+                                    val isFlipped = item["isFlipped"] as? Boolean ?: false
+                                    
+                                    val outFileName = "Crop_${System.currentTimeMillis()}_$index.mp4"
+                                    val outputPath = getVideoOutputPath(outFileName)
+                                    
+                                    val success = cropper.processVideo(
+                                        inputPath, outputPath, 
+                                        cropX, cropY, cropW, cropH, 
+                                        rotation, isFlipped,
+                                        object : OpenGLVideoCropper.ProgressCallback {
+                                            override fun onProgress(progress: Double) {
+                                                val totalProgress = (index + progress) / items.size
+                                                runOnUiThread { methodChannel?.invokeMethod("onProgress", totalProgress) }
+                                            }
+                                        }
+                                    )
+                                    
+                                    if (success) {
+                                        val galleryPath = moveVideoToGallery(outputPath) ?: outputPath
+                                        outputPaths.add(galleryPath)
+                                    }
                                 }
                                 
                                 runOnUiThread {
-                                    result.success(finalResults)
+                                    currentVideoCropper = null
+                                    result.success(outputPaths)
                                 }
                             } catch (e: Exception) {
                                 runOnUiThread {
-                                    result.error("FFMPEG_ERROR", e.message, null)
+                                    currentVideoCropper = null
+                                    result.error("OPENGL_ERROR", e.message, null)
+                                }
+                            }
+                        }.start()
+                    }
+                }
+                "cropImagesBatch" -> {
+                    val items = call.argument<List<Map<String, Any>>>("items")
+                    if (items == null || items.isEmpty()) {
+                        result.error("INVALID_ARGUMENT", "Items list is required", null)
+                    } else {
+                        Thread {
+                            try {
+                                val cropper = OpenGLImageCropper(this)
+                                val outputPaths = mutableListOf<String>()
+                                
+                                for ((index, item) in items.withIndex()) {
+                                    val inputPath = item["inputPath"] as String
+                                    val cropX = (item["x"] as? Number)?.toInt() ?: 0
+                                    val cropY = (item["y"] as? Number)?.toInt() ?: 0
+                                    val cropW = (item["width"] as? Number)?.toInt() ?: 100
+                                    val cropH = (item["height"] as? Number)?.toInt() ?: 100
+                                    val rotation = (item["rotation"] as? Number)?.toInt() ?: 0
+                                    val isFlipped = item["isFlipped"] as? Boolean ?: false
+                                    
+                                    val pDir = java.io.File(getExternalFilesDir(null), "exports")
+                                    if (!pDir.exists()) pDir.mkdirs()
+                                    val outFileName = "ImageCrop_${System.currentTimeMillis()}_$index.jpg"
+                                    val outPath = java.io.File(pDir, outFileName).absolutePath
+                                    
+                                    val success = cropper.processImage(inputPath, outPath, cropX, cropY, cropW, cropH, rotation, isFlipped)
+                                    if (success) {
+                                        val galleryPath = moveImageToGallery(outPath) ?: outPath
+                                        outputPaths.add(galleryPath)
+                                    }
+                                    
+                                    runOnUiThread {
+                                        val progress = (index + 1.0) / items.size
+                                        methodChannel?.invokeMethod("onProgress", progress)
+                                    }
+                                }
+                                
+                                runOnUiThread {
+                                    result.success(outputPaths)
+                                }
+                            } catch (e: Exception) {
+                                runOnUiThread {
+                                    result.error("OPENGL_ERROR", e.message, null)
                                 }
                             }
                         }.start()
@@ -611,44 +717,51 @@ class MainActivity : FlutterActivity() {
                     } else {
                         Thread {
                             try {
-                                val overlay = FFmpegVideoOverlay(this)
-                                val ret = overlay.addTextToVideo(
-                                    inputPath,
-                                    outputPath,
-                                    text,
-                                    x,
-                                    y,
-                                    fontSize,
-                                    fontColor,
-                                    boxColor,
-                                    boxOpacity,
-                                    boxHeight,
-                                    horizontalPadding,
-                                    verticalPadding,
-                                    hAlign,
-                                    vAlign,
-                                    lineHeight,
-                                    position,
-                                    fontPath,
-                                    preset,
-                                    crf,
-                                    showShadow,
-                                    shadowColor,
-                                    shadowX,
-                                    shadowY,
-                                    textOpacity,
+                                val processor = OpenGLTextOverlayProcessor(this)
+                                val textParams = mapOf<String, Any?>(
+                                    "text" to text,
+                                    "x" to x,
+                                    "y" to y,
+                                    "fontSize" to fontSize,
+                                    "fontColor" to fontColor,
+                                    "boxColor" to boxColor,
+                                    "boxOpacity" to boxOpacity,
+                                    "boxHeight" to boxHeight,
+                                    "hAlign" to hAlign,
+                                    "vAlign" to vAlign,
+                                    "lineHeight" to lineHeight,
+                                    "fontPath" to fontPath,
+                                    "preset" to preset,
+                                    "crf" to crf,
+                                    "showShadow" to showShadow,
+                                    "shadowColor" to shadowColor,
+                                    "shadowX" to shadowX,
+                                    "shadowY" to shadowY,
+                                    "textOpacity" to textOpacity,
+                                    "horizontalPadding" to horizontalPadding,
+                                    "verticalPadding" to verticalPadding,
                                 )
 
+                                val outputFile = java.io.File(outputPath)
+                                val glCallback = object : OpenGLTextOverlayProcessor.ProgressCallback {
+                                    override fun onProgress(progress: Double) {
+                                        runOnUiThread {
+                                            methodChannel?.invokeMethod("onProgress", progress)
+                                        }
+                                    }
+                                    override fun onStep(step: String) {
+                                        Log.d("VideoTextOverlay", "Step: $step")
+                                    }
+                                }
+                                processor.processVideoWithText(inputPath, outputFile, textParams, glCallback)
+
                                 runOnUiThread {
-                                    if (ret == 0) {
-                                        if (audioPath.isNullOrEmpty()) {
-                                            val finalPath = moveVideoToGallery(outputPath) ?: outputPath
-                                            result.success(finalPath)
-                                        } else {
+                                    if (outputFile.exists() && outputFile.length() > 0) {
+                                        if (!audioPath.isNullOrEmpty()) {
+                                            // Merge external audio
                                             try {
                                                 val mergedPath = getVideoOutputPath("VideoOverlay_Audio_${System.currentTimeMillis()}.mp4")
                                                 val durationSec = ((getVideoMetadata(outputPath)["durationMs"] as? Int) ?: 0) / 1000
-                                                // Using the merge from existing FFmpegTextOverlay for consistency
                                                 val merger = FFmpegTextOverlay(this)
                                                 val mergeRet = merger.nativeMergeAudioVideo(outputPath, audioPath, mergedPath, durationSec)
                                                 if (mergeRet == 0) {
@@ -660,9 +773,12 @@ class MainActivity : FlutterActivity() {
                                             } catch (e: Exception) {
                                                 result.error("PROCESSING_FAILED", e.message, null)
                                             }
+                                        } else {
+                                            val finalPath = moveVideoToGallery(outputPath) ?: outputPath
+                                            result.success(finalPath)
                                         }
                                     } else {
-                                        result.error("FFMPEG_ERROR", "FFmpeg returned error code: $ret", null)
+                                        result.error("PROCESSING_FAILED", "Output file is empty or missing", null)
                                     }
                                 }
                             } catch (e: Exception) {
@@ -672,6 +788,123 @@ class MainActivity : FlutterActivity() {
                             }
                         }.start()
                     }
+                }
+
+                "addWatermarkToVideo" -> {
+                    val inputPath = call.argument<String>("inputPath")
+                    val outputPath = call.argument<String>("outputPath")
+                    val type = call.argument<String>("type") ?: "profile"
+                    val fullScreen = call.argument<Boolean>("fullScreen") ?: false
+                    val bgColor = call.argument<String>("bgColor") ?: "#000000"
+                    val showBox = call.argument<Boolean>("showBox") ?: true
+                    val boxColor = call.argument<String>("boxColor") ?: "#000000"
+                    val boxOpacity = (call.argument<Number>("boxOpacity"))?.toFloat() ?: 0.3f
+                    val boxRadius = (call.argument<Number>("boxRadius"))?.toFloat() ?: 12f
+                    val username = call.argument<String>("username") ?: ""
+                    val handle = call.argument<String>("handle") ?: ""
+                    val x = call.argument<Number>("x")?.toInt() ?: 100
+                    val y = call.argument<Number>("y")?.toInt() ?: 100
+                    val profileImagePath = call.argument<String>("profileImagePath") ?: ""
+                    val fontSize = call.argument<Number>("fontSize")?.toFloat() ?: 40f
+                    val iconSize = call.argument<Number>("iconSize")?.toFloat() ?: 100f
+                    val textColor = call.argument<String>("textColor") ?: "#FFFFFF"
+                    val accentColor = call.argument<String>("accentColor") ?: "#AAAAAA"
+                    val fontPath = call.argument<String>("fontPath") ?: ""
+                    val bgImagePath = call.argument<String>("bgImagePath") ?: ""
+                    val bgBrightness = (call.argument<Number>("bgBrightness"))?.toFloat() ?: 1.0f
+                    val bgSaturation = (call.argument<Number>("bgSaturation"))?.toFloat() ?: 1.0f
+                    val bgBlur = (call.argument<Number>("bgBlur"))?.toFloat() ?: 0f
+                    val audioPath = call.argument<String>("audioPath")
+                    val patches = call.argument<List<Map<String, Any?>>>("patches") ?: emptyList()
+
+                    if (inputPath == null || outputPath == null) {
+                        result.error("INVALID_ARGUMENTS", "Missing input or output path", null)
+                    } else {
+                        Thread {
+                            try {
+                                 val processor = OpenGLWatermarkProcessor(this)
+                                currentWatermarkProcessor = processor
+                                val params = mapOf<String, Any?>(
+                                    "type" to type,
+                                    "fullScreen" to fullScreen,
+                                    "bgColor" to bgColor,
+                                    "showBox" to showBox,
+                                    "boxColor" to boxColor,
+                                    "boxOpacity" to boxOpacity,
+                                    "boxRadius" to boxRadius,
+                                    "username" to username,
+                                    "handle" to handle,
+                                    "x" to x,
+                                    "y" to y,
+                                    "profileImagePath" to profileImagePath,
+                                    "fontSize" to fontSize,
+                                    "iconSize" to iconSize,
+                                    "textColor" to textColor,
+                                    "accentColor" to accentColor,
+                                    "fontPath" to fontPath,
+                                    "handleFontPath" to (call.argument<String>("handleFontPath") ?: fontPath),
+                                    "bgImagePath" to bgImagePath,
+                                    "bgBrightness" to bgBrightness,
+                                    "bgSaturation" to bgSaturation,
+                                    "bgBlur" to bgBlur,
+                                    "showStoryRing" to (call.argument<Boolean>("showStoryRing") ?: false),
+                                    "isVerified" to (call.argument<Boolean>("isVerified") ?: false),
+                                    "patches" to patches,
+                                    // Shadow parameters
+                                    "showUsernameShadow" to (call.argument<Boolean>("showUsernameShadow") ?: false),
+                                    "usernameShadowColor" to (call.argument<String>("usernameShadowColor") ?: "#000000"),
+                                    "usernameShadowBlur" to ((call.argument<Number>("usernameShadowBlur"))?.toFloat() ?: 4f),
+                                    "showHandleShadow" to (call.argument<Boolean>("showHandleShadow") ?: false),
+                                    "handleShadowColor" to (call.argument<String>("handleShadowColor") ?: "#000000"),
+                                    "handleShadowBlur" to ((call.argument<Number>("handleShadowBlur"))?.toFloat() ?: 4f),
+                                    "showIconShadow" to (call.argument<Boolean>("showIconShadow") ?: false),
+                                    "iconShadowColor" to (call.argument<String>("iconShadowColor") ?: "#000000"),
+                                    "iconShadowBlur" to ((call.argument<Number>("iconShadowBlur"))?.toFloat() ?: 4f),
+                                    "usernameShadowOffsetX" to ((call.argument<Number>("usernameShadowOffsetX"))?.toFloat() ?: 1f),
+                                    "usernameShadowOffsetY" to ((call.argument<Number>("usernameShadowOffsetY"))?.toFloat() ?: 1f),
+                                    "handleShadowOffsetX" to ((call.argument<Number>("handleShadowOffsetX"))?.toFloat() ?: 1f),
+                                    "handleShadowOffsetY" to ((call.argument<Number>("handleShadowOffsetY"))?.toFloat() ?: 1f),
+                                    "iconShadowOffsetX" to ((call.argument<Number>("iconShadowOffsetX"))?.toFloat() ?: 1.5f),
+                                    "iconShadowOffsetY" to ((call.argument<Number>("iconShadowOffsetY"))?.toFloat() ?: 1.5f),
+                                    "textOverlays" to (call.argument<List<Map<String, Any?>>>("textOverlays") ?: emptyList())
+                                )
+                                val outputFile = java.io.File(outputPath)
+                                val callback = object : OpenGLWatermarkProcessor.ProgressCallback {
+                                    override fun onProgress(p: Double) {
+                                        runOnUiThread { methodChannel?.invokeMethod("onProgress", p) }
+                                    }
+                                    override fun onStep(s: String) {
+                                        runOnUiThread { methodChannel?.invokeMethod("onStep", s) }
+                                    }
+                                }
+                                try {
+                                    Log.d("MainActivity", "Handing off to OpenGLWatermarkProcessor for $inputPath")
+                                    processor.processVideoWithWatermark(inputPath, outputFile, params, callback)
+                                    Log.d("MainActivity", "Processing returned. File size: ${outputFile.length()}")
+    
+                                    runOnUiThread {
+                                        if (outputFile.exists() && outputFile.length() > 0) {
+                                            scanMediaFile(outputFile.absolutePath)
+                                            result.success(outputFile.absolutePath)
+                                        } else {
+                                            Log.e("MainActivity", "Watermark failed. File exists: ${outputFile.exists()}, length: ${outputFile.length()}")
+                                            result.error("PROCESSING_FAILED", "Output file is empty or missing. Check GLWatermark logs.", null)
+                                        }
+                                    }
+                                } finally {
+                                    currentWatermarkProcessor = null
+                                }
+                            } catch (e: Exception) {
+                                currentWatermarkProcessor = null
+                                runOnUiThread { result.error("PROCESSING_FAILED", e.message, null) }
+                            }
+                        }.start()
+                    }
+                }
+
+                "cancelWatermarkToVideo" -> {
+                    currentWatermarkProcessor?.cancel()
+                    result.success(true)
                 }
                 "getSharedVideos" -> {
                     val results = mapOf(
@@ -826,7 +1059,7 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun importBackupFromSaf(treeUriStr: String, audioDestDir: String, thumbDestDir: String): Map<String, Any?> {
+    private fun importBackupFromSaf(treeUriStr: String, audioDestDir: String): Map<String, Any?> {
         val uri = Uri.parse(treeUriStr)
         val treeDoc = DocumentFile.fromTreeUri(this, uri)
             ?: throw IllegalStateException("Invalid backup folder URI")
@@ -862,9 +1095,8 @@ class MainActivity : FlutterActivity() {
         android.util.Log.d("MainActivity", "Backup root contents: ${backupRoot.listFiles().joinToString { "${it.name} (${if (it.isDirectory) "dir" else "file"})" }}")
         
         val audioDirDoc = backupRoot.listFiles().firstOrNull { it.isDirectory && it.name == "audio" }
-        val thumbDirDoc = backupRoot.listFiles().firstOrNull { it.isDirectory && it.name == "thumbnails" }
         
-        android.util.Log.d("MainActivity", "Audio dir found: ${audioDirDoc != null}, Thumb dir found: ${thumbDirDoc != null}")
+        android.util.Log.d("MainActivity", "Audio dir found: ${audioDirDoc != null}")
         if (audioDirDoc != null) {
             val audioFiles = audioDirDoc.listFiles()
             android.util.Log.d("MainActivity", "Audio directory has ${audioFiles.size} files")
@@ -911,11 +1143,34 @@ class MainActivity : FlutterActivity() {
         var importedCount = 0
         var skippedCount = 0
 
+        val totalAudio = audioArray.length()
+        runOnUiThread {
+            methodChannel?.invokeMethod(
+                "onSafImportProgress",
+                mapOf(
+                    "current" to 0,
+                    "total" to totalAudio,
+                    "status" to "Preparing import..."
+                )
+            )
+        }
+
         for (i in 0 until audioArray.length()) {
             val audioObj = audioArray.getJSONObject(i)
             try {
                 val audioFileName = audioObj.getString("audioFileName")
                 android.util.Log.d("MainActivity", "Processing audio entry $i: $audioFileName")
+
+                runOnUiThread {
+                    methodChannel?.invokeMethod(
+                        "onSafImportProgress",
+                        mapOf(
+                            "current" to (i + 1),
+                            "total" to totalAudio,
+                            "status" to "Importing: ${audioObj.optString("name", audioFileName)}"
+                        )
+                    )
+                }
                 
                 if (audioDirDoc == null) {
                     android.util.Log.w("MainActivity", "Audio directory not found in backup")
@@ -934,26 +1189,13 @@ class MainActivity : FlutterActivity() {
                 android.util.Log.d("MainActivity", "Copying audio file: $audioFileName -> $audioDestName")
                 val audioPath = copyDocumentFileTo(audioDestDir, audioDoc, audioDestName)
 
-                var thumbnailPath: String? = null
-                val thumbnailFileName = if (audioObj.has("thumbnailFileName") && !audioObj.isNull("thumbnailFileName")) {
-                    audioObj.getString("thumbnailFileName")
-                } else null
-
-                if (thumbnailFileName != null && thumbDirDoc != null) {
-                    val thumbDoc = thumbDirDoc.listFiles().firstOrNull { it.isFile && it.name == thumbnailFileName }
-                    if (thumbDoc != null) {
-                        val thumbDestName = "thumb_${System.currentTimeMillis()}_${i}.jpg"
-                        thumbnailPath = copyDocumentFileTo(thumbDestDir, thumbDoc, thumbDestName)
-                    }
-                }
-
                 val audioMap = mutableMapOf<String, Any?>(
                     "name" to audioObj.getString("name"),
                     "durationMs" to audioObj.getInt("durationMs"),
                     "folderId" to audioObj.optString("folderId", "default"),
                     "originalVideoPath" to if (audioObj.has("originalVideoPath") && !audioObj.isNull("originalVideoPath")) audioObj.getString("originalVideoPath") else null,
                     "audioPath" to audioPath,
-                    "thumbnailPath" to thumbnailPath,
+                    "thumbnailPath" to null,
                 )
 
                 audioResult.add(audioMap)
@@ -1239,6 +1481,7 @@ class MainActivity : FlutterActivity() {
         audioPath: String?,
         automationSettings: Map<String, Any>,
         qualitySettings: Map<String, Any>?,
+        isVideo: Boolean,
         result: MethodChannel.Result
     ) {
         val uiHandler = Handler(Looper.getMainLooper())
@@ -1265,7 +1508,13 @@ class MainActivity : FlutterActivity() {
                                 methodChannel?.invokeMethod("onProgress", progress)
                             }
                         }
-                    }
+                        override fun onStep(step: String) {
+                            uiHandler.post {
+                                methodChannel?.invokeMethod("onStep", step)
+                            }
+                        }
+                    },
+                    isVideo
                 )
                 
                 uiHandler.post {
@@ -1306,25 +1555,20 @@ class MainActivity : FlutterActivity() {
                     zoomScale,
                     zoomDuration,
                     audioPath,
-                    1080, // Default width
-                    1920, // Default height
-                    object : VideoProcessor.ProgressCallback {
+                    targetWidth = 1080,
+                    targetHeight = 1920,
+                    callback = object : VideoProcessor.ProgressCallback {
                         override fun onProgress(progress: Double) {
-                            runOnUiThread {
-                                methodChannel?.invokeMethod("onProgress", progress)
-                            }
+                            runOnUiThread { methodChannel?.invokeMethod("onProgress", progress) }
+                        }
+                        override fun onStep(step: String) {
+                            runOnUiThread { methodChannel?.invokeMethod("onStep", step) }
                         }
                     }
                 )
-                runOnUiThread {
-                    methodChannel?.invokeMethod("onComplete", outputPath)
-                    result.success(outputPath)
-                }
+                runOnUiThread { result.success(outputPath) }
             } catch (e: Exception) {
-                runOnUiThread {
-                    methodChannel?.invokeMethod("onError", "Video creation failed: ${e.message}")
-                    result.error("PROCESSING_ERROR", e.message, null)
-                }
+                runOnUiThread { result.error("VIDEO_ERROR", e.message, null) }
             }
         }.start()
     }
@@ -1356,6 +1600,11 @@ class MainActivity : FlutterActivity() {
                         override fun onProgress(progress: Double) {
                             Handler(Looper.getMainLooper()).post {
                                 methodChannel?.invokeMethod("onProgress", progress)
+                            }
+                        }
+                        override fun onStep(step: String) {
+                            Handler(Looper.getMainLooper()).post {
+                                methodChannel?.invokeMethod("onStep", step)
                             }
                         }
                     }
@@ -1609,5 +1858,91 @@ class MainActivity : FlutterActivity() {
             android.util.Log.e("MainActivity", "Error moving video to gallery", e)
             null
         }
+    }
+
+    private fun createCarouselVideo(
+        slides: List<Map<String, Any?>>,
+        width: Int,
+        height: Int,
+        durationPerSlide: Double,
+        audioPath: String?,
+        result: MethodChannel.Result
+    ) {
+        Thread {
+            try {
+                val processor = OpenGLCarouselProcessor(this)
+                val filename = "Carousel_${System.currentTimeMillis()}.mp4"
+                val outFile = File(getExternalFilesDir(null), filename)
+
+                val callback = object : OpenGLCarouselProcessor.ProgressCallback {
+                    override fun onProgress(progress: Double) {
+                        runOnUiThread { methodChannel?.invokeMethod("onProgress", progress) }
+                    }
+                    override fun onStep(step: String) {
+                        runOnUiThread { methodChannel?.invokeMethod("onStep", step) }
+                    }
+                }
+
+                val success = processor.processCarousel(slides, width, height, durationPerSlide, outFile, callback)
+
+                if (success) {
+                    val finalPath = outFile.absolutePath
+                    val galleryPath = moveVideoToGallery(finalPath) ?: finalPath
+                    runOnUiThread {
+                        methodChannel?.invokeMethod("onComplete", galleryPath)
+                        result.success(galleryPath)
+                    }
+                } else {
+                    runOnUiThread {
+                        result.error("PROCESS_FAILED", "OpenGL Carousel processing failed", null)
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    result.error("ERROR", e.message, null)
+                }
+            }
+        }.start()
+    }
+
+    private fun createCarouselImages(
+        slides: List<Map<String, Any?>>,
+        width: Int,
+        height: Int,
+        result: MethodChannel.Result
+    ) {
+        Thread {
+            try {
+                val processor = OpenGLCarouselProcessor(this)
+                val callback = object : OpenGLCarouselProcessor.ProgressCallback {
+                    override fun onProgress(progress: Double) {
+                        runOnUiThread { methodChannel?.invokeMethod("onProgress", progress) }
+                    }
+                    override fun onStep(step: String) {
+                        runOnUiThread { methodChannel?.invokeMethod("onStep", step) }
+                    }
+                }
+
+                val savedPaths = processor.processCarouselImages(slides, width, height, callback)
+                
+                // Move images to public gallery
+                val galleryPaths = savedPaths.map { path ->
+                    // For images, we can use saveImageToGallery or move to DCIM
+                    // Since OpenGLCarouselProcessor saves them to internal exports, we should move them
+                    val file = File(path)
+                    val outFileName = "Carousel_${System.currentTimeMillis()}_${file.name}"
+                    saveImageToGallery(file.readBytes(), outFileName, "Quick Post") ?: path
+                }
+
+                runOnUiThread {
+                    methodChannel?.invokeMethod("onComplete", galleryPaths)
+                    result.success(galleryPaths)
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    result.error("ERROR", e.message, null)
+                }
+            }
+        }.start()
     }
 }

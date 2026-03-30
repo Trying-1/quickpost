@@ -5,6 +5,9 @@ import 'single_image_post_screen.dart';
 import 'text_post_screen.dart';
 import 'instagram_quote_post_screen.dart';
 import 'instagram_quote_post_screen2.dart';
+import 'carousel_post_screen.dart';
+import 'countdown_post_screen.dart';
+import 'year_grid_post_screen.dart';
 
 class PostMakerTemplatesScreen extends StatelessWidget {
   final List<String>? sharedImagePaths;
@@ -39,6 +42,13 @@ class PostMakerTemplatesScreen extends StatelessWidget {
         color: Colors.blue,
       ),
       _TemplateTileData(
+        id: 'carousel_post',
+        title: 'Carousel Post',
+        description: 'Create multi-slide posts. Edit each slide individually.',
+        icon: Icons.view_carousel,
+        color: Colors.amber,
+      ),
+      _TemplateTileData(
         id: 'grid_post',
         title: 'Grid Post',
         description: 'Arrange multiple images in a clean grid layout.',
@@ -51,6 +61,20 @@ class PostMakerTemplatesScreen extends StatelessWidget {
         description: 'Create a clean text post on a plain background.',
         icon: Icons.text_fields,
         color: Colors.teal,
+      ),
+      _TemplateTileData(
+        id: 'countdown_post',
+        title: 'Daily Progress',
+        description: 'Displays current date and counts days left in the year.',
+        icon: Icons.timer_outlined,
+        color: const Color(0xFF6C63FF),
+      ),
+      _TemplateTileData(
+        id: 'year_grid_post',
+        title: 'Year Grid',
+        description: '365-day visual grid to track your yearly journey.',
+        icon: Icons.grid_on_rounded,
+        color: const Color(0xFF2ECC71),
       ),
     ];
 
@@ -103,6 +127,30 @@ class PostMakerTemplatesScreen extends StatelessWidget {
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => const TextPostScreen(),
+                      ),
+                    );
+                    break;
+                  case 'countdown_post':
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const CountdownPostScreen(),
+                      ),
+                    );
+                    break;
+                  case 'year_grid_post':
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const YearGridPostScreen(),
+                      ),
+                    );
+                    break;
+                  case 'carousel_post':
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => CarouselPostScreen(
+                          sharedImagePaths: sharedImagePaths,
+                          sharedPurpose: 'carousel_post',
+                        ),
                       ),
                     );
                     break;
@@ -168,6 +216,8 @@ class _TemplateTile extends StatelessWidget {
         previewAsset = 'assets/images/post_template_images/grid_image_post.jpg';
         break;
       case 'text_post':
+      case 'countdown_post':
+      case 'year_grid_post':
       default:
         previewAsset = 'assets/images/post_template_images/simple_text_post.jpg';
         break;

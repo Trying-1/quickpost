@@ -333,3 +333,49 @@ class FontSelectorButton extends StatelessWidget {
     );
   }
 }
+
+class HorizontalFontSelector extends StatelessWidget {
+  final FontInfo? selectedFont;
+  final Function(FontInfo) onFontSelected;
+
+  const HorizontalFontSelector({
+    super.key,
+    this.selectedFont,
+    required this.onFontSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final List<FontInfo> fonts = getAllFonts();
+    return SizedBox(
+      height: 48,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: fonts.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        itemBuilder: (context, index) {
+          final font = fonts[index];
+          final isSelected = selectedFont == font;
+          return ChoiceChip(
+            label: Text(
+              font.displayName,
+              style: TextStyle(
+                fontFamily: font.family,
+                fontWeight: font.weight,
+                fontStyle: font.style,
+                fontSize: 12,
+              ),
+            ),
+            selected: isSelected,
+            onSelected: (val) {
+              if (val) onFontSelected(font);
+            },
+            selectedColor: Colors.blue.withOpacity(0.2),
+            checkmarkColor: Colors.blue,
+          );
+        },
+      ),
+    );
+  }
+}

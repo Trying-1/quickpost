@@ -16,6 +16,7 @@ class VideoProcessor(private val context: Context) {
     
     interface ProgressCallback {
         fun onProgress(progress: Double)
+        fun onStep(step: String)
     }
     
     companion object {
@@ -49,19 +50,39 @@ class VideoProcessor(private val context: Context) {
             }
         
         val outputFile = File(outputPath)
-        val bitmap = loadAndScaleBitmap(imagePath, targetWidth, targetHeight)
         
+        callback.onStep("Preparing image...")
+        val startTime = System.currentTimeMillis()
+        val bitmap = loadAndScaleBitmap(imagePath, targetWidth, targetHeight)
+        val imagePrepTime = System.currentTimeMillis() - startTime
+        android.util.Log.d("VideoProcessor", "Image preparation took ${imagePrepTime}ms")
+        
+        callback.onStep("Encoding video...")
+        val encodeStart = System.currentTimeMillis()
         if (template == "fade_in") {
             createVideoFromBitmapWithEffects(bitmap, outputFile, duration, fadeInDuration, targetWidth, targetHeight, callback)
         } else {
             createVideoFromBitmap(bitmap, outputFile, duration, targetWidth, targetHeight, callback)
         }
+        val encodeTime = System.currentTimeMillis() - encodeStart
+        android.util.Log.d("VideoProcessor", "Video encoding took ${encodeTime}ms")
         
         if (audioPath != null && File(audioPath).exists()) {
-            val tempFile = File(outputFile.parentFile, "temp_${System.currentTimeMillis()}.mp4")
-            outputFile.renameTo(tempFile)
-            addAudioToVideo(tempFile.absolutePath, audioPath, outputFile.absolutePath, duration)
-            tempFile.delete()
+            callback.onStep("Merging audio...")
+            val mergeStart = System.currentTimeMillis()
+            val audioMergeOutputPath = (context as? MainActivity)?.getVideoOutputPath("Merged_${System.currentTimeMillis()}.mp4")
+                ?: File(outputFile.parentFile, "merged_${System.currentTimeMillis()}.mp4").absolutePath
+            
+            addAudioToVideo(outputFile.absolutePath, audioPath, audioMergeOutputPath, duration)
+            
+            val mergedFile = File(audioMergeOutputPath)
+            if (mergedFile.exists() && mergedFile.length() > 0) {
+                outputFile.delete()
+                val mergeTime = System.currentTimeMillis() - mergeStart
+                android.util.Log.d("VideoProcessor", "Audio merge took ${mergeTime}ms")
+                return (context as? MainActivity)?.moveVideoToGallery(audioMergeOutputPath)
+                    ?: audioMergeOutputPath
+            }
         }
         
         bitmap.recycle()
@@ -95,17 +116,27 @@ class VideoProcessor(private val context: Context) {
         val totalFrames = videoDuration * FRAME_RATE
         val framesPerImage = (durationPerImage * FRAME_RATE).toInt()
         
+        callback.onStep("Preparing images...")
         val bitmaps = imagePaths.map { path ->
             loadAndScaleBitmap(path, VIDEO_WIDTH, VIDEO_HEIGHT)
         }
         
+        callback.onStep("Encoding video sequence...")
         createVideoFromBitmaps(bitmaps, outputFile, framesPerImage, totalFrames, callback)
         
         if (audioPath != null && File(audioPath).exists()) {
-            val tempFile = File(outputFile.parentFile, "temp_${System.currentTimeMillis()}.mp4")
-            outputFile.renameTo(tempFile)
-            addAudioToVideo(tempFile.absolutePath, audioPath, outputFile.absolutePath, videoDuration)
-            tempFile.delete()
+            callback.onStep("Merging audio...")
+            val audioMergeOutputPath = (context as? MainActivity)?.getVideoOutputPath("Merged_${System.currentTimeMillis()}.mp4")
+                ?: File(outputFile.parentFile, "merged_${System.currentTimeMillis()}.mp4").absolutePath
+            
+            addAudioToVideo(outputFile.absolutePath, audioPath, audioMergeOutputPath, videoDuration)
+            
+            val mergedFile = File(audioMergeOutputPath)
+            if (mergedFile.exists() && mergedFile.length() > 0) {
+                outputFile.delete()
+                return (context as? MainActivity)?.moveVideoToGallery(audioMergeOutputPath)
+                    ?: audioMergeOutputPath
+            }
         }
         
         bitmaps.forEach { it.recycle() }
@@ -445,62 +476,7 @@ class VideoProcessor(private val context: Context) {
     }
     
     private fun addAudioToVideo(videoPath: String, audioPath: String, outputPath: String, durationSeconds: Int) {
-        val videoExtractor = MediaExtractor()
-        val audioExtractor = MediaExtractor()
-        
-        try {
-            videoExtractor.setDataSource(videoPath)
-            audioExtractor.setDataSource(audioPath)
-            
-            val muxer = MediaMuxer(outputPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-            var videoTrackIndex = -1
-            for (i in 0 until videoExtractor.trackCount) {
-                val format = videoExtractor.getTrackFormat(i)
-                if (format.getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true) {
-                    videoExtractor.selectTrack(i)
-                    videoTrackIndex = muxer.addTrack(format)
-                    break
-                }
-            }
-            
-            var audioTrackIndex = -1
-            for (i in 0 until audioExtractor.trackCount) {
-                val format = audioExtractor.getTrackFormat(i)
-                if (format.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true) {
-                    audioExtractor.selectTrack(i)
-                    audioTrackIndex = muxer.addTrack(format)
-                    break
-                }
-            }
-            
-            muxer.start()
-            val videoBuffer = ByteBuffer.allocate(1024 * 1024)
-            val videoBufferInfo = MediaCodec.BufferInfo()
-            while (true) {
-                val sampleSize = videoExtractor.readSampleData(videoBuffer, 0)
-                if (sampleSize < 0) break
-                videoBufferInfo.set(0, sampleSize, videoExtractor.sampleTime, videoExtractor.sampleFlags)
-                muxer.writeSampleData(videoTrackIndex, videoBuffer, videoBufferInfo)
-                videoExtractor.advance()
-            }
-            
-            val audioBuffer = ByteBuffer.allocate(1024 * 1024)
-            val audioBufferInfo = MediaCodec.BufferInfo()
-            val maxDurationUs = durationSeconds * 1000000L
-            while (true) {
-                val sampleSize = audioExtractor.readSampleData(audioBuffer, 0)
-                if (sampleSize < 0) break
-                val sampleTime = audioExtractor.sampleTime
-                if (sampleTime > maxDurationUs) break
-                audioBufferInfo.set(0, sampleSize, sampleTime, audioExtractor.sampleFlags)
-                muxer.writeSampleData(audioTrackIndex, audioBuffer, audioBufferInfo)
-                audioExtractor.advance()
-            }
-            muxer.stop()
-            muxer.release()
-        } finally {
-            videoExtractor.release()
-            audioExtractor.release()
-        }
+        val overlay = FFmpegTextOverlay(context)
+        overlay.nativeMergeAudioVideo(videoPath, audioPath, outputPath, durationSeconds)
     }
 }

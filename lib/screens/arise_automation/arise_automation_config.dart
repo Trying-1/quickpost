@@ -16,6 +16,10 @@ class AriseAutomationConfig {
   Color strokeColor;
   int videoDuration; // In seconds
   int fps;
+  bool fadeWholeVideo;
+  double imageScale;
+  double backgroundBrightness;
+  double backgroundSaturation;
 
   AriseAutomationConfig({
     this.paddingColor = Colors.black,
@@ -28,6 +32,10 @@ class AriseAutomationConfig {
     this.strokeColor = Colors.white,
     this.videoDuration = 8,
     this.fps = 30,
+    this.fadeWholeVideo = true,
+    this.imageScale = 0.9,
+    this.backgroundBrightness = 1.0,
+    this.backgroundSaturation = 1.0,
   });
 
   Map<String, dynamic> toMap() {
@@ -44,6 +52,10 @@ class AriseAutomationConfig {
       'fps': fps,
       'targetWidth': targetWidth,
       'targetHeight': targetHeight,
+      'fadeWholeVideo': fadeWholeVideo,
+      'imageScale': imageScale,
+      'backgroundBrightness': backgroundBrightness,
+      'backgroundSaturation': backgroundSaturation,
     };
   }
 

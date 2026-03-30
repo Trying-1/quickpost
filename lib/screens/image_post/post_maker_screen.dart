@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'single_image_post_screen.dart';
 import 'grid_post_screen.dart';
+import 'carousel_post_screen.dart';
 
 class PostMakerScreen extends StatefulWidget {
   final List<String>? sharedImagePaths;
@@ -61,9 +62,19 @@ class _PostMakerScreenState extends State<PostMakerScreen> {
       return;
     }
 
+    if (purpose == 'carousel_post') {
+      _selectedTemplate = 'carousel_post';
+      setState(() {});
+      return;
+    }
+
     // Fallback: infer from image count if provided
     if (paths != null && paths.isNotEmpty) {
-      _selectedTemplate = paths.length > 1 ? 'grid_post' : 'single_image_post';
+      if (paths.length > 1) {
+        _selectedTemplate = 'choose_multiple';
+      } else {
+        _selectedTemplate = 'single_image_post';
+      }
       setState(() {});
       return;
     }
@@ -75,6 +86,41 @@ class _PostMakerScreenState extends State<PostMakerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_selectedTemplate == 'choose_multiple') {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Multiple Images Detected')),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('How would you like to format these images?', style: TextStyle(fontSize: 16)),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () => setState(() => _selectedTemplate = 'carousel_post'),
+                icon: const Icon(Icons.view_carousel),
+                label: const Text('Create Carousel Post (Swipeable)'),
+                style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () => setState(() => _selectedTemplate = 'grid_post'),
+                icon: const Icon(Icons.grid_view),
+                label: const Text('Create Grid Post (Collage)'),
+                style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_selectedTemplate == 'carousel_post') {
+      return CarouselPostScreen(
+        sharedImagePaths: widget.sharedImagePaths,
+        sharedPurpose: widget.sharedPurpose,
+      );
+    }
+
     if (_selectedTemplate == 'grid_post') {
       return GridPostScreen(
         sharedImagePaths: widget.sharedImagePaths,

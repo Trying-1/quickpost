@@ -42,11 +42,9 @@ class AudioBackupService {
       
       // Create subdirectories
       final audioDir = Directory('${exportDir.path}/audio');
-      final thumbDir = Directory('${exportDir.path}/thumbnails');
       await audioDir.create();
-      await thumbDir.create();
       
-      // Copy audio files and thumbnails
+      // Copy audio files
       final audioMetadata = <Map<String, dynamic>>[];
       final totalAudio = allAudio.length;
 
@@ -76,22 +74,12 @@ class AudioBackupService {
             final newAudioPath = '${audioDir.path}/${audio.id}.m4a';
             await audioFile.copy(newAudioPath);
             
-            // Copy thumbnail if exists
-            String? newThumbnailPath;
-            if (audio.thumbnailPath != null) {
-              final thumbFile = File(audio.thumbnailPath!);
-              if (await thumbFile.exists()) {
-                newThumbnailPath = '${thumbDir.path}/${audio.id}.jpg';
-                await thumbFile.copy(newThumbnailPath);
-              }
-            }
-            
             // Store metadata
             audioMetadata.add({
               'id': audio.id,
               'name': audio.name,
               'audioFileName': '${audio.id}.m4a',
-              'thumbnailFileName': audio.thumbnailPath != null ? '${audio.id}.jpg' : null,
+              'thumbnailFileName': null,
               'durationMs': audio.durationMs,
               'dateExtracted': audio.dateExtracted.toIso8601String(),
               'originalVideoPath': audio.originalVideoPath,
@@ -163,15 +151,30 @@ class AudioBackupService {
       _resetCancellation();
       print('[AudioBackupService] SAF import requested from treeUri: $treeUri');
 
+      // Listen for native progress events during SAF import.
+      // NOTE: MethodChannel supports a single handler process-wide, so we set it here
+      // for the duration of the import.
+      _channel.setMethodCallHandler((call) async {
+        if (call.method == 'onSafImportProgress') {
+          final args = call.arguments;
+          if (args is Map) {
+            final current = (args['current'] as int?) ?? 0;
+            final total = (args['total'] as int?) ?? 0;
+            final status = (args['status'] as String?) ?? 'Importing...';
+            final safeTotal = total <= 0 ? 1 : total;
+            final progress = (current / safeTotal).clamp(0.0, 1.0);
+            onProgress?.call(progress, status, current, total);
+          }
+        }
+      });
+
       // Get destination directories in app storage
       final audioStorageDir = await AudioLibraryService.getAudioStorageDirectory();
-      final thumbStorageDir = await AudioLibraryService.getThumbnailStorageDirectory();
 
       // Ask native side to read manifest.json and copy files into our dirs
       final resultMap = await _channel.invokeMethod<dynamic>('importBackupFromSaf', {
         'treeUri': treeUri,
         'audioDestDir': audioStorageDir.path,
-        'thumbDestDir': thumbStorageDir.path,
       });
 
       if (resultMap == null) {
@@ -257,7 +260,6 @@ class AudioBackupService {
               ? durationValue
               : (durationValue as num).toInt();
 
-          final thumbnailPath = audioDyn['thumbnailPath'] as String?;
           final originalVideoPath = audioDyn['originalVideoPath'] as String?;
           var folderId = (audioDyn['folderId'] as String?) ?? 'default';
 
@@ -276,7 +278,7 @@ class AudioBackupService {
             audioPath: destAudioFile.path,
             durationMs: durationMs,
             fileSizeBytes: fileSize,
-            thumbnailPath: thumbnailPath,
+            thumbnailPath: null,
             originalVideoPath: originalVideoPath,
             folderId: folderId,
           );
@@ -303,6 +305,9 @@ class AudioBackupService {
     } catch (e) {
       print('[AudioBackupService] importAudioLibraryFromSafUri error: $e');
       throw Exception('Failed to import audio library via SAF: $e');
+    } finally {
+      // Detach handler after import completes.
+      _channel.setMethodCallHandler(null);
     }
   }
   
@@ -330,7 +335,6 @@ class AudioBackupService {
       
       // Get storage directories
       final audioStorageDir = await AudioLibraryService.getAudioStorageDirectory();
-      final thumbStorageDir = await AudioLibraryService.getThumbnailStorageDirectory();
       
       int importedCount = 0;
       int skippedCount = 0;
@@ -389,18 +393,6 @@ class AudioBackupService {
             final destAudioFile = File('${audioStorageDir.path}/audio_$timestamp.m4a');
             await sourceAudioFile.copy(destAudioFile.path);
             
-            // Copy thumbnail if exists
-            String? destThumbnailPath;
-            final thumbnailFileName = audioData['thumbnailFileName'] as String?;
-            if (thumbnailFileName != null) {
-              final sourceThumbnailFile = File('${backupDir.path}/thumbnails/$thumbnailFileName');
-              if (await sourceThumbnailFile.exists()) {
-                final destThumbnailFile = File('${thumbStorageDir.path}/thumb_$timestamp.jpg');
-                await sourceThumbnailFile.copy(destThumbnailFile.path);
-                destThumbnailPath = destThumbnailFile.path;
-              }
-            }
-            
             // Get file size
             final fileSize = await destAudioFile.length();
 
@@ -422,7 +414,7 @@ class AudioBackupService {
               audioPath: destAudioFile.path,
               durationMs: audioData['durationMs'] as int,
               fileSizeBytes: fileSize,
-              thumbnailPath: destThumbnailPath,
+              thumbnailPath: null,
               originalVideoPath: audioData['originalVideoPath'] as String?,
               folderId: audioData['folderId'] as String? ?? 'default',
             );

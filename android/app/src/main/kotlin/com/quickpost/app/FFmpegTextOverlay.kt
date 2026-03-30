@@ -69,6 +69,10 @@ class FFmpegTextOverlay(private val context: Context) {
         crf: Int,
         duration: Double,
         transition: String,
+        showShadow: Boolean,
+        shadowColor: String,
+        shadowX: Int,
+        shadowY: Int,
     ): Int
 
     fun addTextToImageVideo(
@@ -90,13 +94,18 @@ class FFmpegTextOverlay(private val context: Context) {
         crf: Int,
         duration: Double,
         transition: String,
+        showShadow: Boolean = false,
+        shadowColor: String = "#000000",
+        shadowX: Int = 2,
+        shadowY: Int = 2,
     ): Int {
         Log.i(TAG, "addTextToImageVideo called: input=$inputPath, duration=$duration, transition=$transition")
         if (!isNativeLoaded) return -999
         return nativeAddTextToImageVideo(
             inputPath, outputPath, text, fontSize, fontColor, boxColor, boxHeight,
             horizontalPadding, verticalPadding, hAlign, vAlign, lineHeight, position,
-            fontPath, preset, crf, duration, transition
+            fontPath, preset, crf, duration, transition,
+            showShadow, shadowColor, shadowX, shadowY
         )
     }
 

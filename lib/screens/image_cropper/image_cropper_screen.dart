@@ -500,16 +500,12 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
     setState(() => _isLoading = true);
     
     try {
-      // Get original image dimensions
       final File currentImageFile = _selectedImages[_currentImageIndex];
-      final Uint8List imageBytes = await currentImageFile.readAsBytes();
-      final img.Image? tempImage = img.decodeImage(imageBytes);
-      if (tempImage == null) return;
       
-      final int originalWidth = tempImage.width;
-      final int originalHeight = tempImage.height;
+      // Calculate crop coordinates in image pixels
+      final int originalWidth = _currentUiImage!.width;
+      final int originalHeight = _currentUiImage!.height;
       
-      // Calculate the actual image display area (accounting for aspect ratio preservation)
       final double imageAspectRatio = originalWidth / originalHeight;
       final double displayAspectRatio = _imageDisplayWidth / _imageDisplayHeight;
       
@@ -519,20 +515,16 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
       double imageDisplayHeight = _imageDisplayHeight;
       
       if (imageAspectRatio > displayAspectRatio) {
-        // Image is wider than display - fit to height
         imageDisplayWidth = _imageDisplayHeight * imageAspectRatio;
         imageDisplayX = (_imageDisplayWidth - imageDisplayWidth) / 2;
       } else {
-        // Image is taller than display - fit to width
         imageDisplayHeight = _imageDisplayWidth / imageAspectRatio;
         imageDisplayY = (_imageDisplayHeight - imageDisplayHeight) / 2;
       }
       
-      // Calculate crop coordinates in image pixels
       final double scaleX = originalWidth / imageDisplayWidth;
       final double scaleY = originalHeight / imageDisplayHeight;
       
-      // Adjust crop coordinates to account for image positioning
       final double adjustedCropX = _cropX - imageDisplayX;
       final double adjustedCropY = _cropY - imageDisplayY;
       
@@ -540,120 +532,36 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
       final int cropY = (adjustedCropY * scaleY).round().clamp(0, originalHeight);
       final int cropWidth = (_cropWidth * scaleX).round().clamp(1, originalWidth - cropX);
       final int cropHeight = (_cropHeight * scaleY).round().clamp(1, originalHeight - cropY);
-      
-      // Use the already loaded image for cropping
-      final img.Image originalImage = tempImage;
-      
-      final img.Image croppedImage = img.copyCrop(
-        originalImage,
-        x: cropX,
-        y: cropY,
-        width: cropWidth,
-        height: cropHeight,
-      );
-      
-      // Save cropped image
-      final Directory tempDir = await getTemporaryDirectory();
-      final String fileName = 'cropped_${_currentImageIndex}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final File croppedFile = File('${tempDir.path}/$fileName');
-      
-      final Uint8List croppedBytes = img.encodeJpg(croppedImage, quality: 95);
-      await croppedFile.writeAsBytes(croppedBytes);
-      
-      // Store cropped image data (preserve display settings)
-      _croppedImages[_currentImageIndex].file = croppedFile;
-      _croppedImages[_currentImageIndex].cropX = cropX;
-      _croppedImages[_currentImageIndex].cropY = cropY;
-      _croppedImages[_currentImageIndex].cropWidth = cropWidth;
-      _croppedImages[_currentImageIndex].cropHeight = cropHeight;
-      
-      // Save current display crop settings
-      _saveCurrentCropSettings();
-      
-      // Save to gallery and show dialog
-      await _saveSingleImageToGallery(croppedFile);
+
+      final startTime = DateTime.now();
+      final List<dynamic>? results = await _channel.invokeMethod('cropImagesBatch', {
+        'items': [{
+          'inputPath': currentImageFile.path,
+          'x': cropX,
+          'y': cropY,
+          'width': cropWidth,
+          'height': cropHeight,
+          'rotation': _rotation,
+          'isFlipped': _flipHorizontal,
+        }]
+      });
+      final endTime = DateTime.now();
+      final duration = endTime.difference(startTime).inMilliseconds / 1000.0;
+
+      if (results != null && results.isNotEmpty) {
+        final path = results.first as String;
+        _showSingleCropSuccessDialog(path, duration);
+      }
       
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error cropping image: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('Error cropping image: $e'), backgroundColor: Colors.red),
       );
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _cropImageAtIndex(int index) async {
-    if (_currentUiImage == null) return;
-    
-    try {
-      // Get original image dimensions
-      final File currentImageFile = _selectedImages[index];
-      final Uint8List imageBytes = await currentImageFile.readAsBytes();
-      final img.Image? tempImage = img.decodeImage(imageBytes);
-      if (tempImage == null) return;
-      
-      final int originalWidth = tempImage.width;
-      final int originalHeight = tempImage.height;
-      
-      // Calculate the actual image display area
-      final double imageAspectRatio = originalWidth / originalHeight;
-      final double displayAspectRatio = _imageDisplayWidth / _imageDisplayHeight;
-      
-      double imageDisplayX = 0;
-      double imageDisplayY = 0;
-      double imageDisplayWidth = _imageDisplayWidth;
-      double imageDisplayHeight = _imageDisplayHeight;
-      
-      if (imageAspectRatio > displayAspectRatio) {
-        imageDisplayWidth = _imageDisplayHeight * imageAspectRatio;
-        imageDisplayX = (_imageDisplayWidth - imageDisplayWidth) / 2;
-      } else {
-        imageDisplayHeight = _imageDisplayWidth / imageAspectRatio;
-        imageDisplayY = (_imageDisplayHeight - imageDisplayHeight) / 2;
-      }
-      
-      // Calculate crop coordinates in image pixels
-      final double scaleX = originalWidth / imageDisplayWidth;
-      final double scaleY = originalHeight / imageDisplayHeight;
-      
-      final double adjustedCropX = _cropX - imageDisplayX;
-      final double adjustedCropY = _cropY - imageDisplayY;
-      
-      final int cropX = (adjustedCropX * scaleX).round().clamp(0, originalWidth);
-      final int cropY = (adjustedCropY * scaleY).round().clamp(0, originalHeight);
-      final int cropWidth = (_cropWidth * scaleX).round().clamp(1, originalWidth - cropX);
-      final int cropHeight = (_cropHeight * scaleY).round().clamp(1, originalHeight - cropY);
-      
-      final img.Image croppedImage = img.copyCrop(
-        tempImage,
-        x: cropX,
-        y: cropY,
-        width: cropWidth,
-        height: cropHeight,
-      );
-      
-      // Save cropped image
-      final Directory tempDir = await getTemporaryDirectory();
-      final String fileName = 'cropped_${index}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final File croppedFile = File('${tempDir.path}/$fileName');
-      
-      final Uint8List croppedBytes = img.encodeJpg(croppedImage, quality: 95);
-      await croppedFile.writeAsBytes(croppedBytes);
-      
-      // Store cropped image data
-      _croppedImages[index].file = croppedFile;
-      _croppedImages[index].cropX = cropX;
-      _croppedImages[index].cropY = cropY;
-      _croppedImages[index].cropWidth = cropWidth;
-      _croppedImages[index].cropHeight = cropHeight;
-      
-    } catch (e) {
-      // Silently fail - UI will show uncropped state
-    }
-  }
 
   Future<void> _scanMediaFile(String filePath) async {
     try {
@@ -667,318 +575,298 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
   }
 
   Future<void> _exportAllCroppedImages() async {
-    if (_selectedImages.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No images to export'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-    
+    if (_selectedImages.isEmpty) return;
     setState(() => _isLoading = true);
     
     try {
-      // Save current crop settings before exporting
-      _saveCurrentCropSettings();
+      final List<Map<String, dynamic>> items = [];
       
-      // Request storage permission
-      await Permission.storage.request();
-      
-      // Crop all images that haven't been cropped yet
       for (int i = 0; i < _selectedImages.length; i++) {
-        if (_croppedImages[i].file == null) {
-          // Temporarily switch to this image and crop it
-          final int previousIndex = _currentImageIndex;
-          _currentImageIndex = i;
-          await _loadCurrentImage();
-          await _cropImageAtIndex(i);
-          _currentImageIndex = previousIndex;
-        }
-      }
-      
-      // Reload current image
-      await _loadCurrentImage();
-      
-      String? savedPath;
-      int exportedCount = 0;
-      
-      // Try Pictures directory first (same as post maker)
-      final Directory pictures = Directory('/storage/emulated/0/Pictures/Image Cropper');
-      try {
-        await pictures.create(recursive: true);
+        final data = _croppedImages[i];
+        final File file = _selectedImages[i];
         
-        for (int i = 0; i < _croppedImages.length; i++) {
-          final CroppedImageData data = _croppedImages[i];
-          if (data.file != null && await data.file!.exists()) {
-            final String fileName = 'cropped_${i + 1}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-            final File destinationFile = File('${pictures.path}/$fileName');
-            await data.file!.copy(destinationFile.path);
-            
-            if (await destinationFile.exists() && await destinationFile.length() > 0) {
-              await _scanMediaFile(destinationFile.path);
-              exportedCount++;
-              savedPath = pictures.path;
-            }
-          }
-        }
-      } catch (e) {
-        // Try next directory
-      }
-      
-      // Try DCIM if Pictures failed
-      if (exportedCount == 0) {
-        final Directory dcim = Directory('/storage/emulated/0/DCIM/Image Cropper');
-        try {
-          await dcim.create(recursive: true);
-          
-          for (int i = 0; i < _croppedImages.length; i++) {
-            final CroppedImageData data = _croppedImages[i];
-            if (data.file != null && await data.file!.exists()) {
-              final String fileName = 'cropped_${i + 1}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-              final File destinationFile = File('${dcim.path}/$fileName');
-              await data.file!.copy(destinationFile.path);
-              
-              if (await destinationFile.exists() && await destinationFile.length() > 0) {
-                await _scanMediaFile(destinationFile.path);
-                exportedCount++;
-                savedPath = dcim.path;
-              }
-            }
-          }
-        } catch (e) {
-          // Try next directory
-        }
-      }
-      
-      if (exportedCount > 0 && savedPath != null) {
-        // Increment export count and check for review request
-        AppReviewService().incrementExportCount();
-        AppReviewService().checkAndRequestReview();
+        final bytes = await file.readAsBytes();
+        final codec = await ui.instantiateImageCodec(bytes);
+        final frame = await codec.getNextFrame();
+        final originalWidth = frame.image.width;
+        final originalHeight = frame.image.height;
         
-        _showExportSuccessDialog(exportedCount, savedPath);
-      } else {
-        throw Exception('Failed to export any images');
+        final double imageAspectRatio = originalWidth / originalHeight;
+        final double displayAspectRatio = _imageDisplayWidth / _imageDisplayHeight;
+        
+        double imageDisplayX = 0;
+        double imageDisplayY = 0;
+        double imageDisplayWidth = _imageDisplayWidth;
+        double imageDisplayHeight = _imageDisplayHeight;
+        
+        if (imageAspectRatio > displayAspectRatio) {
+          imageDisplayWidth = _imageDisplayHeight * imageAspectRatio;
+          imageDisplayX = (_imageDisplayWidth - imageDisplayWidth) / 2;
+        } else {
+          imageDisplayHeight = _imageDisplayWidth / imageAspectRatio;
+          imageDisplayY = (_imageDisplayHeight - imageDisplayHeight) / 2;
+        }
+        
+        final double scaleX = originalWidth / imageDisplayWidth;
+        final double scaleY = originalHeight / imageDisplayHeight;
+        
+        final dX = data.displayCropWidth > 0 ? data.displayCropX : _cropX;
+        final dY = data.displayCropWidth > 0 ? data.displayCropY : _cropY;
+        final dW = data.displayCropWidth > 0 ? data.displayCropWidth : _cropWidth;
+        final dH = data.displayCropWidth > 0 ? data.displayCropHeight : _cropHeight;
+        final rot = data.displayCropWidth > 0 ? data.rotation : _rotation;
+        final flip = data.displayCropWidth > 0 ? data.flipHorizontal : _flipHorizontal;
+
+        final adjustedCropX = dX - imageDisplayX;
+        final adjustedCropY = dY - imageDisplayY;
+        
+        final int cropX = (adjustedCropX * scaleX).round().clamp(0, originalWidth);
+        final int cropY = (adjustedCropY * scaleY).round().clamp(0, originalHeight);
+        final int cropWidth = (dW * scaleX).round().clamp(1, originalWidth - cropX);
+        final int cropHeight = (dH * scaleY).round().clamp(1, originalHeight - cropY);
+
+        items.add({
+          'inputPath': file.path,
+          'x': cropX,
+          'y': cropY,
+          'width': cropWidth,
+          'height': cropHeight,
+          'rotation': rot,
+          'isFlipped': flip,
+        });
+      }
+
+      final startTime = DateTime.now();
+      final List<dynamic>? results = await _channel.invokeMethod('cropImagesBatch', {
+        'items': items
+      });
+      final endTime = DateTime.now();
+      final duration = endTime.difference(startTime).inMilliseconds / 1000.0;
+
+      if (results != null && results.isNotEmpty) {
+        // Cache the result files back to the state so we can navigate to text box later
+        for (int i = 0; i < results.length; i++) {
+          _croppedImages[i].file = File(results[i] as String);
+        }
+        _showExportSuccessDialog(results.length, 'Gallery', duration);
       }
       
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('❌ Error exporting images: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('Error exporting images: $e'), backgroundColor: Colors.red),
       );
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _saveSingleImageToGallery(File croppedFile) async {
-    try {
-      // Request storage permission
-      await Permission.storage.request();
-      await Permission.photos.request();
-      
-      String? savedPath;
-      
-      // Try Pictures directory first
-      final Directory pictures = Directory('/storage/emulated/0/Pictures/Image Cropper');
-      try {
-        await pictures.create(recursive: true);
-        final String fileName = 'cropped_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        final File destinationFile = File('${pictures.path}/$fileName');
-        await croppedFile.copy(destinationFile.path);
-        if (await destinationFile.exists() && await destinationFile.length() > 0) {
-          await _scanMediaFile(destinationFile.path);
-          savedPath = destinationFile.path;
-        }
-      } catch (e) {
-        // Try next directory
-      }
-      
-      // Try DCIM if Pictures failed
-      if (savedPath == null) {
-        final Directory dcim = Directory('/storage/emulated/0/DCIM/Image Cropper');
-        try {
-          await dcim.create(recursive: true);
-          final String fileName = 'cropped_${DateTime.now().millisecondsSinceEpoch}.jpg';
-          final File destinationFile = File('${dcim.path}/$fileName');
-          await croppedFile.copy(destinationFile.path);
-          if (await destinationFile.exists() && await destinationFile.length() > 0) {
-            await _scanMediaFile(destinationFile.path);
-            savedPath = destinationFile.path;
-          }
-        } catch (e) {
-          // Try next directory
-        }
-      }
-      
-      if (savedPath != null) {
-        _showSingleCropSuccessDialog(savedPath);
-      } else {
-        throw Exception('Failed to save to gallery');
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error saving to gallery: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
 
-  void _showSingleCropSuccessDialog(String path) {
-    debugPrint('[ImageCropper] Showing success dialog for path: $path');
+  void _showSingleCropSuccessDialog(String path, double duration) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
         return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.15),
+                  blurRadius: 30,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Header with Gradient
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  height: 140,
+                  width: double.infinity,
                   decoration: BoxDecoration(
-                    color: Colors.green[50],
-                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [Colors.purple[700]!, Colors.purple[400]!],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(28),
+                      topRight: Radius.circular(28),
+                    ),
                   ),
-                  child: Icon(
-                    Icons.check_circle,
-                    color: Colors.green[600],
-                    size: 48,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'Crop Saved!',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Image cropped and saved to gallery',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: Colors.grey[700],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
+                  child: Stack(
+                    alignment: Alignment.center,
                     children: [
-                      Icon(Icons.folder, size: 18, color: Colors.grey[600]),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          path,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[700],
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                      // Background pattern or glow
+                      Positioned(
+                        right: -20,
+                        top: -20,
+                        child: CircleAvatar(
+                          radius: 60,
+                          backgroundColor: Colors.white.withOpacity(0.1),
                         ),
+                      ),
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white.withOpacity(0.3)),
+                            ),
+                            child: const Icon(
+                              Icons.auto_awesome,
+                              color: Colors.white,
+                              size: 40,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Crop Perfected!',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close, size: 18),
-                        label: const Text('Close'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.grey[700],
-                          side: BorderSide(color: Colors.grey[300]!),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
+                
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    children: [
+                      // Info Section
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.blue[50],
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.speed, size: 16, color: Colors.blue[700]),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '${duration.toStringAsFixed(2)}s',
+                                  style: TextStyle(
+                                    color: Colors.blue[800],
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
+                          const SizedBox(width: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.purple[50],
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.bolt, size: 16, color: Colors.purple[700]),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'GPU Engine',
+                                  style: TextStyle(
+                                    color: Colors.purple[800],
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        'Your image has been processed using our hardware-accelerated Pro Engine.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: Colors.grey[600],
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () async {
-                          debugPrint('[ImageCropper] Sending to Text Box: $path');
-                          final file = File(path);
-                          if (await file.exists()) {
-                            final length = await file.length();
-                            debugPrint('[ImageCropper] File exists, size: $length bytes');
-                            if (length > 0) {
+                      const SizedBox(height: 24),
+                      
+                      // Action Buttons
+                      Column(
+                        children: [
+                          ElevatedButton(
+                            onPressed: () async {
                               Navigator.of(context).pop();
                               HomeShellScreen.navigateToTab(
-                                4, // Text Box Tab
+                                5,
                                 paths: [path],
                                 purpose: 'cropper',
                               );
-                            } else {
-                              debugPrint('[ImageCropper] ERROR: File is empty');
-                            }
-                          } else {
-                            debugPrint('[ImageCropper] ERROR: File does not exist at path: $path');
-                          }
-                        },
-                        icon: const Icon(Icons.text_fields, size: 18),
-                        label: const Text('Add Text'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.purple[600],
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.purple[600],
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size(double.infinity, 54),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              elevation: 0,
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.text_fields),
+                                SizedBox(width: 12),
+                                Text('Add Text Overlay', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              ],
+                            ),
                           ),
-                          elevation: 0,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () async {
-                          Navigator.of(context).pop();
-                          try {
-                            await OpenFile.open(path);
-                          } catch (e) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Could not open file')),
-                            );
-                          }
-                        },
-                        icon: const Icon(Icons.photo_library, size: 18),
-                        label: const Text('Open'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green[600],
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () async {
+                                    Navigator.of(context).pop();
+                                    await OpenFile.open(path);
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                    minimumSize: const Size(0, 50),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                    side: BorderSide(color: Colors.grey[300]!),
+                                  ),
+                                  child: Text('View Image', style: TextStyle(color: Colors.grey[800], fontWeight: FontWeight.bold)),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextButton(
+                                  onPressed: () => Navigator.of(context).pop(),
+                                  style: TextButton.styleFrom(
+                                    minimumSize: const Size(0, 50),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                  ),
+                                  child: Text('Dismiss', style: TextStyle(color: Colors.grey[500], fontWeight: FontWeight.bold)),
+                                ),
+                              ),
+                            ],
                           ),
-                          elevation: 0,
-                        ),
+                        ],
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -988,157 +876,213 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
     );
   }
 
-  void _showExportSuccessDialog(int count, String path) {
+  void _showExportSuccessDialog(int count, String path, double duration) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
         return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.15),
+                  blurRadius: 30,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Header with Success Gradient
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  height: 140,
+                  width: double.infinity,
                   decoration: BoxDecoration(
-                    color: Colors.green[50],
-                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [Colors.green[700]!, Colors.green[400]!],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(28),
+                      topRight: Radius.circular(28),
+                    ),
                   ),
-                  child: Icon(
-                    Icons.check_circle,
-                    color: Colors.green[600],
-                    size: 48,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'Export Successful!',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '$count cropped image${count > 1 ? 's' : ''} exported successfully',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: Colors.grey[700],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
+                  child: Stack(
+                    alignment: Alignment.center,
                     children: [
-                      Icon(Icons.folder, size: 18, color: Colors.grey[600]),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          path,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[700],
+                      Positioned(
+                        left: -10,
+                        bottom: -10,
+                        child: Icon(Icons.check_circle_outline, size: 100, color: Colors.white.withOpacity(0.1)),
+                      ),
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.batch_prediction_rounded,
+                              color: Colors.white,
+                              size: 40,
+                            ),
                           ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Batch Complete!',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close, size: 18),
-                        label: const Text('Close'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.grey[700],
-                          side: BorderSide(color: Colors.grey[300]!),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
+                
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    children: [
+                      // Subtitle
+                      Text(
+                        'Successfully processed $count images',
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87,
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () async {
-                          // Get the first cropped image file path for the text box
-                          final firstCroppedPath = _croppedImages.firstWhere((img) => img.file != null).file!.path;
-                          debugPrint('[ImageCropper-Bulk] Sending to Text Box: $firstCroppedPath');
-                          final file = File(firstCroppedPath);
-                          if (await file.exists()) {
-                            final length = await file.length();
-                            debugPrint('[ImageCropper-Bulk] File exists, size: $length bytes');
-                            if (length > 0) {
-                              Navigator.of(context).pop();
-                              HomeShellScreen.navigateToTab(
-                                4, // Text Box Tab
-                                paths: [firstCroppedPath],
-                                purpose: 'cropper',
-                              );
-                            } else {
-                              debugPrint('[ImageCropper-Bulk] ERROR: File is empty');
-                            }
-                          } else {
-                            debugPrint('[ImageCropper-Bulk] ERROR: File does not exist at path: $firstCroppedPath');
-                          }
+                      const SizedBox(height: 16),
+                      
+                      // Metrics Cards
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.blue[50],
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.blue[100]!),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(Icons.timer_outlined, color: Colors.blue[700], size: 20),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${duration.toStringAsFixed(2)}s',
+                                    style: TextStyle(
+                                      color: Colors.blue[900],
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 18,
+                                    ),
+                                  ),
+                                  Text('Total Time', style: TextStyle(color: Colors.blue[400], fontSize: 11)),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.orange[50],
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.orange[100]!),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(Icons.bolt_rounded, color: Colors.orange[700], size: 20),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'v2.0',
+                                    style: TextStyle(
+                                      color: Colors.orange[900],
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 18,
+                                    ),
+                                  ),
+                                  Text('GPU Engine', style: TextStyle(color: Colors.orange[400], fontSize: 11)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      
+                      const SizedBox(height: 24),
+                      
+                      // Primary Action
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          final firstImg = _croppedImages.firstWhere((img) => img.file != null);
+                          HomeShellScreen.navigateToTab(
+                            5,
+                            paths: [firstImg.file!.path],
+                            purpose: 'cropper',
+                          );
                         },
-                        icon: const Icon(Icons.text_fields, size: 18),
-                        label: const Text('Add Text'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.purple[600],
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          elevation: 0,
+                          minimumSize: const Size(double.infinity, 54),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          elevation: 4,
+                          shadowColor: Colors.purple.withOpacity(0.4),
                         ),
+                        child: const Text('Design with Text', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () async {
-                          Navigator.of(context).pop();
-                          try {
-                            await OpenFile.open(path);
-                          } catch (e) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Could not open folder')),
-                            );
-                          }
-                        },
-                        icon: const Icon(Icons.folder_open, size: 18),
-                        label: const Text('Open'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green[600],
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
+                      const SizedBox(height: 12),
+                      
+                      // Secondary Actions
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextButton.icon(
+                              onPressed: () => Navigator.of(context).pop(),
+                              icon: const Icon(Icons.close),
+                              label: const Text('Dismiss'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.grey[600],
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                            ),
                           ),
-                          elevation: 0,
-                        ),
+                          Container(width: 1, height: 20, color: Colors.grey[200]),
+                          Expanded(
+                            child: TextButton.icon(
+                              onPressed: () async {
+                                Navigator.of(context).pop();
+                                await OpenFile.open(path);
+                              },
+                              icon: const Icon(Icons.folder_open),
+                              label: const Text('Gallery'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.green[700],
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),

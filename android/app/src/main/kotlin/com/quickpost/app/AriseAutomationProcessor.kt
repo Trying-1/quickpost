@@ -23,6 +23,7 @@ class AriseAutomationProcessor(private val context: Context) {
     
     interface ProgressCallback {
         fun onProgress(progress: Double)
+        fun onStep(step: String)
     }
     
     companion object {
@@ -33,8 +34,84 @@ class AriseAutomationProcessor(private val context: Context) {
         private const val I_FRAME_INTERVAL = 1
     }
     
+    private var preComputedBackground: Bitmap? = null
+
+    init {
+        try {
+            System.loadLibrary("myffmpeg")
+        } catch (e: Exception) {
+            android.util.Log.e("AriseAutomation", "Failed to load myffmpeg library", e)
+        }
+    }
+
+    private external fun nativeEncodeBitmapToYuv420SemiPlanar(bitmap: Bitmap, buffer: ByteBuffer, width: Int, height: Int)
+
+    private var rs: android.renderscript.RenderScript? = null
+    private var scriptBlur: android.renderscript.ScriptIntrinsicBlur? = null
+
+    private fun preComputeBackground(bitmap: Bitmap) {
+        val useBgBlur = automationSettings?.get("useBackgroundImage") as? Boolean ?: false
+        if (useBgBlur) {
+            val blurRadius = (automationSettings?.get("backgroundBlurRadius") as? Double ?: 20.0).toFloat()
+            val blurred = blurBitmapReusingRS(bitmap, blurRadius)
+            if (blurred != null) {
+                preComputedBackground = Bitmap.createScaledBitmap(blurred, VIDEO_WIDTH, VIDEO_HEIGHT, true)
+                if (blurred != preComputedBackground) {
+                    blurred.recycle()
+                }
+            }
+        } else {
+            val paddingColorStr = automationSettings?.get("paddingColor") as? String
+            val color = try { 
+                if (paddingColorStr != null) android.graphics.Color.parseColor(paddingColorStr) else android.graphics.Color.BLACK 
+            } catch (e: Exception) { 
+                android.graphics.Color.BLACK 
+            }
+            preComputedBackground = Bitmap.createBitmap(VIDEO_WIDTH, VIDEO_HEIGHT, Bitmap.Config.ARGB_8888)
+            preComputedBackground?.eraseColor(color)
+        }
+    }
+
+    private fun blurBitmapReusingRS(bitmap: Bitmap, radius: Float): Bitmap? {
+        if (radius <= 0) {
+            return bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, true)
+        }
+        try {
+            if (rs == null) {
+                rs = android.renderscript.RenderScript.create(context)
+                scriptBlur = android.renderscript.ScriptIntrinsicBlur.create(rs, android.renderscript.Element.U8_4(rs))
+            }
+            val input = android.renderscript.Allocation.createFromBitmap(rs, bitmap)
+            val output = android.renderscript.Allocation.createTyped(rs, input.type)
+            scriptBlur?.setRadius(radius.coerceIn(0.1f, 25f))
+            scriptBlur?.setInput(input)
+            scriptBlur?.forEach(output)
+            val blurred = Bitmap.createBitmap(bitmap.width, bitmap.height, bitmap.config ?: Bitmap.Config.ARGB_8888)
+            output.copyTo(blurred)
+            // Allocations should be destroyed but RS can be kept
+            input.destroy()
+            output.destroy()
+            return blurred
+        } catch (e: Exception) {
+            return bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, true)
+        }
+    }
+
+    private fun applyPreComputedBackground(canvas: android.graphics.Canvas, alpha: Int = 255) {
+        preComputedBackground?.let { bg ->
+            if (alpha < 255) {
+                val paint = android.graphics.Paint().apply { this.alpha = alpha }
+                canvas.drawBitmap(bg, 0f, 0f, paint)
+            } else {
+                canvas.drawBitmap(bg, 0f, 0f, null)
+            }
+        } ?: run {
+            canvas.drawColor(android.graphics.Color.BLACK)
+        }
+    }
+
     fun createVideo(
-        imagePath: String,
+        path: String,
         duration: Int,
         template: String,
         fadeInDuration: Double,
@@ -42,9 +119,10 @@ class AriseAutomationProcessor(private val context: Context) {
         zoomDuration: Double,
         audioPath: String?,
         qualitySettings: Map<String, Any>?,
-        callback: ProgressCallback
+        callback: ProgressCallback,
+        isVideo: Boolean = false
     ): String {
-        android.util.Log.d("AriseAutomation", "createVideo started: duration=$duration, template=$template, quality=$qualitySettings")
+        android.util.Log.d("AriseAutomation", "createVideo started: path=$path, duration=$duration, isVideo=$isVideo, audioPath=$audioPath")
         val filename = "Arise_${System.currentTimeMillis()}.mp4"
         val outputPath = (context as? MainActivity)?.getVideoOutputPath(filename)
             ?: run {
@@ -54,25 +132,82 @@ class AriseAutomationProcessor(private val context: Context) {
             }
         
         val outputFile = File(outputPath)
-        val bitmap = loadAndScaleBitmap(imagePath, VIDEO_WIDTH, VIDEO_HEIGHT)
         
-        if (template == "fade_in") {
-            createVideoFromBitmapWithEffects(bitmap, outputFile, duration, fadeInDuration, qualitySettings, callback)
+        // Track the actual duration used for encoding (needed for audio merge)
+        var effectiveDuration = duration
+        
+        if (isVideo) {
+            callback.onStep("Processing video frames...")
+            effectiveDuration = processVideo(path, outputFile, duration, fadeInDuration, qualitySettings, callback)
+            android.util.Log.d("AriseAutomation", "Video processed, effectiveDuration=${effectiveDuration}s, fileSize=${outputFile.length()}")
         } else {
-            createVideoFromBitmap(bitmap, outputFile, duration, qualitySettings, callback)
+            callback.onStep("Processing image with GPU...")
+            val bitmap = loadAndScaleBitmap(path, VIDEO_WIDTH, VIDEO_HEIGHT)
+            
+            val glProcessor = OpenGLVideoProcessor(context)
+            effectiveDuration = glProcessor.processImage(
+                bitmap,
+                outputFile,
+                duration,
+                if (template == "fade_in") fadeInDuration else 0.0,
+                automationSettings,
+                qualitySettings,
+                object : OpenGLVideoProcessor.ProgressCallback {
+                    override fun onProgress(progress: Double) = callback.onProgress(progress)
+                    override fun onStep(step: String) = callback.onStep(step)
+                }
+            )
+            bitmap.recycle()
+            android.util.Log.d("AriseAutomation", "Image processed, effectiveDuration=${effectiveDuration}s, fileSize=${outputFile.length()}")
         }
+
         
-        if (audioPath != null && File(audioPath).exists()) {
-            android.util.Log.d("AriseAutomation", "Adding audio to video: $audioPath")
+        // Audio merging logic:
+        // - If external audio is provided, use it
+        // - If isVideo and no external audio, extract audio from source video
+        // - If image with no audio, skip
+        val effectiveAudioPath = audioPath ?: if (isVideo) path else null
+        if (effectiveAudioPath != null && File(effectiveAudioPath).exists() && effectiveDuration > 0) {
+            callback.onStep("Merging audio...")
+            android.util.Log.d("AriseAutomation", "Merging audio from: $effectiveAudioPath, duration=${effectiveDuration}s")
             val tempFile = File(outputFile.parentFile, "temp_${System.currentTimeMillis()}.mp4")
             outputFile.renameTo(tempFile)
-            addAudioToVideo(tempFile.absolutePath, audioPath, outputFile.absolutePath, duration)
+            addAudioToVideo(tempFile.absolutePath, effectiveAudioPath, outputFile.absolutePath, effectiveDuration)
             tempFile.delete()
+        } else if (!outputFile.exists() || outputFile.length() < 1000) {
+            android.util.Log.e("AriseAutomation", "Output file is missing or too small: ${outputFile.length()} bytes")
         }
         
-        android.util.Log.d("AriseAutomation", "createVideo completed: ${outputFile.absolutePath}")
-        bitmap.recycle()
+        android.util.Log.d("AriseAutomation", "createVideo completed: ${outputFile.absolutePath}, size=${outputFile.length()}")
         return (context as? MainActivity)?.moveVideoToGallery(outputFile.absolutePath) ?: outputFile.absolutePath
+    }
+
+    /**
+     * Process video with OpenGL pipeline.
+     * @return the effective duration in seconds that was actually used
+     */
+    private fun processVideo(
+        videoPath: String,
+        outputFile: File,
+        targetDuration: Int,
+        fadeInDurationSeconds: Double,
+        qualitySettings: Map<String, Any>?,
+        callback: ProgressCallback
+    ): Int {
+        val glProcessor = OpenGLVideoProcessor(context)
+        val effectiveDuration = glProcessor.processVideo(
+            videoPath,
+            outputFile,
+            targetDuration,
+            fadeInDurationSeconds,
+            automationSettings,
+            qualitySettings,
+            object : OpenGLVideoProcessor.ProgressCallback {
+                override fun onProgress(progress: Double) = callback.onProgress(progress)
+                override fun onStep(step: String) = callback.onStep(step)
+            }
+        )
+        return effectiveDuration
     }
 
     fun saveProcessedImage(imagePath: String): String {
@@ -251,11 +386,11 @@ class AriseAutomationProcessor(private val context: Context) {
         try {
             for (frameIndex in 0 until totalFrames) {
                 val canvas = surface.lockCanvas(null)
-                applyBackground(canvas, bitmap)
+                applyPreComputedBackground(canvas)
                 drawProcessedBitmap(canvas, bitmap, automationSettings)
                 surface.unlockCanvasAndPost(canvas)
 
-                var outputBufferIndex = encoder.dequeueOutputBuffer(bufferInfo, 2500)
+                var outputBufferIndex = encoder.dequeueOutputBuffer(bufferInfo, 0)
                 while (outputBufferIndex >= 0) {
                     if (trackIndex == -1) {
                         trackIndex = muxer.addTrack(encoder.outputFormat)
@@ -278,12 +413,10 @@ class AriseAutomationProcessor(private val context: Context) {
                     }
                 }
 
-                if (frameIndex % 2 == 0 || frameIndex == totalFrames - 1) {
+                if (frameIndex % 15 == 0 || frameIndex == totalFrames - 1) {
                     val progress = (frameIndex + 1).toDouble() / totalFrames
-                    android.util.Log.i("AriseAutomation", "Reporting Progress: $progress (frame $frameIndex/$totalFrames)")
                     callback.onProgress(progress)
                 }
-                Thread.sleep(5)
             }
             encoder.signalEndOfInputStream()
             drainEncoder(encoder, muxer, trackIndex, bufferInfo)
@@ -319,11 +452,11 @@ class AriseAutomationProcessor(private val context: Context) {
                 paint.alpha = alpha
                 
                 val canvas = surface.lockCanvas(null)
-                applyBackground(canvas, bitmap, alpha)
+                applyPreComputedBackground(canvas, alpha)
                 drawProcessedBitmap(canvas, bitmap, automationSettings, paint)
                 surface.unlockCanvasAndPost(canvas)
 
-                var outputBufferIndex = encoder.dequeueOutputBuffer(bufferInfo, 2500)
+                var outputBufferIndex = encoder.dequeueOutputBuffer(bufferInfo, 0)
                 while (outputBufferIndex >= 0) {
                     if (trackIndex == -1) {
                         trackIndex = muxer.addTrack(encoder.outputFormat)
@@ -346,12 +479,10 @@ class AriseAutomationProcessor(private val context: Context) {
                     }
                 }
 
-                if (frameIndex % 2 == 0 || frameIndex == totalFrames - 1) {
+                if (frameIndex % 15 == 0 || frameIndex == totalFrames - 1) {
                     val progress = (frameIndex + 1).toDouble() / totalFrames
-                    android.util.Log.i("AriseAutomation", "Reporting Progress: $progress (frame $frameIndex/$totalFrames)")
                     callback.onProgress(progress)
                 }
-                Thread.sleep(5)
             }
             encoder.signalEndOfInputStream()
             drainEncoder(encoder, muxer, trackIndex, bufferInfo)
@@ -369,12 +500,41 @@ class AriseAutomationProcessor(private val context: Context) {
         }
 
         val useBgBlur = automationSettings?.get("useBackgroundImage") as? Boolean ?: false
+        val backgroundBrightness = (automationSettings?.get("backgroundBrightness") as? Double ?: 1.0).toFloat()
+        val backgroundSaturation = (automationSettings?.get("backgroundSaturation") as? Double ?: 1.0).toFloat()
+
         if (useBgBlur) {
             val blurRadius = (automationSettings?.get("backgroundBlurRadius") as? Double ?: 20.0).toFloat()
             val blurredBitmap = blurBitmap(bitmap, blurRadius)
             if (blurredBitmap != null) {
-                val dst = android.graphics.Rect(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT)
-                val blurPaint = android.graphics.Paint().apply { this.alpha = alpha }
+                // Calculate Aspect Fill (Crop) for CPU background
+                val fillScale = maxOf(VIDEO_WIDTH.toFloat() / bitmap.width, VIDEO_HEIGHT.toFloat() / bitmap.height)
+                val drawW = bitmap.width * fillScale
+                val drawH = bitmap.height * fillScale
+                val left = (VIDEO_WIDTH - drawW) / 2f
+                val top = (VIDEO_HEIGHT - drawH) / 2f
+                val dst = android.graphics.RectF(left, top, left + drawW, top + drawH)
+                
+                val blurPaint = android.graphics.Paint().apply { 
+                    this.alpha = alpha 
+                    this.isAntiAlias = true
+                    this.isFilterBitmap = true
+
+                    // Apply Brightness and Saturation via ColorMatrix
+                    val cm = android.graphics.ColorMatrix()
+                    cm.setSaturation(backgroundSaturation)
+                    
+                    // Brightness is a simple scaling of the RGB components
+                    val b = backgroundBrightness
+                    val brightnessMat = android.graphics.ColorMatrix(floatArrayOf(
+                        b, 0f, 0f, 0f, 0f,
+                        0f, b, 0f, 0f, 0f,
+                        0f, 0f, b, 0f, 0f,
+                        0f, 0f, 0f, 1f, 0f
+                    ))
+                    cm.postConcat(brightnessMat)
+                    this.colorFilter = android.graphics.ColorMatrixColorFilter(cm)
+                }
                 canvas.drawBitmap(blurredBitmap, null, dst, blurPaint)
                 blurredBitmap.recycle()
             }

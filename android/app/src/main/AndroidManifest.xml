@@ -143,6 +143,57 @@
             </intent-filter>
         </activity-alias>
 
+        <activity-alias
+            android:name=".ShareToWatermark"
+            android:targetActivity=".ShareReceiverActivity"
+            android:exported="true"
+            android:label="Add Watermark">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".ShareToVideoText"
+            android:targetActivity=".ShareReceiverActivity"
+            android:exported="true"
+            android:label="Add Video Text">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".ShareToCaptions"
+            android:targetActivity=".ShareReceiverActivity"
+            android:exported="true"
+            android:label="Add Captions">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+        </activity-alias>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

@@ -24,6 +24,9 @@ class ShareReceiverActivity : Activity() {
                 componentName.endsWith("ShareToVideoCropper") -> "video_cropper"
                 componentName.endsWith("ShareToTextBox") -> "text_box"
                 componentName.endsWith("ShareToPostMakerTemplates") -> "post_maker_templates"
+                componentName.endsWith("ShareToWatermark") -> "watermark"
+                componentName.endsWith("ShareToVideoText") -> "video_text"
+                componentName.endsWith("ShareToCaptions") -> "captions"
                 else -> "automation"
             }
 

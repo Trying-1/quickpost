@@ -9,12 +9,12 @@ import 'arise_automation_config.dart';
 import '../video_creator/widgets/audio_selector_widget.dart';
 
 class AriseAutomationScreen extends StatefulWidget {
-  final List<String>? sharedImagePaths;
+  final List<String>? sharedPaths; // Generic naming
   final String? sharedPurpose;
 
   const AriseAutomationScreen({
     super.key,
-    this.sharedImagePaths,
+    this.sharedPaths,
     this.sharedPurpose,
   });
 
@@ -25,7 +25,7 @@ class AriseAutomationScreen extends StatefulWidget {
 class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
   static const MethodChannel _platform = MethodChannel('com.quickpost.app/processor');
 
-  List<File> _selectedImages = [];
+  List<File> _selectedMedia = []; // renamed from _selectedImages to be generic
   final AriseAutomationConfig _config = AriseAutomationConfig.defaultConfig();
   int _selectedTabIndex = 0;
   bool _isProcessing = false;
@@ -56,8 +56,26 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
   @override
   void initState() {
     super.initState();
-    _handleIncomingSharedImages();
+    _handleIncomingSharedMedia();
     _setupProgressListened();
+  }
+
+  bool _isVideoFile(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.mp4') || 
+           lower.endsWith('.mov') || 
+           lower.endsWith('.mkv') || 
+           lower.endsWith('.avi');
+  }
+
+  void _handleIncomingSharedMedia() {
+    if (widget.sharedPurpose == 'automation' &&
+        widget.sharedPaths != null &&
+        widget.sharedPaths!.isNotEmpty) {
+      setState(() {
+        _selectedMedia = widget.sharedPaths!.map((path) => File(path)).toList();
+      });
+    }
   }
 
   void _cancelFakeProgressTimer() {
@@ -126,6 +144,19 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
     });
   }
 
+  String _currentStep = "";
+  final Map<String, int> _stepTimings = {};
+  DateTime? _stepStartTime;
+
+  void _recordStepTiming(String step) {
+    if (_stepStartTime != null && _currentStep.isNotEmpty) {
+      final duration = DateTime.now().difference(_stepStartTime!);
+      _stepTimings[_currentStep] = (_stepTimings[_currentStep] ?? 0) + duration.inMilliseconds;
+    }
+    _currentStep = step;
+    _stepStartTime = DateTime.now();
+  }
+
   void _setupProgressListened() {
     _platform.setMethodCallHandler((call) async {
       debugPrint('Automation: MethodChannel call received: ${call.method}');
@@ -152,9 +183,18 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
             }
           });
         }
+      } else if (call.method == 'onStep') {
+        final step = call.arguments as String;
+        if (mounted) {
+          setState(() {
+            _recordStepTiming(step);
+          });
+        }
       } else if (call.method == 'onComplete') {
+        _recordStepTiming(""); // Finalize last step
         debugPrint('Automation: Process complete');
       } else if (call.method == 'onError') {
+        _recordStepTiming(""); // Finalize last step
         debugPrint('Automation: Process error: ${call.arguments}');
       }
     });
@@ -163,29 +203,50 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
   @override
   void didUpdateWidget(covariant AriseAutomationScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.sharedImagePaths != oldWidget.sharedImagePaths) {
-      _handleIncomingSharedImages();
+    if (widget.sharedPaths != oldWidget.sharedPaths) {
+      _handleIncomingSharedMedia();
     }
   }
 
-  void _handleIncomingSharedImages() {
-    if (widget.sharedPurpose == 'automation' &&
-        widget.sharedImagePaths != null &&
-        widget.sharedImagePaths!.isNotEmpty) {
-      setState(() {
-        _selectedImages = widget.sharedImagePaths!.map((path) => File(path)).toList();
-      });
-    }
-  }
-
-  Future<void> _pickImages() async {
+  Future<void> _pickMedia() async {
     final picker = ImagePicker();
-    final List<XFile> images = await picker.pickMultiImage();
-    if (images.isEmpty) return;
-
-    setState(() {
-      _selectedImages = images.map((image) => File(image.path)).toList();
-    });
+    // Use pickMedia if available or build both
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Pick Images'),
+              onTap: () async {
+                Navigator.pop(context);
+                final List<XFile> images = await picker.pickMultiImage();
+                if (images.isNotEmpty) {
+                  setState(() {
+                    _selectedMedia.addAll(images.map((image) => File(image.path)));
+                  });
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.video_library),
+              title: const Text('Pick Video'),
+              onTap: () async {
+                Navigator.pop(context);
+                final XFile? video = await picker.pickVideo(source: ImageSource.gallery);
+                if (video != null) {
+                  setState(() {
+                    _selectedMedia.add(File(video.path));
+                  });
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -197,15 +258,15 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
   Future<void> _createVideoFromAutomation(String templateId) async {
     if (_isProcessing) return;
 
-    if (_selectedImages.isEmpty) {
-      await _pickImages();
+    if (_selectedMedia.isEmpty) {
+      await _pickMedia();
     }
-    if (_selectedImages.isEmpty || !mounted) return;
+    if (_selectedMedia.isEmpty || !mounted) return;
 
     setState(() {
       _isProcessing = true;
       _isBatchProcessing = true;
-      _batchTotalItems = _selectedImages.length;
+      _batchTotalItems = _selectedMedia.length;
       _batchCurrentIndex = 0;
       _nativeItemProgress = 0;
       _fakeItemProgress = 0;
@@ -245,14 +306,17 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
 
     try {
       final List<String> results = [];
-      for (int i = 0; i < _selectedImages.length; i++) {
+      for (int i = 0; i < _selectedMedia.length; i++) {
         _batchCurrentIndex = i;
         _nativeItemProgress = 0;
         _fakeItemProgress = 0;
-        final image = _selectedImages[i];
+        final media = _selectedMedia[i];
+        final isVideo = _isVideoFile(media.path);
+        
         final params = <String, dynamic>{
-          'imagePath': image.path,
-          'duration': finalDuration,
+          'imagePath': media.path, // Still using imagePath for consistency in MethodChannel
+          'isVideo': isVideo,
+          'duration': (_selectedAudio == null && isVideo) ? 0 : finalDuration,
           'template': templateId,
           'fadeInDuration': templateId == 'fade_in' ? _fadeInDurationSeconds : 0.0,
           'zoomScale': 1.2,
@@ -264,14 +328,17 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
             'crf': _qualityCrf,
             'tune': _qualityTune,
           },
+          'imageScale': _config.imageScale,
         };
 
         final blurEnabled = _config.useBackgroundImage;
         _startFakeProgressForCurrentItem(
-          estimatedMs: _estimateVideoProcessingMs(
-            blurEnabled: blurEnabled,
-            videoDurationSeconds: finalDuration,
-          ),
+          estimatedMs: isVideo 
+              ? (finalDuration * 1000 * 3) // Estimate 3x real-time for video automation
+              : _estimateVideoProcessingMs(
+                  blurEnabled: blurEnabled,
+                  videoDurationSeconds: finalDuration,
+                ),
         );
 
         final result = await _platform.invokeMethod('createVideo', params);
@@ -280,12 +347,13 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
 
         _setOverallProgressFromItemProgress(
           itemIndex: i + 1,
-          totalItems: _selectedImages.length,
+          totalItems: _selectedMedia.length,
           itemProgress: 0,
         );
       }
 
       _cancelAllProgressTimers();
+      _recordStepTiming(""); // Stop last step timing
       setState(() {
         _outputPaths = results;
         _isProcessing = false;
@@ -300,20 +368,7 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Created ${_outputPaths.length} videos'),
-          duration: const Duration(seconds: 5),
-          action: SnackBarAction(
-            label: 'OPEN LAST',
-            onPressed: () {
-              if (_outputPaths.isNotEmpty) {
-                OpenFile.open(_outputPaths.last);
-              }
-            },
-          ),
-        ),
-      );
+      _showSuccessDialog();
     } on PlatformException catch (e) {
       setState(() {
         _isProcessing = false;
@@ -331,6 +386,72 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
       if (!mounted) return;
       _showErrorDialog('Failed to create video: $e');
     }
+  }
+
+  void _showSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.green),
+            const SizedBox(width: 10),
+            const Text('Processing Complete'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Created ${_outputPaths.length} videos successfully.'),
+            const SizedBox(height: 16),
+            const Text('Performance Breakdown:', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Divider(),
+            ..._stepTimings.entries.map((entry) {
+              final seconds = entry.value / 1000.0;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(entry.key),
+                    Text('${seconds.toStringAsFixed(2)}s', style: const TextStyle(fontFamily: 'monospace')),
+                  ],
+                ),
+              );
+            }).toList(),
+            const Divider(),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Total Time', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text('${_elapsedTime.inSeconds}.${(_elapsedTime.inMilliseconds % 1000).toString().padLeft(3, '0')}s', 
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CLOSE'),
+          ),
+          if (_outputPaths.isNotEmpty)
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                OpenFile.open(_outputPaths.last);
+              },
+              icon: const Icon(Icons.play_arrow),
+              label: const Text('OPEN LAST'),
+            ),
+        ],
+      ),
+    );
   }
 
   void _showErrorDialog(String message) {
@@ -454,22 +575,22 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
-                  'Input Images',
+                  'Input Media',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
-                if (_selectedImages.isNotEmpty)
+                if (_selectedMedia.isNotEmpty)
                   Text(
-                    '${_selectedImages.length} selected',
+                    '${_selectedMedia.length} selected',
                     style: TextStyle(color: Colors.grey[600], fontSize: 13),
                   ),
               ],
             ),
             const SizedBox(height: 12),
-            if (_selectedImages.isEmpty)
+            if (_selectedMedia.isEmpty)
               OutlinedButton.icon(
-                onPressed: _pickImages,
-                icon: const Icon(Icons.photo_library_outlined),
-                label: const Text('Pick Images'),
+                onPressed: _pickMedia,
+                icon: const Icon(Icons.perm_media_outlined),
+                label: const Text('Pick Media'),
               )
             else
               Column(
@@ -479,19 +600,30 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
                     height: 200,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      itemCount: _selectedImages.length,
+                      itemCount: _selectedMedia.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (context, index) {
+                        final file = _selectedMedia[index];
+                        final isVideo = _isVideoFile(file.path);
                         return Stack(
                           children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(12),
-                              child: Image.file(
-                                _selectedImages[index],
-                                height: 200,
-                                width: 112,
-                                fit: BoxFit.cover,
-                              ),
+                              child: isVideo 
+                                ? Container(
+                                    height: 200,
+                                    width: 112,
+                                    color: Colors.black12,
+                                    child: const Center(
+                                      child: Icon(Icons.videocam, color: Colors.black54),
+                                    ),
+                                  )
+                                : Image.file(
+                                    file,
+                                    height: 200,
+                                    width: 112,
+                                    fit: BoxFit.cover,
+                                  ),
                             ),
                             Positioned(
                               top: 4,
@@ -499,7 +631,7 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
                               child: GestureDetector(
                                 onTap: () {
                                   setState(() {
-                                    _selectedImages.removeAt(index);
+                                    _selectedMedia.removeAt(index);
                                   });
                                 },
                                 child: Container(
@@ -523,9 +655,9 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
-                    onPressed: _pickImages,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Replace Images'),
+                    onPressed: _pickMedia,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add Media'),
                   ),
                 ],
               ),
@@ -686,7 +818,7 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
         ] else
           ListTile(
             title: const Text('Background Color'),
-            subtitle: const Text('Solid color padding'),
+            subtitle: const Text('Pad with solid color'),
             trailing: Container(
               width: 32,
               height: 32,
@@ -702,6 +834,21 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
               (color) => setState(() => _config.paddingColor = color),
             ),
           ),
+        const Divider(),
+        _buildSliderSetting(
+          label: 'Background Brightness',
+          value: _config.backgroundBrightness,
+          min: 0,
+          max: 2,
+          onChanged: (val) => setState(() => _config.backgroundBrightness = val),
+        ),
+        _buildSliderSetting(
+          label: 'Background Saturation',
+          value: _config.backgroundSaturation,
+          min: 0,
+          max: 2,
+          onChanged: (val) => setState(() => _config.backgroundSaturation = val),
+        ),
       ],
     );
   }
@@ -723,6 +870,14 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
             max: 100,
             onChanged: (val) => setState(() => _config.cornerRadius = val),
           ),
+        const Divider(),
+        _buildSliderSetting(
+          label: 'Image Scale',
+          value: _config.imageScale,
+          min: 0.1,
+          max: 1.2,
+          onChanged: (val) => setState(() => _config.imageScale = val),
+        ),
       ],
     );
   }
@@ -824,15 +979,15 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
   Future<void> _saveImageFromAutomation() async {
     if (_isProcessing) return;
 
-    if (_selectedImages.isEmpty) {
-      await _pickImages();
+    if (_selectedMedia.isEmpty) {
+      await _pickMedia();
     }
-    if (_selectedImages.isEmpty || !mounted) return;
+    if (_selectedMedia.isEmpty || !mounted) return;
 
     setState(() {
       _isProcessing = true;
       _isBatchProcessing = true;
-      _batchTotalItems = _selectedImages.length;
+      _batchTotalItems = _selectedMedia.length;
       _batchCurrentIndex = 0;
       _nativeItemProgress = 0;
       _fakeItemProgress = 0;
@@ -857,28 +1012,36 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
       final Map<String, dynamic> automationSettings = _config.toMap();
       final List<String> results = [];
       
-      for (int i = 0; i < _selectedImages.length; i++) {
+      for (int i = 0; i < _selectedMedia.length; i++) {
         _batchCurrentIndex = i;
         _nativeItemProgress = 0;
         _fakeItemProgress = 0;
-        final image = _selectedImages[i];
-        final params = <String, dynamic>{
-          'imagePath': image.path,
-          'automationSettings': automationSettings,
-        };
-
-        final blurEnabled = _config.useBackgroundImage;
+        final image = _selectedMedia[i];
+        final isVideo = _isVideoFile(image.path);
+        
+        if (isVideo) {
+          // Skip image save for video files, or we could extract a frame?
+          // For now, let's just skip or show a skip message
+          continue;
+        }
+        
         _startFakeProgressForCurrentItem(
-          estimatedMs: _estimateImageProcessingMs(blurEnabled: blurEnabled),
+          estimatedMs: _estimateImageProcessingMs(
+            blurEnabled: _config.useBackgroundImage,
+          ),
         );
 
-        final result = await _platform.invokeMethod('saveProcessedImage', params);
+        final result = await _platform.invokeMethod('saveProcessedImage', {
+          'imagePath': image.path,
+          'automationSettings': automationSettings,
+        });
+        
         _cancelFakeProgressTimer();
         if (result != null) results.add(result as String);
 
         _setOverallProgressFromItemProgress(
           itemIndex: i + 1,
-          totalItems: _selectedImages.length,
+          totalItems: _selectedMedia.length,
           itemProgress: 0,
         );
       }
@@ -959,6 +1122,14 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
                         _fadeInDurationSeconds = v;
                       });
                     },
+            ),
+            SwitchListTile(
+              title: const Text('Fade Whole Video'),
+              subtitle: const Text('Fade background alongside foreground'),
+              value: _config.fadeWholeVideo,
+              onChanged: _isProcessing
+                  ? null
+                  : (v) => setState(() => _config.fadeWholeVideo = v),
             ),
             const SizedBox(height: 12),
             const Text(
@@ -1086,6 +1257,53 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
                     ),
                 ],
               ),
+              if (_isBatchProcessing) ...[
+                const SizedBox(height: 8),
+                Center(
+                  child: Text(
+                    'Video ${_batchCurrentIndex + 1} of $_batchTotalItems',
+                    style: TextStyle(
+                      color: Colors.purple[800],
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+              if (_currentStep.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.purple.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.purple),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        _currentStep,
+                        style: TextStyle(
+                          color: Colors.purple[800],
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
             ],
             ElevatedButton.icon(
