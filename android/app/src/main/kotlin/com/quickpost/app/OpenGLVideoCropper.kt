@@ -290,7 +290,7 @@ class OpenGLVideoCropper(private val context: Context) {
         if (flip) {
             Matrix.scaleM(mvpMatrix, 0, -1f, 1f, 1f)
         }
-        Matrix.rotateM(mvpMatrix, 0, rot.toFloat(), 0f, 0f, 1f)
+        Matrix.rotateM(mvpMatrix, 0, -rot.toFloat(), 0f, 0f, 1f)
 
         val posHandle = GLES20.glGetAttribLocation(program, "aPosition")
         val texHandle = GLES20.glGetAttribLocation(program, "aTexCoord")

@@ -6,7 +6,10 @@ import 'services/watermark_preset_service.dart';
 import 'services/app_update_service.dart';
 import 'services/app_review_service.dart';
 import 'services/onboarding_service.dart';
+import 'services/video_perf_service.dart';
 import 'widgets/share_intent_handler.dart';
+import 'utils/custom_font_manager.dart';
+import 'config/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,6 +19,13 @@ void main() async {
 
   // Initialize Watermark Preset
   await WatermarkPresetService.init();
+
+  // Initialize Video Perf Service
+  await VideoPerfService.init();
+
+  // Initialize Custom Font Manager (register user-uploaded fonts)
+  await CustomFontManager().init();
+
   
   // Initialize App Review Service
   await AppReviewService().initialize();
@@ -75,15 +85,8 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Meme Flow',
-      theme: ThemeData(
-        primarySwatch: Colors.purple,
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.purple,
-          brightness: Brightness.light,
-        ),
-      ),
+      title: 'Quick Post',
+      theme: AppTheme.lightTheme,
       home: ShareIntentHandler(
         onImagesSelected: (imagePaths, purpose) {
           setState(() {

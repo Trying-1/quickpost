@@ -38,6 +38,7 @@ dependencies:
   url_launcher: ^6.1.0
   share_plus: ^12.0.1
   uuid: ^4.5.3
+  shared_preferences: ^2.5.3
 
 
 dev_dependencies:
@@ -58,10 +59,6 @@ flutter:
     - assets/images/post_template_images/grid_image_post.jpg
     - assets/images/post_template_images/simple_text_post.jpg
   fonts:
-    - family: Akony
-      fonts:
-        - asset: assets/fonts/akony.ttf
-        - asset: assets/fonts/akony.otf
     - family: AllertaStencil
       fonts:
         - asset: assets/fonts/AllertaStencil-Regular.ttf
@@ -148,13 +145,6 @@ flutter:
     - family: Caramel
       fonts:
         - asset: assets/fonts/Caramel-Regular.ttf
-    - family: Centralwell
-      fonts:
-        - asset: assets/fonts/Centralwell.ttf
-    - family: ChalkBoard
-      fonts:
-        - asset: assets/fonts/Chalk Board.ttf
-        - asset: assets/fonts/Chalk Board.otf
     - family: Explora
       fonts:
         - asset: assets/fonts/Explora-Regular.ttf
@@ -183,17 +173,6 @@ flutter:
     - family: Michroma
       fonts:
         - asset: assets/fonts/Michroma-Regular.ttf
-    - family: Milker
-      fonts:
-        - asset: assets/fonts/Milker.otf
-    - family: Modernline
-      fonts:
-        - asset: assets/fonts/modernline.otf
-        - asset: assets/fonts/modernline bold.otf
-          weight: 700
-    - family: NCLNeovibes
-      fonts:
-        - asset: assets/fonts/NCLNeovibes-Demo.otf
     - family: NewRocker
       fonts:
         - asset: assets/fonts/NewRocker-Regular.ttf
@@ -245,9 +224,6 @@ flutter:
     - family: ProtestRevolution
       fonts:
         - asset: assets/fonts/ProtestRevolution-Regular.ttf
-    - family: Religath
-      fonts:
-        - asset: assets/fonts/RELIGATH-Demo.otf
     - family: SourGummy
       fonts:
         - asset: assets/fonts/SourGummy-VariableFont_wdth,wght.ttf

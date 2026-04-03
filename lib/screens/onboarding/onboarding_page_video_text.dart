@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'onboarding_page_template.dart';
 
 class OnboardingPageVideoText extends StatelessWidget {
@@ -8,18 +7,26 @@ class OnboardingPageVideoText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const OnboardingPageTemplate(
-      gradient: [
-        Color(0xFF111827),
-        Color(0xFF7C3AED),
-        Color(0xFFF97316),
-      ],
-      heroIcon: Icons.subtitles_outlined,
-      title: 'Video text overlays',
-      description: 'Add captions, titles, and text boxes with precise positioning — perfect for Reels and Shorts.',
-      bullets: [
-        'Text boxes + captions on video',
-        'Works great for Shorts/Reels',
-        'Preview exactly how it exports',
+      heroIcon: Icons.movie_filter_rounded,
+      title: 'Elevate Your Videos',
+      subtitle: 'Add professional captions and overlays optimized for Shorts, Reels, and TikTok.',
+      accentColor: const Color(0xFFE65100), // Orange accent for video
+      features: [
+        FeatureItem(
+          text: 'Dynamic Text Overlays',
+          detail: 'Perfectly positioned titles and highlights',
+          icon: Icons.text_fields_rounded,
+        ),
+        FeatureItem(
+          text: 'Precision Watermarking',
+          detail: 'Protect your content with custom branding',
+          icon: Icons.branding_watermark_rounded,
+        ),
+        FeatureItem(
+          text: 'Video Cropping',
+          detail: 'Smart aspect ratios for social media',
+          icon: Icons.video_label_rounded,
+        ),
       ],
     );
   }

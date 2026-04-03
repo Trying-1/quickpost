@@ -12,6 +12,7 @@ import '../arise_automation/arise_automation_screen.dart';
 import '../caption_store/caption_store_screen.dart';
 import '../quotes/my_quotes_screen.dart';
 import '../video_watermark/video_watermark_screen.dart';
+import '../../config/app_theme.dart';
 
 class HomeShellScreen extends StatefulWidget {
   final List<String>? sharedImagePaths;
@@ -176,15 +177,15 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           children: [
             _buildPostMakerTab(),
             const MyQuotesScreen(),
-            ImageCropperScreen(sharedImagePaths: _currentPaths),
-            VideoCropperScreen(sharedVideoPaths: _currentPaths),
-            VideoCreatorScreen(sharedImagePaths: _currentPaths, sharedPurpose: _currentPurpose),
-            TextBoxOverlayScreen(sharedImagePaths: _currentPaths),
-            VideoTextOverlayScreen(sharedVideoPaths: _currentPaths),
-            VideoWatermarkScreen(sharedVideoPaths: _currentPaths),
+            ImageCropperScreen(sharedImagePaths: _currentBottomNavIndex == 2 ? _currentPaths : null),
+            VideoCropperScreen(sharedVideoPaths: _currentBottomNavIndex == 3 ? _currentPaths : null),
+            VideoCreatorScreen(sharedImagePaths: _currentBottomNavIndex == 4 ? _currentPaths : null, sharedPurpose: _currentPurpose),
+            TextBoxOverlayScreen(sharedImagePaths: _currentBottomNavIndex == 5 ? _currentPaths : null),
+            VideoTextOverlayScreen(sharedVideoPaths: _currentBottomNavIndex == 6 ? _currentPaths : null),
+            VideoWatermarkScreen(sharedVideoPaths: _currentBottomNavIndex == 7 ? _currentPaths : null),
             const CaptionStoreScreen(),
             const AudioLibraryScreenWithFolders(),
-            AriseAutomationScreen(sharedPaths: _currentPaths, sharedPurpose: _currentPurpose),
+            AriseAutomationScreen(sharedPaths: _currentBottomNavIndex == 10 ? _currentPaths : null, sharedPurpose: _currentPurpose),
             const ProfileScreen(),
           ],
         ),
@@ -230,8 +231,8 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
   }
 
   Widget _buildPostMakerTab() {
-    final paths = _currentPaths;
-    final purpose = _currentPurpose;
+    final paths = _currentBottomNavIndex == 0 ? _currentPaths : null;
+    final purpose = _currentBottomNavIndex == 0 ? _currentPurpose : null;
 
     // When the app is opened via share intent or deep link with images,
     // route into the appropriate post maker template via PostMakerScreen.
@@ -241,8 +242,8 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
 
     if (paths != null && paths.isNotEmpty) {
       return PostMakerScreen(
-        sharedImagePaths: _currentPaths,
-        sharedPurpose: _currentPurpose,
+        sharedImagePaths: paths,
+        sharedPurpose: purpose,
       );
     }
 
@@ -265,14 +266,14 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           children: [
             Icon(
               icon,
-              color: isSelected ? Colors.purple : Colors.grey[600],
+              color: isSelected ? AppColors.primary : Colors.grey[600],
               size: 24,
             ),
             const SizedBox(height: 4),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? Colors.purple : Colors.grey[600],
+                color: isSelected ? AppColors.primary : Colors.grey[600],
                 fontSize: 12,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
               ),

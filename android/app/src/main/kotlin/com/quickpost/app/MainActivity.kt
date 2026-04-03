@@ -22,8 +22,11 @@ class MainActivity : FlutterActivity() {
     private val PICK_VIDEO_REQUEST = 1002
     private val PICK_MULTIPLE_VIDEOS_REQUEST = 1003
     private val PICK_BACKUP_FOLDER_REQUEST = 1004
+    private val PICK_SAVE_PRESETS_REQUEST = 1005
+    private val PICK_LOAD_PRESETS_REQUEST = 1006
     private var methodChannel: MethodChannel? = null
     private var pendingResult: MethodChannel.Result? = null
+    private var pendingPresetsJson: String? = null
     private var audioSource: String = "audio"
     private var mediaPlayer: android.media.MediaPlayer? = null
     private var sharedImagePaths: MutableList<String> = mutableListOf()
@@ -814,6 +817,7 @@ class MainActivity : FlutterActivity() {
                     val bgBrightness = (call.argument<Number>("bgBrightness"))?.toFloat() ?: 1.0f
                     val bgSaturation = (call.argument<Number>("bgSaturation"))?.toFloat() ?: 1.0f
                     val bgBlur = (call.argument<Number>("bgBlur"))?.toFloat() ?: 0f
+                    val videoY = (call.argument<Number>("videoY"))?.toFloat() ?: 0.5f
                     val audioPath = call.argument<String>("audioPath")
                     val patches = call.argument<List<Map<String, Any?>>>("patches") ?: emptyList()
 
@@ -837,7 +841,6 @@ class MainActivity : FlutterActivity() {
                                     "x" to x,
                                     "y" to y,
                                     "profileImagePath" to profileImagePath,
-                                    "fontSize" to fontSize,
                                     "iconSize" to iconSize,
                                     "textColor" to textColor,
                                     "accentColor" to accentColor,
@@ -866,6 +869,7 @@ class MainActivity : FlutterActivity() {
                                     "handleShadowOffsetY" to ((call.argument<Number>("handleShadowOffsetY"))?.toFloat() ?: 1f),
                                     "iconShadowOffsetX" to ((call.argument<Number>("iconShadowOffsetX"))?.toFloat() ?: 1.5f),
                                     "iconShadowOffsetY" to ((call.argument<Number>("iconShadowOffsetY"))?.toFloat() ?: 1.5f),
+                                    "videoY" to videoY,
                                     "textOverlays" to (call.argument<List<Map<String, Any?>>>("textOverlays") ?: emptyList())
                                 )
                                 val outputFile = java.io.File(outputPath)
@@ -906,16 +910,26 @@ class MainActivity : FlutterActivity() {
                     currentWatermarkProcessor?.cancel()
                     result.success(true)
                 }
-                "getSharedVideos" -> {
+                "getSharedImages" -> {
                     val results = mapOf(
-                        "paths" to sharedImagePaths.filter { it.endsWith(".mp4", true) || it.endsWith(".mov", true) || it.endsWith(".mkv", true) },
-                        "count" to sharedImagePaths.size
+                        "paths" to sharedImagePaths.toList(),
+                        "count" to sharedImagePaths.size,
+                        "purpose" to (sharedPurpose ?: "")
                     )
-                    // Clear after retrieval to match getSharedImages behavior
+                    // Clear after retrieval
                     sharedImagePaths.clear()
                     sharedImageUris.clear()
                     sharedPurpose = null
                     result.success(results)
+                }
+                "exportPresets" -> {
+                    val json = call.argument<String>("json")
+                    pendingResult = result
+                    exportPresets(json)
+                }
+                "importPresets" -> {
+                    pendingResult = result
+                    importPresets()
                 }
                 "saveProcessedImage" -> {
                     val imagePath = call.argument<String>("imagePath")
@@ -978,6 +992,29 @@ class MainActivity : FlutterActivity() {
             pendingResult?.error("UNSUPPORTED", "Folder picker requires Android 5.0 or higher", null)
             pendingResult = null
         }
+    }
+
+    private fun exportPresets(json: String?) {
+        if (json == null) {
+            pendingResult?.error("INVALID_ARGUMENT", "JSON is null", null)
+            pendingResult = null
+            return
+        }
+        pendingPresetsJson = json
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+            putExtra(Intent.EXTRA_TITLE, "QuickPost_Watermark_Presets.json")
+        }
+        startActivityForResult(intent, PICK_SAVE_PRESETS_REQUEST)
+    }
+
+    private fun importPresets() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+        }
+        startActivityForResult(intent, PICK_LOAD_PRESETS_REQUEST)
     }
     
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -1048,6 +1085,45 @@ class MainActivity : FlutterActivity() {
                     if (uri != null) {
                         android.util.Log.d("MainActivity", "Folder picker returned URI: $uri")
                         pendingResult?.success(uri.toString())
+                    } else {
+                        pendingResult?.success(null)
+                    }
+                } else {
+                    pendingResult?.success(null)
+                }
+                pendingResult = null
+            }
+            PICK_SAVE_PRESETS_REQUEST -> {
+                if (resultCode == Activity.RESULT_OK && data != null) {
+                    val uri = data.data
+                    if (uri != null && pendingPresetsJson != null) {
+                        try {
+                            contentResolver.openOutputStream(uri)?.use { out ->
+                                out.write(pendingPresetsJson!!.toByteArray(Charsets.UTF_8))
+                            }
+                            pendingResult?.success(true)
+                        } catch (e: Exception) {
+                            pendingResult?.error("WRITE_ERROR", e.message, null)
+                        }
+                    } else {
+                        pendingResult?.success(false)
+                    }
+                } else {
+                    pendingResult?.success(false)
+                }
+                pendingPresetsJson = null
+                pendingResult = null
+            }
+            PICK_LOAD_PRESETS_REQUEST -> {
+                if (resultCode == Activity.RESULT_OK && data != null) {
+                    val uri = data.data
+                    if (uri != null) {
+                        try {
+                            val json = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                            pendingResult?.success(json)
+                        } catch (e: Exception) {
+                            pendingResult?.error("READ_ERROR", e.message, null)
+                        }
                     } else {
                         pendingResult?.success(null)
                     }

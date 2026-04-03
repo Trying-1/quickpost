@@ -1,3 +1,4 @@
+import '../../config/app_theme.dart';
 import 'package:flutter/material.dart';
 
 import 'grid_post_screen.dart';
@@ -25,21 +26,21 @@ class PostMakerTemplatesScreen extends StatelessWidget {
         title: 'IG Quote Post',
         description: 'Theme-page style quote card with handle and avatar.',
         icon: Icons.format_quote,
-        color: Colors.deepOrange,
+        color: AppColors.primary,
       ),
       _TemplateTileData(
         id: 'ig_quote_handle_post',
         title: 'IG Quote (Handle Only)',
         description: 'Quote card with just your @handle, no avatar.',
         icon: Icons.alternate_email,
-        color: Colors.indigo,
+        color: AppColors.primaryDark,
       ),
       _TemplateTileData(
         id: 'single_image_post',
         title: 'Single Image Post',
         description: 'Create a post with one main image and text overlay.',
         icon: Icons.image,
-        color: Colors.blue,
+        color: AppColors.primary,
       ),
       _TemplateTileData(
         id: 'carousel_post',
@@ -53,7 +54,7 @@ class PostMakerTemplatesScreen extends StatelessWidget {
         title: 'Grid Post',
         description: 'Arrange multiple images in a clean grid layout.',
         icon: Icons.grid_view,
-        color: Colors.purple,
+        color: AppColors.primary,
       ),
       _TemplateTileData(
         id: 'text_post',

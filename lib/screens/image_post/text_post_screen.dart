@@ -7,6 +7,7 @@ import 'package:csv/csv.dart';
 import '../../utils/font_selector.dart';
 import '../../utils/image_generator.dart';
 import '../../services/app_review_service.dart';
+import '../../widgets/advanced_color_picker.dart';
 
 class TextPostScreen extends StatefulWidget {
   const TextPostScreen({super.key});
@@ -1502,82 +1503,68 @@ class _TextPostScreenState extends State<TextPostScreen> {
         title = 'Color';
     }
 
+    Color selectedColor = currentColor;
+
     showDialog(
       context: context,
-      builder: (context) {
-        Color tempColor = currentColor;
-        return AlertDialog(
-          title: Text(title),
-          content: SingleChildScrollView(
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                Colors.black,
-                Colors.white,
-                Colors.red,
-                Colors.green,
-                Colors.blue,
-                Colors.orange,
-                Colors.purple,
-                Colors.pink,
-                Colors.teal,
-                Colors.brown,
-                Colors.grey,
-                Colors.yellow[700]!,
-              ].map((color) {
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      tempColor = color;
-                    });
-                  },
-                  child: Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: color,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: tempColor == color ? Colors.black : Colors.white,
-                        width: 2,
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  switch (type) {
-                    case 'text':
-                      _textColor = tempColor;
-                      break;
-                    case 'background':
-                      _backgroundColor = tempColor;
-                      break;
-                    case 'shadow':
-                      _shadowColor = tempColor;
-                      break;
-                    case 'glow':
-                      _glowColor = tempColor;
-                      break;
-                  }
-                });
-                Navigator.of(context).pop();
-              },
-              child: const Text('Apply'),
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+        contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            IconButton(
+              icon: const Icon(Icons.close, size: 20),
+              onPressed: () => Navigator.pop(context),
             ),
           ],
-        );
-      },
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AdvancedColorPicker(
+                initialColor: currentColor,
+                onColorChanged: (color) => selectedColor = color,
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      switch (type) {
+                        case 'text':
+                          _textColor = selectedColor;
+                          break;
+                        case 'background':
+                          _backgroundColor = selectedColor;
+                          break;
+                        case 'shadow':
+                          _shadowColor = selectedColor;
+                          break;
+                        case 'glow':
+                          _glowColor = selectedColor;
+                          break;
+                      }
+                    });
+                    Navigator.pop(context);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6C63FF),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('SELECT COLOR', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

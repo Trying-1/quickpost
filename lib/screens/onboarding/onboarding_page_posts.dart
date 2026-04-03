@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'onboarding_page_template.dart';
 
 class OnboardingPagePosts extends StatelessWidget {
@@ -8,18 +7,26 @@ class OnboardingPagePosts extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const OnboardingPageTemplate(
-      gradient: [
-        Color(0xFF0F172A),
-        Color(0xFF1D4ED8),
-        Color(0xFF06B6D4),
-      ],
-      heroIcon: Icons.photo_library_outlined,
-      title: 'Create posts fast',
-      description: 'Bulk crop images, build grids, and export clean templates made for social platforms.',
-      bullets: [
-        'Bulk crop images in one go',
-        'Grid & story-ready layouts',
-        'Templates that match your style',
+      heroIcon: Icons.photo_library_rounded,
+      title: 'Professional Post Maker',
+      subtitle: 'Stop wasting time on manual design. Create stunning grids and stories instantly.',
+      accentColor: const Color(0xFF0D47A1), // Blue accent for posts
+      features: [
+        FeatureItem(
+          text: 'Bulk Image Cropper',
+          detail: 'Adjust and crop dozens of images at once',
+          icon: Icons.crop_rotate_rounded,
+        ),
+        FeatureItem(
+          text: 'Grid & Story Layouts',
+          detail: 'Clean, modern templates for every platform',
+          icon: Icons.grid_view_rounded,
+        ),
+        FeatureItem(
+          text: 'Visual Consistency',
+          detail: 'Maintain your brand identity across all posts',
+          icon: Icons.palette_rounded,
+        ),
       ],
     );
   }

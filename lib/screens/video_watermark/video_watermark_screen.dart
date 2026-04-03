@@ -1,15 +1,20 @@
+import '../../config/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:image_picker/image_picker.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 import '../../utils/font_selector.dart';
+import '../../services/video_perf_service.dart';
 import '../../models/watermark_preset.dart';
 import '../../services/watermark_preset_service.dart';
+import '../../config/app_config.dart';
+import '../../widgets/advanced_color_picker.dart';
 
 class VideoWatermarkScreen extends StatefulWidget {
   final List<String>? sharedVideoPaths;
@@ -67,19 +72,25 @@ class _TextOverlay {
   double shadowBlur;
   double shadowOffsetX;
   double shadowOffsetY;
+  TextAlign textAlign;
+  String anchor;
+  double scale;
 
   _TextOverlay({
     required this.text,
     this.x = 0.5,
     this.y = 0.5,
     this.fontSize = 50.0,
-    this.color = "#FFFFFF",
+    this.color = "#000000",
     this.font,
-    this.showShadow = true,
+    this.showShadow = false,
     this.shadowColor = "#000000",
     this.shadowBlur = 8.0,
     this.shadowOffsetX = 2.0,
     this.shadowOffsetY = 2.0,
+    this.textAlign = TextAlign.center,
+    this.anchor = "center",
+    this.scale = 1.0,
   });
 
   Map<String, dynamic> toMap(double videoWidth, double videoHeight, String resolvedFontPath) {
@@ -87,7 +98,7 @@ class _TextOverlay {
       'text': text,
       'x': x * videoWidth,
       'y': y * videoHeight,
-      'fontSize': fontSize,
+      'fontSize': fontSize * scale,
       'color': color,
       'fontPath': resolvedFontPath,
       'showShadow': showShadow,
@@ -95,6 +106,10 @@ class _TextOverlay {
       'shadowBlur': shadowBlur,
       'shadowOffsetX': shadowOffsetX,
       'shadowOffsetY': shadowOffsetY,
+      'textAlign': textAlign.name,
+      'maxWidth': videoWidth * 0.8 * scale,
+      'anchor': anchor,
+      'scale': scale,
     };
   }
 }
@@ -110,6 +125,20 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
   bool _isProcessing = false;
   double _progress = 0.0;
   String? _outputPath;
+  
+  // Input Video Metadata
+  int _inputDurationMs = 0;
+  int _inputFileSize = 0;
+  String _inputFileName = "";
+  
+  // Output Video Metadata
+  int _outputFileSize = 0;
+  String _outputFileName = "";
+
+  // Performance Learning
+  // Performance Learning
+  double _avgRatio = 0.8;
+  double _fakeProgress = 0.0;
 
   List<_Patch> _patches = [];
   int? _selectedPatchIndex;
@@ -118,8 +147,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
   int? _selectedTextOverlayIndex;
 
   // Watermark state
-  String _username = "John Doe";
-  String _handle = "@johndoe_arise";
+  String _username = "Username";
+  String _handle = "@userhandle";
   File? _profileImage;
   File? _bgImage;
   double _watermarkX = 0.5; // Normalized
@@ -133,7 +162,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
   
   String _watermarkType = "profile_vertical"; // Vertical type as default
   bool _fullScreen = true; // Canvas on by default
-  String _bgColor = "#000000";
+  String _bgColor = "#FFFFFF";
   
    bool _showBox = false;
    String _boxColor = "#000000";
@@ -146,6 +175,20 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
    double _bgBrightness = 1.0;
    double _bgSaturation = 1.0;
    double _bgBlur = 0.0;
+   double _videoY = 0.5;
+
+   // Formatting Helpers
+   String _formatSize(int bytes) {
+     if (bytes <= 0) return "0 B";
+     const units = ["B", "KB", "MB", "GB", "TB"];
+     var size = bytes.toDouble();
+     var unitIndex = 0;
+     while (size >= 1024 && unitIndex < units.length - 1) {
+       size /= 1024;
+       unitIndex++;
+     }
+     return "${size.toStringAsFixed(1)} ${units[unitIndex]}";
+   }
     
     // Shadow settings
     bool _showUsernameShadow = false;
@@ -166,7 +209,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
     double _iconShadowOffsetX = 1.5;
     double _iconShadowOffsetY = 1.5;
 
-  int _selectedTabIndex = 0;
+  int _selectedTabIndex = 1;
   int _selectedStyleSubTab = 0; // 0: Username, 1: Handle, 2: Icon
   bool _isTabContentExpanded = true;
   String _status = "Initializing...";
@@ -258,6 +301,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
       _selectedHandleFont = FontInfo(family: target.handleFontFamily ?? target.fontFamily, displayName: target.handleFontFamily ?? target.fontFamily);
       _showStoryRing = target.showStoryRing;
       _isVerified = target.isVerified;
+      _videoY = target.videoY;
     });
   }
 
@@ -321,6 +365,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
       handleShadowOffsetY: _handleShadowOffsetY,
       iconShadowOffsetX: _iconShadowOffsetX,
       iconShadowOffsetY: _iconShadowOffsetY,
+      videoY: _videoY,
     );
     await WatermarkPresetService.savePreset(preset);
     if (mounted) setState(() {});
@@ -351,9 +396,65 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
     }
   }
 
+  void _exportPresets() async {
+    final json = await WatermarkPresetService.exportPresetsJson();
+    try {
+      final dynamic success = await platform.invokeMethod('exportPresets', {'json': json});
+      if (success == true && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Presets exported successfully!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e')),
+        );
+      }
+    }
+  }
+
+  void _importPresets() async {
+    try {
+      final String? json = await platform.invokeMethod('importPresets');
+      if (json != null) {
+        final int imported = await WatermarkPresetService.importPresetsJson(json);
+        if (mounted) {
+          setState(() {});
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Imported $imported presets successfully!')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Import failed: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant VideoWatermarkScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.sharedVideoPaths != oldWidget.sharedVideoPaths) {
+      if (widget.sharedVideoPaths != null && widget.sharedVideoPaths!.isNotEmpty) {
+        _loadVideo(File(widget.sharedVideoPaths!.first));
+        // Auto-set vertical template at the top for cropper imports
+        setState(() {
+          _watermarkType = 'profile_vertical';
+          _watermarkY = 0.15; // Upper part
+          _fullScreen = true; // Canvas on
+        });
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    _avgRatio = VideoPerfService.getAvgRatio();
     _loadPreset();
     _setupMethodCallHandler();
     if (widget.sharedVideoPaths != null && widget.sharedVideoPaths!.isNotEmpty) {
@@ -403,6 +504,9 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
         setState(() {
           _videoWidth = meta['width'] as int? ?? 1080;
           _videoHeight = meta['height'] as int? ?? 1920;
+          _inputDurationMs = meta['durationMs'] as int? ?? 0;
+          _inputFileSize = meta['fileSizeBytes'] as int? ?? 0;
+          _inputFileName = meta['fileName'] as String? ?? "Video";
         });
       }
     } catch (_) {}
@@ -446,6 +550,21 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
       profileImagePath: _profileImage?.path,
       showStoryRing: _showStoryRing,
       isVerified: _isVerified,
+      showUsernameShadow: _showUsernameShadow,
+      usernameShadowColor: _usernameShadowColor,
+      usernameShadowBlur: _usernameShadowBlur,
+      showHandleShadow: _showHandleShadow,
+      handleShadowColor: _handleShadowColor,
+      handleShadowBlur: _handleShadowBlur,
+      showIconShadow: _showIconShadow,
+      iconShadowColor: _iconShadowColor,
+      iconShadowBlur: _iconShadowBlur,
+      usernameShadowOffsetX: _usernameShadowOffsetX,
+      usernameShadowOffsetY: _usernameShadowOffsetY,
+      handleShadowOffsetX: _handleShadowOffsetX,
+      handleShadowOffsetY: _handleShadowOffsetY,
+      iconShadowOffsetX: _iconShadowOffsetX,
+      iconShadowOffsetY: _iconShadowOffsetY,
     );
     await WatermarkPresetService.savePreset(preset);
 
@@ -466,12 +585,12 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
       final outPath = await platform.invokeMethod<String>('getVideoOutputPath', {'filename': filename});
 
       
-      final usernameFontPath = await _getFontPath(_selectedUsernameFont?.family ?? 'Roboto', _selectedUsernameFont?.displayName ?? 'Roboto');
-      final handleFontPath = await _getFontPath(_selectedHandleFont?.family ?? _selectedUsernameFont?.family ?? 'Roboto', _selectedHandleFont?.displayName ?? _selectedUsernameFont?.displayName ?? 'Roboto');
+      final usernameFontPath = await _getFontPath(_selectedUsernameFont?.family ?? 'Roboto', _selectedUsernameFont?.displayName ?? 'Roboto', filePath: _selectedUsernameFont?.filePath);
+      final handleFontPath = await _getFontPath(_selectedHandleFont?.family ?? _selectedUsernameFont?.family ?? 'Roboto', _selectedHandleFont?.displayName ?? _selectedUsernameFont?.displayName ?? 'Roboto', filePath: _selectedHandleFont?.filePath ?? _selectedUsernameFont?.filePath);
 
       final List<Map<String, dynamic>> resolvedTextOverlays = [];
       for (final t in _textOverlays) {
-        final path = await _getFontPath(t.font?.family ?? 'Roboto', t.font?.displayName ?? 'Roboto');
+        final path = await _getFontPath(t.font?.family ?? 'Roboto', t.font?.displayName ?? 'Roboto', filePath: t.font?.filePath, fontInfo: t.font);
         resolvedTextOverlays.add(t.toMap((_fullScreen ? 1080 : _videoWidth).toDouble(), (_fullScreen ? 1920 : _videoHeight).toDouble(), path));
       }
 
@@ -517,6 +636,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
         'handleShadowOffsetY': _handleShadowOffsetY,
         'iconShadowOffsetX': _iconShadowOffsetX,
         'iconShadowOffsetY': _iconShadowOffsetY,
+        'videoY': _videoY,
         'patches': _patches.map((p) => p.toMap((_fullScreen ? 1080 : _videoWidth).toDouble(), (_fullScreen ? 1920 : _videoHeight).toDouble())).toList(),
         'textOverlays': resolvedTextOverlays,
       };
@@ -527,10 +647,23 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
       _processStopwatch.stop();
 
       if (mounted) {
+        // Fetch output metadata
+        final outMeta = await platform.invokeMethod<Map>('getVideoMetadata', {'videoPath': result});
+        
+        // Learn and save performance ratio
+        if (_inputDurationMs > 0) {
+          final actualRatio = _processStopwatch.elapsedMilliseconds / _inputDurationMs;
+          await VideoPerfService.updateRatio(actualRatio);
+        }
+
         setState(() { 
           _recordStepTiming(""); // Finalize last step
           _isProcessing = false; 
           _outputPath = result; 
+          if (outMeta != null) {
+            _outputFileSize = outMeta['fileSizeBytes'] as int? ?? 0;
+            _outputFileName = outMeta['fileName'] as String? ?? "Output";
+          }
         });
         _showSuccess();
       }
@@ -569,10 +702,22 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
         setState(() {
           final elapsed = _processStopwatch.elapsed;
           _elapsedTime = _formatDuration(elapsed);
+          
+          // Calculate fake progress based on estimation
+          if (_inputDurationMs > 0) {
+            final estimatedTotalMs = _inputDurationMs * _avgRatio;
+            _fakeProgress = (elapsed.inMilliseconds / estimatedTotalMs).clamp(0.0, 0.99);
+          }
+
           if (_progress > 0.05) {
             final totalEstimatedMs = elapsed.inMilliseconds / _progress;
-            final remaining = Duration(milliseconds: (totalEstimatedMs - elapsed.inMilliseconds).toInt());
-            _remainingTime = _formatDuration(remaining);
+            final remainingInMs = (totalEstimatedMs - elapsed.inMilliseconds).toInt();
+            _remainingTime = _formatDuration(Duration(milliseconds: math.max(0, remainingInMs)));
+          } else if (_inputDurationMs > 0) {
+            // Fallback to learned avgRatio
+            final estimatedTotalMs = _inputDurationMs * _avgRatio;
+            final remainingInMs = (estimatedTotalMs - elapsed.inMilliseconds).toInt();
+            _remainingTime = _formatDuration(Duration(milliseconds: math.max(0, remainingInMs)));
           } else {
             _remainingTime = "--:--";
           }
@@ -596,126 +741,128 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
     }
   }
 
-  Future<String> _getFontPath(String family, String displayName) async {
-    // Map font display names to their asset file paths
-    const fontAssetMap = {
-      'Roboto': 'Roboto-Regular.ttf',
-      'Roboto Bold': 'Roboto-Bold.ttf',
-      'Roboto Italic': 'Roboto-Italic.ttf',
-      'Roboto Bold Italic': 'Roboto-BoldItalic.ttf',
-      'Akony': 'akony.ttf',
-      'AllertaStencil': 'AllertaStencil-Regular.ttf',
-      'AlmendraDisplay': 'AlmendraDisplay-Regular.ttf',
-      'Alumni Sans': 'AlumniSans-Regular.ttf',
-      'Alumni Sans Bold': 'AlumniSans-Bold.ttf',
-      'Alumni Sans Black': 'AlumniSans-Black.ttf',
-      'Alumni Sans Light': 'AlumniSans-Light.ttf',
-      'Alumni Sans Medium': 'AlumniSans-Medium.ttf',
-      'Alumni Sans SemiBold': 'AlumniSans-SemiBold.ttf',
-      'Alumni Sans Thin': 'AlumniSans-Thin.ttf',
-      'Alumni Sans ExtraLight': 'AlumniSans-ExtraLight.ttf',
-      'Alumni Sans ExtraBold': 'AlumniSans-ExtraBold.ttf',
-      'Alumni Sans Italic': 'AlumniSans-Italic.ttf',
-      'Alumni Sans Pinstripe': 'AlumniSansPinstripe-Regular.ttf',
-      'Barrio': 'Barrio-Regular.ttf',
-      'Bellota': 'Bellota-Regular.ttf',
-      'Bellota Bold': 'Bellota-Bold.ttf',
-      'Bellota Light': 'Bellota-Light.ttf',
-      'Bellota Italic': 'Bellota-Italic.ttf',
-      'BhuTukaExpandedOne': 'BhuTukaExpandedOne-Regular.ttf',
-      'Bokor': 'Bokor-Regular.ttf',
-      'BungeeHairline': 'BungeeHairline-Regular.ttf',
-      'Caramel': 'Caramel-Regular.ttf',
-      'Centralwell': 'Centralwell.ttf',
-      'ChalkBoard': 'Chalk Board.ttf',
-      'Explora': 'Explora-Regular.ttf',
-      'GrandifloraOne': 'GrandifloraOne-Regular.ttf',
-      'Klee One SemiBold': 'KleeOne-SemiBold.ttf',
-      'Lacquer': 'Lacquer-Regular.ttf',
-      'LibreBarcode39Text': 'LibreBarcode39Text-Regular.ttf',
-      'LuckiestGuy': 'LuckiestGuy-Regular.ttf',
-      'MajorMonoDisplay': 'MajorMonoDisplay-Regular.ttf',
-      'Metrophobic': 'Metrophobic-Regular.ttf',
-      'Michroma': 'Michroma-Regular.ttf',
-      'Milker': 'Milker.otf',
-      'Modernline': 'modernline.otf',
-      'Modernline Bold': 'modernline bold.otf',
-      'NCL Neovibes': 'NCLNeovibes-Demo.otf',
-      'NewRocker': 'NewRocker-Regular.ttf',
-      'NewTegomin': 'NewTegomin-Regular.ttf',
-      'Poppins': 'Poppins-Regular.ttf',
-      'Poppins Bold': 'Poppins-Bold.ttf',
-      'Poppins Black': 'Poppins-Black.ttf',
-      'Poppins Light': 'Poppins-Light.ttf',
-      'Poppins Medium': 'Poppins-Medium.ttf',
-      'Poppins SemiBold': 'Poppins-SemiBold.ttf',
-      'Poppins Thin': 'Poppins-Thin.ttf',
-      'Poppins ExtraLight': 'Poppins-ExtraLight.ttf',
-      'Poppins ExtraBold': 'Poppins-ExtraBold.ttf',
-      'Poppins Italic': 'Poppins-Italic.ttf',
-      'Protest Revolution': 'ProtestRevolution-Regular.ttf',
-      'Religath': 'RELIGATH-Demo.otf',
-      'Sour Gummy': 'SourGummy-VariableFont_wdth,wght.ttf',
-    };
-
-    final assetFile = fontAssetMap[displayName];
-    if (assetFile == null) return '/system/fonts/Roboto-Regular.ttf';
-
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final targetFile = File('${tempDir.path}/font_$assetFile');
-      
-      // Cache: skip copy if already exists
-      if (await targetFile.exists()) return targetFile.path;
-
-      final byteData = await rootBundle.load('assets/fonts/$assetFile');
-      await targetFile.writeAsBytes(byteData.buffer.asUint8List());
-      return targetFile.path;
-    } catch (e) {
-      print('Font copy failed for $family: $e');
-      return '/system/fonts/Roboto-Regular.ttf';
-    }
+  Future<String> _getFontPath(String family, String displayName, {String? filePath, FontInfo? fontInfo}) async {
+    // Use the exact FontInfo if provided (preserves weight/style/assetPath),
+    // otherwise fall back to family lookup then manual construction.
+    final font = fontInfo ?? 
+                 FontInfo.getFontByFamily(family) ?? 
+                 FontInfo(family: family, displayName: displayName, isCustom: filePath != null, filePath: filePath);
+    return await FontInfo.getFontFilePath(font);
   }
 
   void _showSuccess() {
     showDialog(
       context: context, 
-      builder: (c) => AlertDialog(
-        title: const Text('Export Complete! 🎉'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Your video has been saved to the Gallery.', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            const Text('Processing Breakdown:', style: TextStyle(color: Colors.grey, fontSize: 12)),
-            const SizedBox(height: 8),
-            ..._stepTimings.entries.map((e) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      builder: (c) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          width: 340,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.check_circle, color: Colors.green, size: 40),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Export Complete!',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Saved to Gallery & Downloads',
+                style: TextStyle(color: Colors.grey, fontSize: 14),
+              ),
+              const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey[200]!),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.description_outlined, size: 16, color: AppColors.primary),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _outputFileName,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Input Size', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                        Text(_formatSize(_inputFileSize), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 11)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Output Size', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                        Text(_formatSize(_outputFileSize), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.primary)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
                 children: [
-                  Expanded(child: Text(e.key, style: const TextStyle(fontSize: 12))),
-                  Text('${(e.value / 1000).toStringAsFixed(1)}s', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(c),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: BorderSide(color: Colors.grey[300]!),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      child: const Text('Close', style: TextStyle(color: Colors.black87)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(c);
+                        OpenFile.open(_outputPath!);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      child: const Text('Open Video'),
+                    ),
+                  ),
                 ],
               ),
-            )),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(c);
-              OpenFile.open(_outputPath!);
-            },
-            child: const Text('Open Video')
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(c),
-            child: const Text('Close')
-          )
-        ]
-      )
+        ),
+      ),
     );
   }
 
@@ -748,78 +895,126 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
 
   Widget _buildProcessingOverlay() {
     return Container(
-      color: Colors.black87,
+      color: Colors.black.withOpacity(0.85),
       child: Center(
         child: Container(
           width: 320,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(32),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 20,
-                spreadRadius: 5,
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 30,
               )
             ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Stack(
-                alignment: Alignment.center,
-                children: [
-                   SizedBox(
-                    width: 100,
-                    height: 100,
-                    child: CircularProgressIndicator(
-                      value: _progress,
-                      strokeWidth: 8,
-                      backgroundColor: Colors.blue.withOpacity(0.1),
-                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.blue),
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.movie_filter, color: Color(0xFF00796B), size: 28),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Processing Video',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 8),
+              if (_inputFileName.isNotEmpty)
+                Text(
+                  _inputFileName,
+                  style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              const SizedBox(height: 28),
+              Container(
+                height: 10,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.teal.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Stack(
+                  children: [
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 500),
+                          width: constraints.maxWidth * _fakeProgress,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF80CBC4), Color(0xFF00796B)],
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                            ),
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.teal.withOpacity(0.2),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              )
+                            ],
+                          ),
+                        );
+                      }
                     ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${(_fakeProgress * 100).toInt()}% Estimated',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF00796B)),
                   ),
                   Text(
-                    '${(_progress * 100).toInt()}%',
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue),
+                    _status,
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500], fontWeight: FontWeight.w500),
                   ),
                 ],
               ),
               const SizedBox(height: 32),
-              const Text(
-                'Watermarking Video',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                _status,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey[700], fontSize: 15, fontWeight: FontWeight.w500),
+              // Stats Card
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildTimeInfo("Elapsed", _elapsedTime),
+                    Container(width: 1, height: 30, color: Colors.grey[200]),
+                    _buildTimeInfo("Est. Left", _remainingTime),
+                  ],
+                ),
               ),
               const SizedBox(height: 32),
-              // Timing Stats
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildTimeInfo("Elapsed", _elapsedTime),
-                  const SizedBox(width: 8, child: VerticalDivider()),
-                  _buildTimeInfo("Remaining", _remainingTime),
-                ],
-              ),
-              const SizedBox(height: 40),
-              // Cancel Button
-              TextButton.icon(
-                onPressed: _cancelProcess,
-                icon: const Icon(Icons.close, color: Colors.redAccent, size: 20),
-                label: const Text(
-                  'Cancel Process',
-                  style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                style: TextButton.styleFrom(
-                  backgroundColor: Colors.redAccent.withOpacity(0.1),
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: _cancelProcess,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: const Text(
+                    'Cancel Process',
+                    style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
             ],
@@ -860,7 +1055,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
               icon: const Icon(Icons.video_call),
               label: const Text('Select Input Video'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
+                backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -930,12 +1125,13 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
                            return _buildPatchPreview(p, idx, constraints);
                         }).toList(),
 
-                         Center(
-                           child: AspectRatio(
-                             aspectRatio: _videoAspectRatio,
-                             child: VideoPlayer(_videoController!),
-                           ),
-                         ),
+                          Align(
+                            alignment: Alignment(0, (_videoY - 0.5) * 2),
+                            child: AspectRatio(
+                              aspectRatio: _videoAspectRatio,
+                              child: VideoPlayer(_videoController!),
+                            ),
+                          ),
 
                          // Patches (Top Layer)
                          ..._patches.asMap().entries.where((e) => e.value.isTop).map((entry) {
@@ -1065,7 +1261,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
                     ),
                     if (_isVerified) ...[
                       const SizedBox(width: 4),
-                      Icon(Icons.verified, color: Colors.blue, size: _fontSize * 0.8 * scale * 0.9),
+                      Icon(Icons.verified, color: AppColors.primary, size: _fontSize * 0.8 * scale * 0.9),
                     ],
                   ],
                 ),
@@ -1119,7 +1315,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
                   _username,
                   style: TextStyle(
                     color: _parseColor(_textColor),
-                    fontWeight: FontWeight.bold,
+                    fontWeight: _selectedUsernameFont?.weight ?? FontWeight.bold,
+                    fontStyle: _selectedUsernameFont?.style ?? FontStyle.normal,
                     fontSize: _fontSize * scale,
                     fontFamily: _selectedUsernameFont?.family,
                     shadows: _showUsernameShadow ? [
@@ -1138,8 +1335,10 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
                       _handle,
                       style: TextStyle(
                         color: _parseColor(_accentColor),
+                        fontWeight: _selectedHandleFont?.weight ?? _selectedUsernameFont?.weight ?? FontWeight.normal,
+                        fontStyle: _selectedHandleFont?.style ?? _selectedUsernameFont?.style ?? FontStyle.normal,
                         fontSize: _fontSize * 0.8 * scale,
-                        fontFamily: _selectedHandleFont?.family,
+                        fontFamily: _selectedHandleFont?.family ?? _selectedUsernameFont?.family,
                         shadows: _showHandleShadow ? [
                           Shadow(
                             color: _parseColor(_handleShadowColor),
@@ -1151,7 +1350,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
                     ),
                     if (_isVerified) ...[
                       const SizedBox(width: 6),
-                      Icon(Icons.verified, color: Colors.blue, size: _fontSize * 0.8 * scale * 0.9),
+                      Icon(Icons.verified, color: AppColors.primary, size: _fontSize * 0.8 * scale * 0.9),
                     ],
                   ],
                 ),
@@ -1202,7 +1401,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
               onPressed: _isProcessing ? null : _processVideo,
               child: const Text('Export', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
+                backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -1214,16 +1413,16 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
             child: ListView(
               scrollDirection: Axis.horizontal,
               children: [
-                _buildTabItem(-1, Icons.add_to_photos, 'Import', Colors.blue, customOnTap: _pickVideo),
+                _buildTabItem(-1, Icons.add_to_photos, 'Import', AppColors.primary, customOnTap: _pickVideo),
                 _buildTabItem(6, Icons.stars, 'Presets', Colors.pink),
                 _buildTabItem(0, Icons.branding_watermark, 'Type', Colors.amber),
                 _buildTabItem(1, Icons.edit_note, 'Content', Colors.indigo),
-                _buildTabItem(8, Icons.text_fields, 'Texts', Colors.deepPurple),
-                _buildTabItem(2, Icons.open_with, 'Position', Colors.blue),
+                _buildTabItem(8, Icons.text_fields, 'Texts', AppColors.primary),
+                _buildTabItem(2, Icons.open_with, 'Position', AppColors.primary),
                 _buildTabItem(3, Icons.palette, 'Style', Colors.deepOrange),
                 _buildTabItem(4, Icons.font_download, 'Fonts', Colors.teal),
                 _buildTabItem(7, Icons.layers, 'Patching', Colors.pink),
-                _buildTabItem(5, Icons.video_settings, 'Canvas', Colors.purple),
+                _buildTabItem(5, Icons.video_settings, 'Canvas', AppColors.primary),
               ],
             ),
           ),
@@ -1375,6 +1574,32 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
         ),
         const SizedBox(height: 12),
         const Text('Long-press a style to rename or delete.', style: TextStyle(fontSize: 11, color: Colors.grey)),
+        if (AppConfig.showWatermarkBackupButtons) ...[
+          const Divider(height: 32),
+          const Text('Cloud Sync & Backup', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _exportPresets,
+                  icon: const Icon(Icons.backup_outlined, size: 18),
+                  label: const Text('Export JSON'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _importPresets,
+                  icon: const Icon(Icons.restore_outlined, size: 18),
+                  label: const Text('Import JSON'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text('Export your styles to keep them safe even after uninstalling the app.', style: TextStyle(fontSize: 10, color: Colors.grey)),
+        ],
       ],
     );
   }
@@ -1480,8 +1705,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: isSelected ? Colors.blue : Colors.grey.shade200, width: isSelected ? 2 : 1),
-          boxShadow: isSelected ? [BoxShadow(color: Colors.blue.withOpacity(0.1), blurRadius: 10)] : null,
+          border: Border.all(color: isSelected ? AppColors.primary : Colors.grey.shade200, width: isSelected ? 2 : 1),
+          boxShadow: isSelected ? [BoxShadow(color: AppColors.primary.withOpacity(0.1), blurRadius: 10)] : null,
         ),
         child: Column(
           children: [
@@ -1509,7 +1734,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const CircleAvatar(radius: 6, backgroundColor: Colors.blueAccent),
+            const CircleAvatar(radius: 6, backgroundColor: AppColors.primary),
             const SizedBox(width: 4),
             const Column(
               mainAxisSize: MainAxisSize.min,
@@ -1525,7 +1750,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
         return const Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircleAvatar(radius: 8, backgroundColor: Colors.blueAccent),
+            CircleAvatar(radius: 8, backgroundColor: AppColors.primary),
             SizedBox(height: 4),
             Text('Username', style: TextStyle(fontSize: 5, fontWeight: FontWeight.bold, color: Colors.black54)),
             Text('@handle', style: TextStyle(fontSize: 4, color: Colors.black38)),
@@ -1588,25 +1813,31 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
     return Positioned(
       left: t.x * constraints.maxWidth,
       top: t.y * constraints.maxHeight,
-      child: GestureDetector(
-        onPanStart: (_) => setState(() => _selectedTextOverlayIndex = index),
-        onPanUpdate: (d) => setState(() {
-          t.x = (t.x + d.delta.dx / constraints.maxWidth).clamp(0.0, 1.0);
-          t.y = (t.y + d.delta.dy / constraints.maxHeight).clamp(0.0, 1.0);
-        }),
-        child: Container(
-          padding: const EdgeInsets.all(4),
-          child: Text(
-            t.text,
-            style: TextStyle(
-              fontSize: t.fontSize * scale,
-              color: _parseColor(t.color),
-              fontFamily: t.font?.family,
-              shadows: t.showShadow ? [Shadow(
-                color: _parseColor(t.shadowColor), 
-                blurRadius: t.shadowBlur, 
-                offset: Offset(t.shadowOffsetX, t.shadowOffsetY)
-              )] : null,
+      child: FractionalTranslation(
+        translation: const Offset(-0.5, -0.5), // Center anchoring
+        child: GestureDetector(
+          onPanStart: (_) => setState(() => _selectedTextOverlayIndex = index),
+          onPanUpdate: (d) => setState(() {
+            t.x = (t.x + d.delta.dx / constraints.maxWidth).clamp(0.0, 1.0);
+            t.y = (t.y + d.delta.dy / constraints.maxHeight).clamp(0.0, 1.0);
+          }),
+          child: Container(
+            constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.8 * t.scale),
+            child: Text(
+              t.text,
+              textAlign: t.textAlign,
+              style: TextStyle(
+                fontSize: t.fontSize * scale * t.scale,
+                color: _parseColor(t.color),
+                fontFamily: t.font?.family,
+                fontWeight: t.font?.weight,
+                fontStyle: t.font?.style,
+                shadows: t.showShadow ? [Shadow(
+                  color: _parseColor(t.shadowColor), 
+                  blurRadius: t.shadowBlur, 
+                  offset: Offset(t.shadowOffsetX, t.shadowOffsetY)
+                )] : null,
+              ),
             ),
           ),
         ),
@@ -1625,14 +1856,17 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
              ElevatedButton.icon(
                onPressed: () {
                  setState(() {
-                   _textOverlays.add(_TextOverlay(text: "New Text"));
+                   _textOverlays.add(_TextOverlay(
+                     text: "New Text",
+                     font: FontInfo(family: 'Metrophobic', displayName: 'Metrophobic'),
+                   ));
                    _selectedTextOverlayIndex = _textOverlays.length - 1;
                  });
                },
                icon: const Icon(Icons.add_comment, size: 18),
                label: const Text('Add Text'),
                style: ElevatedButton.styleFrom(
-                 backgroundColor: Colors.deepPurple, 
+                 backgroundColor: AppColors.primary, 
                  foregroundColor: Colors.white, 
                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -1671,34 +1905,111 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
                ),
                TextFormField(
                  initialValue: t.text,
+                 maxLines: null,
                  onChanged: (v) => setState(() => t.text = v),
                  decoration: const InputDecoration(labelText: "Text Content", border: OutlineInputBorder(), isDense: true),
                ),
                const SizedBox(height: 16),
-               _buildControlSlider(label: "Font Size", value: t.fontSize, min: 10, max: 200, onChanged: (v) => setState(() => t.fontSize = v)),
+                _buildControlSlider(label: "Font Size", value: t.fontSize, min: 10, max: 200, onChanged: (v) => setState(() => t.fontSize = v)),
+                _buildControlSlider(label: "Scale", value: t.scale, min: 0.1, max: 5.0, onChanged: (v) => setState(() => t.scale = v)),
                const SizedBox(height: 8),
                const Text("Text Color", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                const SizedBox(height: 8),
-               _buildColorPicker((c) => setState(() => t.color = c)),
+               _buildColorPicker(t.color, (c) => setState(() => t.color = c)),
                const SizedBox(height: 16),
                const Text("Font Style", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                const SizedBox(height: 8),
                SizedBox(
-                 height: 48, 
-                 child: ListView(
-                   scrollDirection: Axis.horizontal, 
-                   children: getAllFonts().map((f) => Padding(
-                     padding: const EdgeInsets.only(right: 8), 
-                     child: ChoiceChip(
-                       label: Text(f.displayName, style: TextStyle(fontFamily: f.family, fontSize: 12, color: t.font?.family == f.family ? Colors.white : Colors.black87)), 
-                       selected: t.font?.family == f.family, 
-                       showCheckmark: false,
-                       selectedColor: Colors.deepPurple,
-                       onSelected: (_) => setState(() => t.font = f)
-                     )
-                   )).toList()
-                 )
+                  height: 48,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: getAllFonts().length,
+                    itemBuilder: (context, index) {
+                      final f = getAllFonts()[index];
+                      final bool isSelected = t.font == f;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          label: Text(
+                            f.displayName,
+                            style: TextStyle(
+                              fontFamily: f.family,
+                              fontWeight: f.weight,
+                              fontStyle: f.style,
+                              fontSize: 12,
+                              color: isSelected ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                          selected: isSelected,
+                          showCheckmark: false,
+                          selectedColor: AppColors.primary,
+                          backgroundColor: Colors.grey.shade100,
+                          onSelected: (_) => setState(() => t.font = f),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+               const SizedBox(height: 16),
+               const Text("Alignment", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+               const SizedBox(height: 8),
+               ToggleButtons(
+                 isSelected: [
+                   t.textAlign == TextAlign.left,
+                   t.textAlign == TextAlign.center,
+                   t.textAlign == TextAlign.right,
+                 ],
+                 onPressed: (index) {
+                   setState(() {
+                     if (index == 0) t.textAlign = TextAlign.left;
+                     if (index == 1) t.textAlign = TextAlign.center;
+                     if (index == 2) t.textAlign = TextAlign.right;
+                   });
+                 },
+                 borderRadius: BorderRadius.circular(8),
+                 constraints: const BoxConstraints(minHeight: 36, minWidth: 48),
+                 children: const [
+                   Icon(Icons.format_align_left, size: 20),
+                   Icon(Icons.format_align_center, size: 20),
+                   Icon(Icons.format_align_right, size: 20),
+                 ],
                ),
+               const SizedBox(height: 16),
+               const Divider(height: 32),
+               const Text("Positioning", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+               const SizedBox(height: 12),
+               const Text("Quick Horizontal", style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold)),
+               const SizedBox(height: 8),
+               Row(
+                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                 children: [
+                   _buildTextOverlayAlignButton(Icons.align_horizontal_left, "Left", 0.1, t),
+                   _buildTextOverlayAlignButton(Icons.align_horizontal_center, "Center", 0.5, t),
+                   _buildTextOverlayAlignButton(Icons.align_horizontal_right, "Right", 0.9, t),
+                 ],
+               ),
+               const SizedBox(height: 12),
+               const Text("Quick Vertical", style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold)),
+               const SizedBox(height: 8),
+               Row(
+                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                 children: [
+                   _buildTextOverlayAlignYButton(Icons.align_vertical_top, "Top", 0.1, t),
+                   _buildTextOverlayAlignYButton(Icons.align_vertical_center, "Middle", 0.5, t),
+                   _buildTextOverlayAlignYButton(Icons.align_vertical_bottom, "Bottom", 0.9, t),
+                 ],
+               ),
+               const SizedBox(height: 16),
+               const Text("Fine-tune (X, Y)", style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold)),
+               Row(
+                 children: [
+                   const Text("X", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                   Expanded(child: Slider(value: t.x, min: 0, max: 1, onChanged: (v) => setState(() => t.x = v))),
+                   const Text("Y", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                   Expanded(child: Slider(value: t.y, min: 0, max: 1, onChanged: (v) => setState(() => t.y = v))),
+                 ],
+               ),
+               const SizedBox(height: 8),
                const Divider(height: 32),
                const Text("Shadow Settings", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                SwitchListTile(title: const Text("Show Drop Shadow", style: TextStyle(fontSize: 13)), value: t.showShadow, onChanged: (v) => setState(() => t.showShadow = v), dense: true, contentPadding: EdgeInsets.zero),
@@ -1709,7 +2020,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
                  const SizedBox(height: 8),
                  const Text("Shadow Color", style: TextStyle(fontSize: 12)),
                  const SizedBox(height: 8),
-                 _buildColorPicker((c) => setState(() => t.shadowColor = c)),
+                 _buildColorPicker(t.shadowColor, (c) => setState(() => t.shadowColor = c)),
                ],
              ]
            )
@@ -1739,7 +2050,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
                const SizedBox(height: 12),
                const Text("Color"),
                const SizedBox(height: 8),
-               _buildColorPicker((c) => setState(() => p.color = c)),
+               _buildColorPicker(p.color, (c) => setState(() => p.color = c)),
                const SizedBox(height: 12),
                SwitchListTile(
                  title: const Text("Keep on Top", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
@@ -1836,7 +2147,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
         if (_showBox) ...[
           const Text('Box Color'),
           const SizedBox(height: 8),
-          _buildColorPicker((c) => setState(() => _boxColor = c)),
+          _buildColorPicker(_boxColor, (c) => setState(() => _boxColor = c)),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -1870,7 +2181,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
           subtitle: const Text("Purple-Orange IG gradient circle", style: TextStyle(fontSize: 12)),
           value: _showStoryRing,
           onChanged: (v) => setState(() => _showStoryRing = v),
-          secondary: const Icon(Icons.circle_outlined, color: Colors.purple),
+          secondary: const Icon(Icons.circle_outlined, color: AppColors.primary),
           dense: true,
           contentPadding: EdgeInsets.zero,
         ),
@@ -1879,7 +2190,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
           subtitle: const Text("Blue tick next to display name", style: TextStyle(fontSize: 12)),
           value: _isVerified,
           onChanged: (v) => setState(() => _isVerified = v),
-          secondary: const Icon(Icons.verified, color: Colors.blue),
+          secondary: const Icon(Icons.verified, color: AppColors.primary),
           dense: true,
           contentPadding: EdgeInsets.zero,
         ),
@@ -1939,7 +2250,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.blue : Colors.grey.shade100,
+          color: isSelected ? AppColors.primary : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Column(
@@ -1961,7 +2272,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.blue : Colors.grey.shade100,
+          color: isSelected ? AppColors.primary : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Column(
@@ -1996,7 +2307,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
               children: [
                 const Text('Username Color', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 const SizedBox(height: 8),
-                _buildColorPicker((c) => setState(() => _textColor = c)),
+                _buildColorPicker(_textColor, (c) => setState(() => _textColor = c)),
                 const Divider(height: 32),
                 _buildShadowControlSection(
                   title: 'Username Shadow',
@@ -2020,7 +2331,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
               children: [
                 const Text('Handle Color', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 const SizedBox(height: 8),
-                _buildColorPicker((c) => setState(() => _accentColor = c)),
+                _buildColorPicker(_accentColor, (c) => setState(() => _accentColor = c)),
                 const Divider(height: 32),
                 _buildShadowControlSection(
                   title: 'Handle Shadow',
@@ -2075,20 +2386,20 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
           decoration: BoxDecoration(
             border: Border(
               bottom: BorderSide(
-                color: isSelected ? Colors.blue : Colors.transparent,
+                color: isSelected ? AppColors.primary : Colors.transparent,
                 width: 2,
               ),
             ),
           ),
           child: Column(
             children: [
-              Icon(icon, color: isSelected ? Colors.blue : Colors.grey, size: 18),
+              Icon(icon, color: isSelected ? AppColors.primary : Colors.grey, size: 18),
               const SizedBox(height: 4),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 10,
-                  color: isSelected ? Colors.blue : Colors.grey,
+                  color: isSelected ? AppColors.primary : Colors.grey,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
@@ -2126,7 +2437,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
           const SizedBox(height: 8),
           const Text('Color', style: TextStyle(fontSize: 12, color: Colors.grey)),
           const SizedBox(height: 4),
-          _buildColorPicker(onColorChanged),
+          _buildColorPicker(shadowColor, onColorChanged),
           const SizedBox(height: 16),
           Text('Blur Radius: ${blur.toInt()}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
           Slider(value: blur, min: 0, max: 20, onChanged: onBlurChanged),
@@ -2154,11 +2465,11 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
   Widget _buildSectionHeader(String title, IconData icon) {
     return Row(
       children: [
-        Icon(icon, size: 20, color: Colors.blue),
+        Icon(icon, size: 20, color: AppColors.primary),
         const SizedBox(width: 8),
         Text(
           title,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.primary),
         ),
       ],
     );
@@ -2185,8 +2496,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
             itemBuilder: (context, index) {
               final font = getAllFonts()[index];
               final bool isSelected = _selectedStyleSubTab == 0 
-                  ? _selectedUsernameFont?.displayName == font.displayName
-                  : _selectedHandleFont?.displayName == font.displayName;
+                  ? _selectedUsernameFont == font
+                  : _selectedHandleFont == font;
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: ChoiceChip(
@@ -2194,6 +2505,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
                     font.displayName,
                     style: TextStyle(
                       fontFamily: font.family,
+                      fontWeight: font.weight,
+                      fontStyle: font.style,
                       color: isSelected ? Colors.white : Colors.black87,
                       fontSize: 12,
                     ),
@@ -2209,7 +2522,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
                       }
                     });
                   },
-                  selectedColor: Colors.blue,
+                  selectedColor: AppColors.primary,
                   backgroundColor: Colors.grey.shade100,
                   checkmarkColor: Colors.white,
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
@@ -2230,10 +2543,10 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: isSelected ? Colors.blue.withOpacity(0.05) : Colors.transparent,
+            color: isSelected ? AppColors.primary.withOpacity(0.05) : Colors.transparent,
             border: Border(
               bottom: BorderSide(
-                color: isSelected ? Colors.blue : Colors.transparent,
+                color: isSelected ? AppColors.primary : Colors.transparent,
                 width: 2,
               ),
             ),
@@ -2241,14 +2554,14 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, color: isSelected ? Colors.blue : Colors.grey, size: 14),
+              Icon(icon, color: isSelected ? AppColors.primary : Colors.grey, size: 14),
               const SizedBox(width: 6),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  color: isSelected ? Colors.blue : Colors.grey,
+                  color: isSelected ? AppColors.primary : Colors.grey,
                 ),
               ),
             ],
@@ -2294,7 +2607,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
              const SizedBox(height: 20),
              const Text('Background Color'),
              const SizedBox(height: 8),
-             _buildColorPicker((c) => setState(() => _bgColor = c)),
+             _buildColorPicker(_bgColor, (c) => setState(() => _bgColor = c)),
            ] else ...[
              const SizedBox(height: 16),
              _buildControlSlider(
@@ -2319,6 +2632,18 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
                onChanged: (v) => setState(() => _bgBlur = v),
              ),
            ],
+           const SizedBox(height: 16),
+           const Divider(),
+           const SizedBox(height: 16),
+           const Text('Video Vertical Position', style: TextStyle(fontWeight: FontWeight.bold)),
+           _buildControlSlider(
+             label: 'Position (Y)',
+             value: _videoY,
+             min: 0.0,
+             max: 1.0,
+             onChanged: (v) => setState(() => _videoY = v),
+           ),
+           const Text('0.0: Top, 0.5: Center, 1.0: Bottom', style: TextStyle(fontSize: 10, color: Colors.grey)),
         ],
         const Divider(height: 32),
       ],
@@ -2460,7 +2785,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
-            Text(value.toStringAsFixed(1), style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+            Text(value.toStringAsFixed(1), style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
           ],
         ),
         Slider(
@@ -2468,30 +2793,97 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
           min: min,
           max: max,
           onChanged: onChanged,
-          activeColor: Colors.blue,
+          activeColor: AppColors.primary,
         ),
       ],
     );
   }
 
-  Widget _buildColorPicker(Function(String) onPick) {
+  Widget _buildColorPicker(String currentColor, Function(String) onPick) {
     final colors = ['#FFFFFF', '#000000', '#FFD700', '#FF4444', '#00E676', '#2979FF', '#FF4081', '#AA00FF'];
     return Wrap(
       spacing: 12,
       runSpacing: 12,
-      children: colors.map((c) => GestureDetector(
-        onTap: () => onPick(c),
-        child: Container(
-          width: 35,
-          height: 35,
-          decoration: BoxDecoration(
-            color: _parseColor(c),
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.grey.shade300, width: 2),
-            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        // Custom Color Button
+        GestureDetector(
+          onTap: () async {
+            Color selectedColor = _parseColor(currentColor);
+            await showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+                contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                title: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Custom Color', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 20),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AdvancedColorPicker(
+                        initialColor: selectedColor,
+                        onColorChanged: (color) => selectedColor = color,
+                      ),
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            final hex = '#${selectedColor.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+                            onPick(hex);
+                            Navigator.pop(context);
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF6C63FF),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text('SELECT COLOR', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+          child: Container(
+            width: 35,
+            height: 35,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.grey.shade300, width: 2),
+              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+            ),
+            child: const Icon(Icons.colorize_rounded, size: 18, color: Colors.black54),
           ),
         ),
-      )).toList(),
+        ...colors.map((c) => GestureDetector(
+          onTap: () => onPick(c),
+          child: Container(
+            width: 35,
+            height: 35,
+            decoration: BoxDecoration(
+              color: _parseColor(c),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.grey.shade300, width: 2),
+              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+            ),
+          ),
+        )),
+      ],
     );
   }
 
@@ -2501,6 +2893,50 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
     } catch (_) {
       return Colors.white;
     }
+  }
+
+  Widget _buildTextOverlayAlignButton(IconData icon, String label, double xValue, _TextOverlay t) {
+    final isSelected = (t.x - xValue).abs() < 0.05;
+    return InkWell(
+      onTap: () => setState(() => t.x = xValue),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: isSelected ? Colors.white : Colors.black, size: 18),
+            const SizedBox(height: 4),
+            Text(label, style: TextStyle(fontSize: 10, color: isSelected ? Colors.white : Colors.black)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextOverlayAlignYButton(IconData icon, String label, double yValue, _TextOverlay t) {
+    final isSelected = (t.y - yValue).abs() < 0.05;
+    return InkWell(
+      onTap: () => setState(() => t.y = yValue),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: isSelected ? Colors.white : Colors.black, size: 18),
+            const SizedBox(height: 4),
+            Text(label, style: TextStyle(fontSize: 10, color: isSelected ? Colors.white : Colors.black)),
+          ],
+        ),
+      ),
+    );
   }
 
   @override

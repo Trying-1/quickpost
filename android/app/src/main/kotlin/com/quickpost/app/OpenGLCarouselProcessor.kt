@@ -125,6 +125,18 @@ class OpenGLCarouselProcessor(private val context: Context) {
         val cacheKey = "$family-$weight-$isItalic"
         if (typefaceCache.containsKey(cacheKey)) return typefaceCache[cacheKey]
 
+        // Try loading from absolute file path (custom uploaded fonts)
+        if (family.startsWith("/")) {
+            return try {
+                val tf = Typeface.createFromFile(family)
+                typefaceCache[cacheKey] = tf
+                tf
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load typeface from file: $family", e)
+                null
+            }
+        }
+
         val familyMatches = fontManifestCache.filter { it.family == family || it.family.endsWith("/$family") }
         if (familyMatches.isEmpty()) return null
 
@@ -387,83 +399,159 @@ class OpenGLCarouselProcessor(private val context: Context) {
         }
 
         // 3. Text Overlay
-        val text = params["text"] as? String ?: ""
-        if (text.isNotEmpty()) {
-            val textColor = Color.parseColor(params["textColor"] as? String ?: "#FFFFFF")
-            // Responsive font size based on height
-            val fontSize = height * 0.06f 
-            val fontPath = params["fontPath"] as? String
-            val fontWeight = (params["fontWeight"] as? Number)?.toInt() ?: 400
-            val fontItalic = params["fontItalic"] as? Boolean ?: false
-            
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                this.color = textColor
-                this.textSize = fontSize
-                this.textAlign = Paint.Align.CENTER
-            }
-            
-            if (!fontPath.isNullOrEmpty()) {
-                val customTypeface = getCustomTypeface(fontPath, fontWeight, fontItalic)
-                if (customTypeface != null) {
-                    paint.typeface = customTypeface
-                } else {
-                    val style = if (fontItalic && fontWeight >= 700) Typeface.BOLD_ITALIC
-                                else if (fontItalic) Typeface.ITALIC
-                                else if (fontWeight >= 700) Typeface.BOLD
-                                else Typeface.NORMAL
-                    paint.typeface = Typeface.create(fontPath, style)
+        val useWordMode = params["useWordMode"] as? Boolean ?: false
+        @Suppress("UNCHECKED_CAST")
+        val words = params["words"] as? List<Map<String, Any?>>
+
+        if (useWordMode && words != null && words.isNotEmpty()) {
+            // --- Per-word rendering ---
+            val padding = width * 0.05f
+            for (wordData in words) {
+                val wordText = wordData["text"] as? String ?: continue
+                val wordColor = Color.parseColor(wordData["color"] as? String ?: "#FFFFFF")
+                val wordFontSize = (wordData["fontSize"] as? Number)?.toFloat() ?: 28f
+                val wordFontPath = wordData["fontPath"] as? String
+                val wordFontWeight = (wordData["fontWeight"] as? Number)?.toInt() ?: 400
+                val wordFontItalic = wordData["fontItalic"] as? Boolean ?: false
+                val wordRotation = (wordData["rotation"] as? Number)?.toFloat() ?: 0f
+                val posX = (wordData["posX"] as? Number)?.toFloat() ?: 0f
+                val posY = (wordData["posY"] as? Number)?.toFloat() ?: 0f
+
+                // Scale font to export resolution (preview ~350px wide, export 1080px)
+                val scaledFontSize = wordFontSize * (width.toFloat() / 350f)
+
+                val wordPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    this.color = wordColor
+                    this.textSize = scaledFontSize
+                    this.textAlign = Paint.Align.CENTER
                 }
-            }
 
-            val lines = text.split("\n")
-            val padding = width * 0.05f // 5% horizontal padding
-            val alignX = (params["textAlignX"] as? Number)?.toFloat() ?: 0f
-            val alignY = (params["textAlignY"] as? Number)?.toFloat() ?: 0f
-            
-            val lineHeight = fontSize * 1.25f
-            val totalHeight = lines.size * lineHeight
-            
-            // Base vertical center position adjusted by Y alignment
-            val centerY = (height / 2f) + (alignY * (height / 2f - totalHeight / 2f - padding))
-            
-            for (index in lines.indices) {
-                val line = lines[index]
-                // baseline calculation for this line
-                val lineY = centerY - (totalHeight / 2f) + (index * lineHeight) + (fontSize * 0.8f)
-                
-                // Measure line width to calculate exact horizontal center for this alignment
+                if (!wordFontPath.isNullOrEmpty()) {
+                    val customTypeface = getCustomTypeface(wordFontPath, wordFontWeight, wordFontItalic)
+                    if (customTypeface != null) {
+                        wordPaint.typeface = customTypeface
+                    } else {
+                        val style = if (wordFontItalic && wordFontWeight >= 700) Typeface.BOLD_ITALIC
+                                    else if (wordFontItalic) Typeface.ITALIC
+                                    else if (wordFontWeight >= 700) Typeface.BOLD
+                                    else Typeface.NORMAL
+                        wordPaint.typeface = Typeface.create(wordFontPath, style)
+                    }
+                }
+
+                // Map Alignment (-1..1) to pixel coordinates
                 val bounds = Rect()
-                paint.getTextBounds(line, 0, line.length, bounds)
-                val lineTranslateX = alignX * (width / 2f - bounds.width() / 2f - padding)
-                val lineX = (width / 2f) + lineTranslateX
+                wordPaint.getTextBounds(wordText, 0, wordText.length, bounds)
+                val x = (width / 2f) + (posX * (width / 2f - padding))
+                val y = (height / 2f) + (posY * (height / 2f - padding)) + bounds.height() / 2f
 
-                // A. Layer 1: Glow Effect (Bottom-most)
-                val enableGlow = params["enableGlow"] as? Boolean ?: false
-                if (enableGlow) {
-                    val glowColor = Color.parseColor(params["glowColor"] as? String ?: "#FFFFFF")
-                    val glowRadius = (params["glowRadius"] as? Number)?.toFloat() ?: 10f
-                    val glowPaint = Paint(paint).apply {
+                canvas.save()
+                if (wordRotation != 0f) {
+                    canvas.rotate(wordRotation, x, y - bounds.height() / 2f)
+                }
+
+                // Glow
+                val wEnableGlow = wordData["enableGlow"] as? Boolean ?: false
+                if (wEnableGlow) {
+                    val glowColor = Color.parseColor(wordData["glowColor"] as? String ?: "#FFFFFF")
+                    val glowRadius = (wordData["glowRadius"] as? Number)?.toFloat() ?: 10f
+                    val glowPaint = Paint(wordPaint).apply {
                         color = glowColor
                         maskFilter = BlurMaskFilter(glowRadius, BlurMaskFilter.Blur.NORMAL)
                     }
-                    canvas.drawText(line, lineX, lineY, glowPaint)
+                    canvas.drawText(wordText, x, y, glowPaint)
                 }
 
-                // B. Layer 2: Shadow Effect (Middle)
-                val enableShadow = params["enableShadow"] as? Boolean ?: false
-                if (enableShadow) {
-                    val sColor = Color.parseColor(params["shadowColor"] as? String ?: "#88000000")
-                    val blur = (params["shadowBlur"] as? Number)?.toFloat() ?: 4f
-                    val dx = (params["shadowOffsetX"] as? Number)?.toFloat() ?: 2f
-                    val dy = (params["shadowOffsetY"] as? Number)?.toFloat() ?: 2f
-                    val shadowPaint = Paint(paint).apply {
+                // Shadow
+                val wEnableShadow = wordData["enableShadow"] as? Boolean ?: false
+                if (wEnableShadow) {
+                    val sColor = Color.parseColor(wordData["shadowColor"] as? String ?: "#88000000")
+                    val blur = (wordData["shadowBlur"] as? Number)?.toFloat() ?: 4f
+                    val dx = (wordData["shadowOffsetX"] as? Number)?.toFloat() ?: 2f
+                    val dy = (wordData["shadowOffsetY"] as? Number)?.toFloat() ?: 2f
+                    val shadowPaint = Paint(wordPaint).apply {
                         setShadowLayer(blur, dx, dy, sColor)
                     }
-                    canvas.drawText(line, lineX, lineY, shadowPaint)
+                    canvas.drawText(wordText, x, y, shadowPaint)
                 }
 
-                // C. Layer 3: Main Text (Top-most)
-                canvas.drawText(line, lineX, lineY, paint)
+                // Main text
+                canvas.drawText(wordText, x, y, wordPaint)
+                canvas.restore()
+            }
+        } else {
+            // --- Classic single-text rendering ---
+            val text = params["text"] as? String ?: ""
+            if (text.isNotEmpty()) {
+                val textColor = Color.parseColor(params["textColor"] as? String ?: "#FFFFFF")
+                val fontSize = height * 0.06f
+                val fontPath = params["fontPath"] as? String
+                val fontWeight = (params["fontWeight"] as? Number)?.toInt() ?: 400
+                val fontItalic = params["fontItalic"] as? Boolean ?: false
+
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    this.color = textColor
+                    this.textSize = fontSize
+                    this.textAlign = Paint.Align.CENTER
+                }
+
+                if (!fontPath.isNullOrEmpty()) {
+                    val customTypeface = getCustomTypeface(fontPath, fontWeight, fontItalic)
+                    if (customTypeface != null) {
+                        paint.typeface = customTypeface
+                    } else {
+                        val style = if (fontItalic && fontWeight >= 700) Typeface.BOLD_ITALIC
+                                    else if (fontItalic) Typeface.ITALIC
+                                    else if (fontWeight >= 700) Typeface.BOLD
+                                    else Typeface.NORMAL
+                        paint.typeface = Typeface.create(fontPath, style)
+                    }
+                }
+
+                val lines = text.split("\n")
+                val padding = width * 0.05f
+                val alignX = (params["textAlignX"] as? Number)?.toFloat() ?: 0f
+                val alignY = (params["textAlignY"] as? Number)?.toFloat() ?: 0f
+
+                val lineHeight = fontSize * 1.25f
+                val totalHeight = lines.size * lineHeight
+
+                val centerY = (height / 2f) + (alignY * (height / 2f - totalHeight / 2f - padding))
+
+                for (index in lines.indices) {
+                    val line = lines[index]
+                    val lineY = centerY - (totalHeight / 2f) + (index * lineHeight) + (fontSize * 0.8f)
+
+                    val bounds = Rect()
+                    paint.getTextBounds(line, 0, line.length, bounds)
+                    val lineTranslateX = alignX * (width / 2f - bounds.width() / 2f - padding)
+                    val lineX = (width / 2f) + lineTranslateX
+
+                    val enableGlow = params["enableGlow"] as? Boolean ?: false
+                    if (enableGlow) {
+                        val glowColor = Color.parseColor(params["glowColor"] as? String ?: "#FFFFFF")
+                        val glowRadius = (params["glowRadius"] as? Number)?.toFloat() ?: 10f
+                        val glowPaint = Paint(paint).apply {
+                            color = glowColor
+                            maskFilter = BlurMaskFilter(glowRadius, BlurMaskFilter.Blur.NORMAL)
+                        }
+                        canvas.drawText(line, lineX, lineY, glowPaint)
+                    }
+
+                    val enableShadow = params["enableShadow"] as? Boolean ?: false
+                    if (enableShadow) {
+                        val sColor = Color.parseColor(params["shadowColor"] as? String ?: "#88000000")
+                        val blur = (params["shadowBlur"] as? Number)?.toFloat() ?: 4f
+                        val dx = (params["shadowOffsetX"] as? Number)?.toFloat() ?: 2f
+                        val dy = (params["shadowOffsetY"] as? Number)?.toFloat() ?: 2f
+                        val shadowPaint = Paint(paint).apply {
+                            setShadowLayer(blur, dx, dy, sColor)
+                        }
+                        canvas.drawText(line, lineX, lineY, shadowPaint)
+                    }
+
+                    canvas.drawText(line, lineX, lineY, paint)
+                }
             }
         }
 

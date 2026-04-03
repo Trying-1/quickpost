@@ -35,6 +35,8 @@ class ShareReceiverActivity : Activity() {
                 type = intent.type
                 intent.extras?.let { putExtras(it) }
                 putExtra("share_purpose", sharePurpose)
+                // Crucial: grant read permission for URIs contained in the intent
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
             startActivity(mainIntent)

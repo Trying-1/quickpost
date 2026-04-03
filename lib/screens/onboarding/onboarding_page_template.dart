@@ -1,139 +1,102 @@
 import 'package:flutter/material.dart';
+import '../../config/app_theme.dart';
 
 class OnboardingPageTemplate extends StatelessWidget {
-  final List<Color> gradient;
   final IconData heroIcon;
   final String title;
-  final String description;
-  final List<String> bullets;
+  final String subtitle;
+  final List<FeatureItem> features;
+  final Color accentColor;
 
   const OnboardingPageTemplate({
     super.key,
-    required this.gradient,
     required this.heroIcon,
     required this.title,
-    required this.description,
-    required this.bullets,
+    required this.subtitle,
+    required this.features,
+    this.accentColor = const Color(0xFF00796B),
   });
+
+  // Keep the old constructor working for compatibility
+  factory OnboardingPageTemplate.legacy({
+    Key? key,
+    required List<Color> gradient,
+    required IconData heroIcon,
+    required String title,
+    required String description,
+    required List<String> bullets,
+  }) {
+    return OnboardingPageTemplate(
+      key: key,
+      heroIcon: heroIcon,
+      title: title,
+      subtitle: description,
+      features: bullets.map((b) => FeatureItem(text: b)).toList(),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final bg = const Color(0xFFF4F5F7);
-    final card = const Color(0xFFF7F8FA);
-    final titleColor = const Color(0xFF0F172A);
-    final bodyColor = const Color(0xFF334155);
-    final accent = scheme.primary;
-
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        color: Color(0xFFF4F5F7),
-      ),
+    return Container(
+      color: AppColors.background,
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
+          padding: const EdgeInsets.fromLTRB(28, 40, 28, 120),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Spacer(),
-              _HeroIcon(icon: heroIcon),
-              const SizedBox(height: 22),
+              const Spacer(flex: 1),
+
+              // Hero Icon Container
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: accentColor.withValues(alpha: 0.2),
+                    width: 1.5,
+                  ),
+                ),
+                child: Icon(heroIcon, size: 38, color: accentColor),
+              ),
+
+              const SizedBox(height: 32),
+
+              // Title
               Text(
                 title,
-                style: TextStyle(
+                style: const TextStyle(
                   fontFamily: 'Poppins',
                   fontSize: 32,
-                  height: 1.05,
+                  height: 1.15,
                   fontWeight: FontWeight.w800,
-                  color: titleColor,
-                  letterSpacing: -0.6,
+                  color: AppColors.textPrimary,
+                  letterSpacing: -0.8,
                 ),
               ),
-              const SizedBox(height: 10),
+
+              const SizedBox(height: 12),
+
+              // Subtitle
               Text(
-                description,
+                subtitle,
                 style: TextStyle(
-                  fontFamily: 'Metrophobic',
+                  fontFamily: 'Poppins',
                   fontSize: 15,
-                  height: 1.55,
+                  height: 1.6,
                   fontWeight: FontWeight.w400,
-                  letterSpacing: 0.1,
-                  color: bodyColor,
+                  color: AppColors.textSecondary,
                 ),
               ),
-              const SizedBox(height: 18),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: card,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.white.withOpacity(0.9),
-                      blurRadius: 18,
-                      offset: const Offset(-8, -8),
-                    ),
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
-                      blurRadius: 18,
-                      offset: const Offset(10, 10),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ...bullets.map(
-                      (b) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 22,
-                              height: 22,
-                              margin: const EdgeInsets.only(top: 1),
-                              decoration: BoxDecoration(
-                                color: bg,
-                                borderRadius: BorderRadius.circular(999),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.white.withOpacity(0.95),
-                                    blurRadius: 10,
-                                    offset: const Offset(-4, -4),
-                                  ),
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.10),
-                                    blurRadius: 10,
-                                    offset: const Offset(4, 4),
-                                  ),
-                                ],
-                              ),
-                              child: Icon(Icons.check, size: 14, color: accent),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                b,
-                                style: TextStyle(
-                                  fontFamily: 'Poppins',
-                                  fontSize: 13.5,
-                                  height: 1.35,
-                                  color: titleColor,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.1,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Spacer(flex: 2),
+
+              const SizedBox(height: 32),
+
+              // Feature Cards
+              ...features.map((f) => FeatureRow(item: f, accentColor: accentColor)),
+
+              const Spacer(flex: 3),
             ],
           ),
         ),
@@ -142,81 +105,92 @@ class OnboardingPageTemplate extends StatelessWidget {
   }
 }
 
-class _HeroIcon extends StatelessWidget {
-  final IconData icon;
+class FeatureItem {
+  final String text;
+  final String? detail;
+  final IconData? icon;
 
-  const _HeroIcon({required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final bg = const Color(0xFFF4F5F7);
-
-    return SizedBox(
-      height: 120,
-      child: Stack(
-        alignment: Alignment.centerLeft,
-        children: [
-          Positioned(
-            left: 36,
-            top: 10,
-            child: _GlowBlob(
-              size: 90,
-              color: scheme.primary.withOpacity(0.10),
-            ),
-          ),
-          Positioned(
-            left: 0,
-            bottom: 8,
-            child: _GlowBlob(
-              size: 74,
-              color: scheme.primary.withOpacity(0.12),
-            ),
-          ),
-          Container(
-            width: 94,
-            height: 94,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(28),
-              color: bg,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.white.withOpacity(0.95),
-                  blurRadius: 18,
-                  offset: const Offset(-10, -10),
-                ),
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.12),
-                  blurRadius: 18,
-                  offset: const Offset(12, 12),
-                ),
-              ],
-            ),
-            child: Icon(icon, size: 46, color: scheme.primary),
-          ),
-        ],
-      ),
-    );
-  }
+  const FeatureItem({
+    required this.text,
+    this.detail,
+    this.icon,
+  });
 }
 
-class _GlowBlob extends StatelessWidget {
-  final double size;
-  final Color color;
+class FeatureRow extends StatelessWidget {
+  final FeatureItem item;
+  final Color accentColor;
 
-  const _GlowBlob({
-    required this.size,
-    required this.color,
+  const FeatureRow({
+    super.key,
+    required this.item,
+    required this.accentColor,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.divider),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: accentColor.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                item.icon ?? Icons.check_circle_outline_rounded,
+                size: 20,
+                color: accentColor,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.text,
+                    style: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  if (item.detail != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      item.detail!,
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

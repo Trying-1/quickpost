@@ -6,6 +6,9 @@ import android.media.*
 import android.opengl.*
 import android.util.Log
 import android.view.Surface
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -182,7 +185,11 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         val shadowColor: String,
         val shadowBlur: Float,
         val shadowOffsetX: Float,
-        val shadowOffsetY: Float
+        val shadowOffsetY: Float,
+        val textAlign: String,
+        val maxWidth: Float,
+        val anchor: String,
+        val scale: Float
     )
 
     // ── Public entry point ──────────────────────────────────────────
@@ -209,6 +216,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         val bgBrightness = (params["bgBrightness"] as? Number)?.toFloat() ?: 1.0f
         val bgSaturation = (params["bgSaturation"] as? Number)?.toFloat() ?: 1.0f
         val bgBlur = (params["bgBlur"] as? Number)?.toFloat() ?: 0f
+        val videoY = (params["videoY"] as? Number)?.toFloat() ?: 0.5f
 
         // 1. Open input video
         val extractor = MediaExtractor()
@@ -284,7 +292,11 @@ class OpenGLWatermarkProcessor(private val context: Context) {
                 shadowColor = t["shadowColor"] as? String ?: "#000000",
                 shadowBlur = (t["shadowBlur"] as? Number)?.toFloat() ?: 8f,
                 shadowOffsetX = (t["shadowOffsetX"] as? Number)?.toFloat() ?: 2f,
-                shadowOffsetY = (t["shadowOffsetY"] as? Number)?.toFloat() ?: 2f
+                shadowOffsetY = (t["shadowOffsetY"] as? Number)?.toFloat() ?: 2f,
+                textAlign = t["textAlign"] as? String ?: "center",
+                maxWidth = (t["maxWidth"] as? Number)?.toFloat() ?: 800f,
+                anchor = t["anchor"] as? String ?: "center",
+                scale = (t["scale"] as? Number)?.toFloat() ?: 1.0f
             )
         }
 
@@ -410,6 +422,10 @@ class OpenGLWatermarkProcessor(private val context: Context) {
              } else {
                  android.opengl.Matrix.scaleM(videoMvp, 0, aspectIn / aspectOut, 1.0f, 1.0f)
              }
+             // Apply Vertical Position (videoY: 0.0 top, 0.5 center, 1.0 bottom)
+             // GL range is -1 to 1.
+             val glVideoY = (0.5f - videoY) * 2f
+             android.opengl.Matrix.translateM(videoMvp, 0, 0f, glVideoY, 0f)
         }
 
         val identityMvp = FloatArray(16)
@@ -966,10 +982,45 @@ class OpenGLWatermarkProcessor(private val context: Context) {
             } else {
                 textPaint.typeface = Typeface.DEFAULT
             }
-            // Draw text, adjusting Y for baseline
-            val fm = textPaint.fontMetrics
-            val baseline = t.y - fm.top
-            canvas.drawText(t.text, t.x, baseline, textPaint)
+            
+            val alignment = when (t.textAlign.lowercase()) {
+                "left" -> Layout.Alignment.ALIGN_NORMAL
+                "right" -> Layout.Alignment.ALIGN_OPPOSITE
+                else -> Layout.Alignment.ALIGN_CENTER
+            }
+
+            val builder = StaticLayout.Builder.obtain(t.text, 0, t.text.length, textPaint, t.maxWidth.toInt())
+                .setAlignment(alignment)
+                .setLineSpacing(0f, 1f)
+                .setIncludePad(false)
+            
+            val staticLayout = builder.build()
+            
+            // Measure actual content bounding box
+            var maxLineWidth = 0f
+            for (i in 0 until staticLayout.lineCount) {
+                maxLineWidth = maxOf(maxLineWidth, staticLayout.getLineWidth(i))
+            }
+            
+            val startX = when (t.textAlign.lowercase()) {
+                "left" -> 0f
+                "right" -> t.maxWidth - maxLineWidth
+                else -> (t.maxWidth - maxLineWidth) / 2f
+            }
+            
+            val minX = startX
+            val maxX = startX + maxLineWidth
+            val minY = 0f
+            val maxY = staticLayout.height.toFloat()
+            
+            // Always use center anchoring (matching the simplified UI)
+            val offsetX = -(minX + maxX) / 2f
+            val offsetY = -(minY + maxY) / 2f
+            
+            canvas.save()
+            canvas.translate(t.x + offsetX, t.y + offsetY)
+            staticLayout.draw(canvas)
+            canvas.restore()
         }
         
         val flip = flipBitmapVertically(bitmap)

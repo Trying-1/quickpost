@@ -97,10 +97,17 @@ class VideoCropEditorState extends State<VideoCropEditor> {
     final size = _controller.value.size;
     if (size.width == 0 || size.height == 0) return;
 
-    final double maxWidth = MediaQuery.of(context).size.width - 40;
-    final double maxHeight = 400.0;
+    final rotation = widget.initialCrop.rotation;
+    final bool isRotated = rotation == 90 || rotation == 270;
     
-    final double videoAspectRatio = size.width / size.height;
+    // Effective size after rotation
+    final double vW = isRotated ? size.height : size.width;
+    final double vH = isRotated ? size.width : size.height;
+
+    final double maxWidth = MediaQuery.of(context).size.width - 40;
+    final double maxHeight = MediaQuery.of(context).size.height * 0.5; // Use 50% of screen height
+    
+    final double videoAspectRatio = vW / vH;
     final double maxAspectRatio = maxWidth / maxHeight;
     
     if (videoAspectRatio > maxAspectRatio) {
@@ -111,25 +118,21 @@ class VideoCropEditorState extends State<VideoCropEditor> {
       _videoDisplayWidth = maxHeight * videoAspectRatio;
     }
 
-    // Initialize crop area to center (~60% of video) and respect aspect ratio
+    // Initialize crop area to center (~80% of video) and respect aspect ratio
     final dynamic ratioValue = _selectedAspectRatio == null || _selectedAspectRatio == 'free'
         ? null
         : _aspectRatios[_selectedAspectRatio!]!['ratio'];
 
     if (ratioValue == null) {
       // Free
-      _cropWidth = _videoDisplayWidth * 0.6;
-      _cropHeight = _videoDisplayHeight * 0.6;
+      _cropWidth = _videoDisplayWidth * 0.8;
+      _cropHeight = _videoDisplayHeight * 0.8;
     } else {
       final double ratio = ratioValue as double;
-      final double targetW = _videoDisplayWidth * 0.6;
-      final double targetH = _videoDisplayHeight * 0.6;
-
-      // Largest rect that fits inside targetW x targetH with this ratio
-      double w = targetW;
+      double w = _videoDisplayWidth * 0.8;
       double h = w / ratio;
-      if (h > targetH) {
-        h = targetH;
+      if (h > _videoDisplayHeight * 0.8) {
+        h = _videoDisplayHeight * 0.8;
         w = h * ratio;
       }
       _cropWidth = w;
@@ -144,43 +147,80 @@ class VideoCropEditorState extends State<VideoCropEditor> {
 
   void _updateParentCrop() {
     final size = _controller.value.size;
-    final double scaleX = size.width / _videoDisplayWidth;
-    final double scaleY = size.height / _videoDisplayHeight;
+    final int W = size.width.toInt();
+    final int H = size.height.toInt();
+    final int rotation = widget.initialCrop.rotation;
+    final bool isRotated = rotation == 90 || rotation == 270;
 
-    int x = (_cropX * scaleX).round();
-    int y = (_cropY * scaleY).round();
-    int w = (_cropWidth * scaleX).round();
-    int h = (_cropHeight * scaleY).round();
+    // Rescale from display size to "rotated frame size"
+    final double rotatedW = isRotated ? H.toDouble() : W.toDouble();
+    final double rotatedH = isRotated ? W.toDouble() : H.toDouble();
 
-    // Match native behavior: even-aligned crop rect (common requirement for yuv420p)
-    if (x.isOdd) x -= 1;
-    if (y.isOdd) y -= 1;
-    if (w.isOdd) w -= 1;
-    if (h.isOdd) h -= 1;
+    final double scaleX = rotatedW / _videoDisplayWidth;
+    final double scaleY = rotatedH / _videoDisplayHeight;
 
-    final int maxW = size.width.toInt();
-    final int maxH = size.height.toInt();
-    x = x.clamp(0, maxW);
-    y = y.clamp(0, maxH);
-    w = w.clamp(2, maxW);
-    h = h.clamp(2, maxH);
+    double rx = _cropX * scaleX;
+    double ry = _cropY * scaleY;
+    double rw = _cropWidth * scaleX;
+    double rh = _cropHeight * scaleY;
 
-    // Ensure the crop rect stays inside bounds after rounding
-    if (x + w > maxW) {
-      w = (maxW - x).clamp(2, maxW);
-      if (w.isOdd) w -= 1;
+    // Handle horizontal flip (happens AFTER rotation in UI)
+    if (widget.initialCrop.isFlipped) {
+      rx = rotatedW - (rx + rw);
     }
-    if (y + h > maxH) {
-      h = (maxH - y).clamp(2, maxH);
-      if (h.isOdd) h -= 1;
+
+    // Map rotated coordinates back to original frame coordinates
+    double cX, cY, cW, cH;
+    
+    switch (rotation) {
+      case 90: // 90° CW
+        cX = ry;
+        cY = H - (rx + rw);
+        cW = rh;
+        cH = rw;
+        break;
+      case 180: // 180°
+        cX = W - (rx + rw);
+        cY = H - (ry + rh);
+        cW = rw;
+        cH = rh;
+        break;
+      case 270: // 270° CW (90° CCW)
+        cX = W - (ry + rh);
+        cY = rx;
+        cW = rh;
+        cH = rw;
+        break;
+      default: // 0°
+        cX = rx;
+        cY = ry;
+        cW = rw;
+        cH = rh;
+        break;
     }
+
+    int finalX = cX.round();
+    int finalY = cY.round();
+    int finalW = cW.round();
+    int finalH = cH.round();
+
+    // Alignment and clamping
+    if (finalX.isOdd) finalX -= 1;
+    if (finalY.isOdd) finalY -= 1;
+    if (finalW.isOdd) finalW -= 1;
+    if (finalH.isOdd) finalH -= 1;
+
+    finalX = finalX.clamp(0, W);
+    finalY = finalY.clamp(0, H);
+    finalW = finalW.clamp(2, W - finalX);
+    finalH = finalH.clamp(2, H - finalY);
 
     widget.onCropChanged(CroppedVideoData(
-      cropX: x,
-      cropY: y,
-      cropWidth: w,
-      cropHeight: h,
-      rotation: widget.initialCrop.rotation,
+      cropX: finalX,
+      cropY: finalY,
+      cropWidth: finalW,
+      cropHeight: finalH,
+      rotation: rotation,
       isFlipped: widget.initialCrop.isFlipped,
     ));
   }
@@ -297,7 +337,7 @@ class VideoCropEditorState extends State<VideoCropEditor> {
     setState(() {
       int newRotation = (widget.initialCrop.rotation + 90) % 360;
       widget.initialCrop.rotation = newRotation;
-      _updateParentCrop();
+      _initializeCropArea(); // Re-initialize display for new aspect ratio
     });
   }
 

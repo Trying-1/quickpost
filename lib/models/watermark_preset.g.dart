@@ -35,14 +35,32 @@ class WatermarkPresetAdapter extends TypeAdapter<WatermarkPreset> {
       username: fields[15] as String,
       handle: fields[16] as String,
       fontFamily: fields[17] as String,
+      handleFontFamily: fields[36] as String?,
       profileImagePath: fields[18] as String?,
+      showStoryRing: fields[19] as bool,
+      isVerified: fields[20] as bool,
+      showUsernameShadow: fields[21] as bool,
+      usernameShadowColor: fields[22] as String,
+      usernameShadowBlur: fields[23] as double,
+      showHandleShadow: fields[24] as bool,
+      handleShadowColor: fields[25] as String,
+      handleShadowBlur: fields[26] as double,
+      showIconShadow: fields[27] as bool,
+      iconShadowColor: fields[28] as String,
+      iconShadowBlur: fields[29] as double,
+      usernameShadowOffsetX: fields[30] as double,
+      usernameShadowOffsetY: fields[31] as double,
+      handleShadowOffsetX: fields[32] as double,
+      handleShadowOffsetY: fields[33] as double,
+      iconShadowOffsetX: fields[34] as double,
+      iconShadowOffsetY: fields[35] as double,
     );
   }
 
   @override
   void write(BinaryWriter writer, WatermarkPreset obj) {
     writer
-      ..writeByte(19)
+      ..writeByte(37)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -79,8 +97,44 @@ class WatermarkPresetAdapter extends TypeAdapter<WatermarkPreset> {
       ..write(obj.handle)
       ..writeByte(17)
       ..write(obj.fontFamily)
+      ..writeByte(36)
+      ..write(obj.handleFontFamily)
       ..writeByte(18)
-      ..write(obj.profileImagePath);
+      ..write(obj.profileImagePath)
+      ..writeByte(19)
+      ..write(obj.showStoryRing)
+      ..writeByte(20)
+      ..write(obj.isVerified)
+      ..writeByte(21)
+      ..write(obj.showUsernameShadow)
+      ..writeByte(22)
+      ..write(obj.usernameShadowColor)
+      ..writeByte(23)
+      ..write(obj.usernameShadowBlur)
+      ..writeByte(24)
+      ..write(obj.showHandleShadow)
+      ..writeByte(25)
+      ..write(obj.handleShadowColor)
+      ..writeByte(26)
+      ..write(obj.handleShadowBlur)
+      ..writeByte(27)
+      ..write(obj.showIconShadow)
+      ..writeByte(28)
+      ..write(obj.iconShadowColor)
+      ..writeByte(29)
+      ..write(obj.iconShadowBlur)
+      ..writeByte(30)
+      ..write(obj.usernameShadowOffsetX)
+      ..writeByte(31)
+      ..write(obj.usernameShadowOffsetY)
+      ..writeByte(32)
+      ..write(obj.handleShadowOffsetX)
+      ..writeByte(33)
+      ..write(obj.handleShadowOffsetY)
+      ..writeByte(34)
+      ..write(obj.iconShadowOffsetX)
+      ..writeByte(35)
+      ..write(obj.iconShadowOffsetY);
   }
 
   @override

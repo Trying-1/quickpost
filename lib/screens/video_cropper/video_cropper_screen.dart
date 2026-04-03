@@ -1,12 +1,15 @@
+import '../../config/app_theme.dart';
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:async';
+import 'dart:math' as math;
 import 'package:image_picker/image_picker.dart';
 import 'package:open_file/open_file.dart';
 
 import '../home/home_shell_screen.dart';
 import '../../services/app_review_service.dart';
+import '../../services/video_perf_service.dart';
 import '../../utils/video_crop_editor.dart';
 
 class VideoCropperScreen extends StatefulWidget {
@@ -30,6 +33,19 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
   bool _isMuted = false;
   String _selectedAspectRatio = 'free';
 
+  // Performance & Progress
+  double _progress = 0.0;
+  double _fakeProgress = 0.0;
+  double _avgRatio = 0.8;
+  String _elapsedTime = "00:00";
+  String _remainingTime = "--:--";
+  Stopwatch _processStopwatch = Stopwatch();
+  Timer? _uiUpdateTimer;
+  int _totalInputDurationMs = 0;
+  int _totalInputSize = 0;
+  int _totalOutputSize = 0;
+  String _inputFileName = "";
+
   // UI State for tabs
   int _selectedTabIndex = 0; // 0: Aspect Ratio, 1: Manager
   bool _isTabContentExpanded = true;
@@ -37,7 +53,95 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
   @override
   void initState() {
     super.initState();
+    _avgRatio = VideoPerfService.getAvgRatio();
+    _setupMethodCallHandler();
     _loadInitialVideos();
+  }
+
+  @override
+  void dispose() {
+    _uiUpdateTimer?.cancel();
+    super.dispose();
+  }
+
+  void _setupMethodCallHandler() {
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == "onProgress") {
+        setState(() {
+          _progress = (call.arguments as num).toDouble();
+        });
+      }
+    });
+  }
+
+  String _formatDuration(Duration d) {
+    String twoDigits(int n) => n.toString().padLeft(2, "0");
+    String threeDigits(int n) => n.toString().padLeft(3, "0");
+    String twoDigitMinutes = twoDigits(d.inMinutes.remainder(60));
+    String twoDigitSeconds = twoDigits(d.inSeconds.remainder(60));
+    return "$twoDigitMinutes:$twoDigitSeconds";
+  }
+
+  String _formatSize(int bytes) {
+    if (bytes <= 0) return "0 B";
+    const suffixes = ["B", "KB", "MB", "GB", "TB"];
+    var i = (math.log(bytes) / math.log(1024)).floor();
+    return ((bytes / math.pow(1024, i)).toStringAsFixed(1)) + ' ' + suffixes[i];
+  }
+
+  Future<Map<String, int>> _fetchBatchMetadata(List<File> videos) async {
+    int totalDur = 0;
+    int totalSize = 0;
+    for (var f in videos) {
+      try {
+        final meta = await _channel.invokeMethod<Map>('getVideoMetadata', {'videoPath': f.path});
+        if (meta != null) {
+          totalDur += meta['durationMs'] as int? ?? 0;
+          totalSize += meta['fileSizeBytes'] as int? ?? 0;
+        }
+      } catch (e) {
+        debugPrint('Metadata fetch failed for ${f.path}: $e');
+      }
+    }
+    return {'durationMs': totalDur, 'size': totalSize};
+  }
+
+  void _startProgressTimer() {
+    _processStopwatch.reset();
+    _processStopwatch.start();
+    _progress = 0.0;
+    _fakeProgress = 0.0;
+    _uiUpdateTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!_isProcessing) {
+        timer.cancel();
+        return;
+      }
+      if (mounted) {
+        setState(() {
+          final elapsed = _processStopwatch.elapsed;
+          _elapsedTime = _formatDuration(elapsed);
+          
+          // Calculate fake progress based on estimation
+          if (_totalInputDurationMs > 0) {
+            final estimatedTotalMs = _totalInputDurationMs * _avgRatio;
+            _fakeProgress = (elapsed.inMilliseconds / estimatedTotalMs).clamp(0.0, 0.99);
+          }
+
+          if (_progress > 0.01) {
+            final totalEstimatedMs = elapsed.inMilliseconds / _progress;
+            final remainingInMs = (totalEstimatedMs - elapsed.inMilliseconds).toInt();
+            _remainingTime = _formatDuration(Duration(milliseconds: math.max(0, remainingInMs)));
+          } else if (_totalInputDurationMs > 0) {
+            // Fallback to learned avgRatio
+            final estimatedTotalMs = _totalInputDurationMs * _avgRatio;
+            final remainingInMs = (estimatedTotalMs - elapsed.inMilliseconds).toInt();
+            _remainingTime = _formatDuration(Duration(milliseconds: math.max(0, remainingInMs)));
+          } else {
+            _remainingTime = "--:--";
+          }
+        });
+      }
+    });
   }
 
   @override
@@ -125,9 +229,17 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
     
     setState(() {
       _isProcessing = true;
+      _remainingTime = "--:--";
+      _elapsedTime = "00:00";
+      _inputFileName = _selectedVideos.isNotEmpty ? _selectedVideos.first.path.split('/').last : "";
     });
 
     try {
+      final meta = await _fetchBatchMetadata(_selectedVideos);
+      _totalInputDurationMs = meta['durationMs'] ?? 0;
+      _totalInputSize = meta['size'] ?? 0;
+      _startProgressTimer();
+
       final List<Map<String, dynamic>> items = [];
       for (int i = 0; i < _selectedVideos.length; i++) {
         final video = _selectedVideos[i];
@@ -174,6 +286,12 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
       final endTime = DateTime.now();
       final processingDuration = endTime.difference(startTime).inMilliseconds / 1000.0;
 
+      // Learn and save performance ratio
+      if (_totalInputDurationMs > 0) {
+        final actualRatio = (endTime.difference(startTime).inMilliseconds) / _totalInputDurationMs;
+        await VideoPerfService.updateRatio(actualRatio);
+      }
+
       debugPrint('[VideoCropper] Crop results: $results');
 
       if (mounted) {
@@ -183,6 +301,22 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
         
         if (results != null && results.isNotEmpty) {
           final List<String> outputPaths = results.cast<String>();
+          
+          // Calculate total output size
+          int totalOut = 0;
+          for (var path in outputPaths) {
+            try {
+              final outMeta = await _channel.invokeMethod<Map>('getVideoMetadata', {'videoPath': path});
+              if (outMeta != null) {
+                totalOut += outMeta['fileSizeBytes'] as int? ?? 0;
+              }
+            } catch (_) {}
+          }
+          
+          setState(() {
+            _totalOutputSize = totalOut;
+          });
+
           debugPrint('[VideoCropper] Final output paths: $outputPaths');
           _showCompletionDialog(outputPaths, processingDuration);
         }
@@ -202,157 +336,139 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        elevation: 10,
-        backgroundColor: Colors.white,
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
+        backgroundColor: Colors.transparent,
+        child: Container(
+          width: 340,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                padding: const EdgeInsets.all(16),
+                width: 64,
+                height: 64,
                 decoration: BoxDecoration(
                   color: Colors.green.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.check_circle_rounded,
-                  color: Colors.green,
-                  size: 64,
+                child: const Icon(Icons.check_circle, color: Colors.green, size: 40),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Processing Complete!',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Processed ${outputPaths.length} videoclip${outputPaths.length == 1 ? '' : 's'} in ${durationInSeconds.toStringAsFixed(1)}s',
+                style: const TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey[200]!),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Total Input Size', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                        Text(_formatSize(_totalInputSize), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 11)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Total Output Size', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                        Text(_formatSize(_totalOutputSize), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.primary)),
+                      ],
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 24),
-              const Text(
-                'Processing Complete',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black,
-                  letterSpacing: -0.5,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Processed in ${durationInSeconds.toStringAsFixed(1)}s',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.blueAccent.withOpacity(0.8),
+              
+              // Primary Action: Designer
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    final String path = outputPaths.first;
+                    Navigator.pop(context);
+                    HomeShellScreen.navigateToTab(6, paths: [path], purpose: 'video_text');
+                  },
+                  icon: const Icon(Icons.auto_fix_high_rounded, size: 20),
+                  label: const Text('Send to Designer', style: TextStyle(fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6C63FF),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
-              Text(
-                'Successfully cropped ${outputPaths.length} ${outputPaths.length == 1 ? 'video' : 'videos'}. Your media is ready to be shared or edited further.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 32),
-              
-              if (outputPaths.isNotEmpty) ...[
-                // Primary Action: Send to Text Editor (Designer)
-                SizedBox(
-                  width: double.infinity,
-                  height: 54,
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-                      final String path = outputPaths.first;
-                      final file = File(path);
-                      if (await file.exists()) {
-                        Navigator.pop(context);
-                        HomeShellScreen.navigateToTab(
-                          6, // Video Text Tab
-                          paths: [path],
-                          purpose: 'video_text',
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.auto_fix_high_rounded, size: 20),
-                    label: const Text(
-                      'Send to Designer',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF6C63FF),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
 
-                // New Action: Send to Watermark
-                SizedBox(
-                  width: double.infinity,
-                  height: 54,
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-                      final String path = outputPaths.first;
-                      final file = File(path);
-                      if (await file.exists()) {
-                        Navigator.pop(context);
-                        HomeShellScreen.navigateToTab(
-                          7, // Video Watermark Tab
-                          paths: [path],
-                          purpose: 'watermark',
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.branding_watermark_rounded, size: 20),
-                    label: const Text(
-                      'Send to Watermark',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    ),
+              // Secondary Action: Watermark
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    final String path = outputPaths.first;
+                    Navigator.pop(context);
+                    HomeShellScreen.navigateToTab(7, paths: [path], purpose: 'watermark');
+                  },
+                  icon: const Icon(Icons.branding_watermark_rounded, size: 20),
+                  label: const Text('Send to Watermark', style: TextStyle(fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),
                 ),
-                const SizedBox(height: 12),
-                
-                // Secondary Action: Open/Preview
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      OpenFile.open(outputPaths.first);
-                    },
-                    icon: const Icon(Icons.play_circle_fill_rounded, size: 20),
-                    label: const Text(
-                      'Preview Video',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.black87,
-                      side: BorderSide(color: Colors.grey.shade300, width: 1.5),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    ),
-                  ),
-                ),
-              ],
-              
+              ),
               const SizedBox(height: 12),
               
-              // Tertiary Action: Dismiss
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(
-                  'Maybe Later',
-                  style: TextStyle(
-                    color: Colors.grey[500],
-                    fontWeight: FontWeight.w500,
+              Row(
+                children: [
+                   Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        OpenFile.open(outputPaths.first);
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: BorderSide(color: Colors.grey[300]!),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      child: const Text('Preview', style: TextStyle(color: Colors.black87)),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: BorderSide(color: Colors.grey[300]!),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      child: const Text('Close', style: TextStyle(color: Colors.black87)),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -456,8 +572,8 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  _buildTabItem(0, Icons.aspect_ratio, 'Ratio', Colors.blue),
-                  _buildTabItem(1, Icons.video_collection, 'Manager', Colors.purple),
+                  _buildTabItem(0, Icons.aspect_ratio, 'Ratio', AppColors.primary),
+                  _buildTabItem(1, Icons.video_collection, 'Manager', AppColors.primary),
                   _buildTabItem(2, Icons.rotate_right, 'Rotate', Colors.teal),
                   _buildTabItem(5, Icons.flip, 'Flip', Colors.orange),
                   _buildTabItem(3, Icons.fullscreen_rounded, 'Fit', Colors.indigo),
@@ -624,7 +740,7 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
               ),
               IconButton(
                 onPressed: _pickVideos,
-                icon: const Icon(Icons.add_circle_outline, color: Colors.blue, size: 20),
+                icon: const Icon(Icons.add_circle_outline, color: AppColors.primary, size: 20),
                 tooltip: 'Add more',
               ),
             ],
@@ -660,20 +776,130 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
 
   Widget _buildProcessingOverlay() {
     return Container(
-      color: Colors.black87,
-      child: const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
-            SizedBox(height: 16),
-            Text(
-              'Hang tight! Processing...',
-              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-          ],
+      color: Colors.black.withOpacity(0.85),
+      child: Center(
+        child: Container(
+          width: 320,
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(32),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 30,
+              )
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: Colors.teal.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.auto_awesome_motion, color: Color(0xFF00796B), size: 28),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Cropping Video Batch',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 8),
+              if (_selectedVideos.isNotEmpty)
+                Text(
+                  'Processing ${_selectedVideos.length} clips...',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                ),
+              const SizedBox(height: 28),
+              Container(
+                height: 10,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.teal.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Stack(
+                  children: [
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 500),
+                          width: constraints.maxWidth * _fakeProgress,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF80CBC4), Color(0xFF00796B)],
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                            ),
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.teal.withOpacity(0.2),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              )
+                            ],
+                          ),
+                        );
+                      }
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${(_fakeProgress * 100).toInt()}% Estimated',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF00796B)),
+                  ),
+                  const Text(
+                    "Optimizing...",
+                    style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 32),
+              // Stats Card
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildTimeInfo("Elapsed", _elapsedTime),
+                    Container(width: 1, height: 30, color: Colors.grey[200]),
+                    _buildTimeInfo("Est. Left", _remainingTime),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 32),
+              const Text(
+                'Please keep the app open',
+                style: TextStyle(color: Colors.grey, fontSize: 11),
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildTimeInfo(String label, String value) {
+    return Column(
+      children: [
+        Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+        const SizedBox(height: 4),
+        Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.black87, fontFamily: 'monospace')),
+      ],
     );
   }
 }

@@ -21,7 +21,7 @@ A Flutter mobile app for creating stunning Instagram posts with customizable tem
 
 ### ✍️ Text & Fonts
 - Multi-line text overlay
-- 35+ custom fonts included
+- 30+ custom fonts included
 - Real-time preview
 - Auto font-size adjustment
 
@@ -218,15 +218,13 @@ Posts are saved to:
 
 ## 🎨 Fonts
 
-35+ custom fonts included:
-- Akony, AlumniSans, Barrio, Bellota
+30+ high-quality Google Fonts included:
+- AllertaSans, AlumniSans, Barrio, Bellota
 - BhuTukaExpandedOne, Bokor, Caramel
-- ChalkBoard, Explora, GrandifloraOne
-- KleeOne, Lacquer, LuckiestGuy
-- MajorMonoDisplay, Metrophobic
-- Michroma, Milker, Modernline
-- NCLNeovibes, NewRocker, NewTegomin
-- Poppins, ProtestRevolution, Religath
+- Explora, GrandifloraOne, KleeOne
+- Lacquer, LuckiestGuy, MajorMonoDisplay
+- Metrophobic, Michroma, NewRocker
+- NewTegomin, Poppins, ProtestRevolution
 - SourGummy, and more!
 
 ## 🔧 Architecture

@@ -106,6 +106,9 @@ class WatermarkPreset extends HiveObject {
   @HiveField(35)
   double iconShadowOffsetY;
 
+  @HiveField(37)
+  double videoY;
+
   WatermarkPreset({
     required this.id,
     required this.name,
@@ -144,5 +147,92 @@ class WatermarkPreset extends HiveObject {
     this.handleShadowOffsetY = 1.0,
     this.iconShadowOffsetX = 1.0,
     this.iconShadowOffsetY = 1.0,
+    this.videoY = 0.5,
   });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'watermarkType': watermarkType,
+      'fullScreen': fullScreen,
+      'bgColor': bgColor,
+      'showBox': showBox,
+      'boxColor': boxColor,
+      'boxOpacity': boxOpacity,
+      'boxRadius': boxRadius,
+      'watermarkX': watermarkX,
+      'watermarkY': watermarkY,
+      'fontSize': fontSize,
+      'iconSize': iconSize,
+      'textColor': textColor,
+      'accentColor': accentColor,
+      'username': username,
+      'handle': handle,
+      'fontFamily': fontFamily,
+      'handleFontFamily': handleFontFamily,
+      'profileImagePath': profileImagePath,
+      'showStoryRing': showStoryRing,
+      'isVerified': isVerified,
+      'showUsernameShadow': showUsernameShadow,
+      'usernameShadowColor': usernameShadowColor,
+      'usernameShadowBlur': usernameShadowBlur,
+      'showHandleShadow': showHandleShadow,
+      'handleShadowColor': handleShadowColor,
+      'handleShadowBlur': handleShadowBlur,
+      'showIconShadow': showIconShadow,
+      'iconShadowColor': iconShadowColor,
+      'iconShadowBlur': iconShadowBlur,
+      'usernameShadowOffsetX': usernameShadowOffsetX,
+      'usernameShadowOffsetY': usernameShadowOffsetY,
+      'handleShadowOffsetX': handleShadowOffsetX,
+      'handleShadowOffsetY': handleShadowOffsetY,
+      'iconShadowOffsetX': iconShadowOffsetX,
+      'iconShadowOffsetY': iconShadowOffsetY,
+      'videoY': videoY,
+    };
+  }
+
+  factory WatermarkPreset.fromMap(Map<String, dynamic> map) {
+    return WatermarkPreset(
+      id: map['id'] ?? '',
+      name: map['name'] ?? '',
+      watermarkType: map['watermarkType'] ?? 'profile',
+      fullScreen: map['fullScreen'] ?? false,
+      bgColor: map['bgColor'] ?? '#000000',
+      showBox: map['showBox'] ?? true,
+      boxColor: map['boxColor'] ?? '#000000',
+      boxOpacity: (map['boxOpacity'] as num?)?.toDouble() ?? 0.3,
+      boxRadius: (map['boxRadius'] as num?)?.toDouble() ?? 12.0,
+      watermarkX: (map['watermarkX'] as num?)?.toDouble() ?? 0.5,
+      watermarkY: (map['watermarkY'] as num?)?.toDouble() ?? 0.8,
+      fontSize: (map['fontSize'] as num?)?.toDouble() ?? 36.0,
+      iconSize: (map['iconSize'] as num?)?.toDouble() ?? 80.0,
+      textColor: map['textColor'] ?? '#FFFFFF',
+      accentColor: map['accentColor'] ?? '#AAAAAA',
+      username: map['username'] ?? '',
+      handle: map['handle'] ?? '',
+      fontFamily: map['fontFamily'] ?? 'Metrophobic',
+      handleFontFamily: map['handleFontFamily'],
+      profileImagePath: map['profileImagePath'],
+      showStoryRing: map['showStoryRing'] ?? false,
+      isVerified: map['isVerified'] ?? false,
+      showUsernameShadow: map['showUsernameShadow'] ?? false,
+      usernameShadowColor: map['usernameShadowColor'] ?? '#000000',
+      usernameShadowBlur: (map['usernameShadowBlur'] as num?)?.toDouble() ?? 4.0,
+      showHandleShadow: map['showHandleShadow'] ?? false,
+      handleShadowColor: map['handleShadowColor'] ?? '#000000',
+      handleShadowBlur: (map['handleShadowBlur'] as num?)?.toDouble() ?? 4.0,
+      showIconShadow: map['showIconShadow'] ?? false,
+      iconShadowColor: map['iconShadowColor'] ?? '#000000',
+      iconShadowBlur: (map['iconShadowBlur'] as num?)?.toDouble() ?? 4.0,
+      usernameShadowOffsetX: (map['usernameShadowOffsetX'] as num?)?.toDouble() ?? 1.0,
+      usernameShadowOffsetY: (map['usernameShadowOffsetY'] as num?)?.toDouble() ?? 1.0,
+      handleShadowOffsetX: (map['handleShadowOffsetX'] as num?)?.toDouble() ?? 1.0,
+      handleShadowOffsetY: (map['handleShadowOffsetY'] as num?)?.toDouble() ?? 1.0,
+      iconShadowOffsetX: (map['iconShadowOffsetX'] as num?)?.toDouble() ?? 1.0,
+      iconShadowOffsetY: (map['iconShadowOffsetY'] as num?)?.toDouble() ?? 1.0,
+      videoY: (map['videoY'] as num?)?.toDouble() ?? 0.5,
+    );
+  }
 }

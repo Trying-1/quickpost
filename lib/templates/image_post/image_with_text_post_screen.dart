@@ -9,6 +9,7 @@ import '../../utils/font_selector.dart';
 import '../../utils/image_generator.dart';
 import '../../services/ad_service.dart';
 import '../../services/app_review_service.dart';
+import '../../widgets/advanced_color_picker.dart';
 
 class SingleImagePostScreen extends StatefulWidget {
   final String selectedTemplate;
@@ -111,145 +112,69 @@ class _SingleImagePostScreenState extends State<SingleImagePostScreen> {
         title = 'Color';
     }
     
-    final hexController = TextEditingController(
-      text: currentColor.value.toRadixString(16).substring(2).toUpperCase(),
-    );
-    
-    Color previewColor = currentColor;
+    Color selectedColor = currentColor;
     
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text('Select $title'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Wrap(
-                  children: [
-                    for (final color in [
-                      Colors.black87, Colors.white, Colors.red, Colors.green,
-                      Colors.blue, Colors.yellow, Colors.orange, Colors.purple,
-                      Colors.pink, Colors.cyan, Colors.amber, Colors.grey,
-                    ])
-                      GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            switch (type) {
-                              case 'text':
-                                _textColor = color;
-                                break;
-                              case 'box':
-                                _textBoxColor = color;
-                                break;
-                              case 'shadow':
-                                _shadowColor = color;
-                                break;
-                              case 'glow':
-                                _glowColor = color;
-                                break;
-                              case 'stroke':
-                                _strokeColor = color;
-                                break;
-                            }
-                          });
-                          Navigator.pop(context);
-                        },
-                        child: Container(
-                          margin: const EdgeInsets.all(8),
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            color: color,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: currentColor == color ? Colors.black : Colors.grey[300]!,
-                              width: currentColor == color ? 3 : 1,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                const Divider(),
-                const SizedBox(height: 16),
-                const Text('Or enter hex code:', style: TextStyle(fontWeight: FontWeight.w500)),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: hexController,
-                        decoration: InputDecoration(
-                          hintText: 'e.g., FF0000',
-                          prefixText: '#',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        ),
-                        maxLength: 6,
-                        onChanged: (value) {
-                          if (value.isNotEmpty && value.length <= 6) {
-                            try {
-                              final hexValue = value.toUpperCase().padRight(6, '0');
-                              final color = Color(int.parse('FF$hexValue', radix: 16));
-                              setDialogState(() {
-                                previewColor = color;
-                              });
-                            } catch (e) {
-                              // Invalid hex code
-                            }
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: previewColor,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.grey[300]!),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+        contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            IconButton(
+              icon: const Icon(Icons.close, size: 20),
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  switch (type) {
-                    case 'text':
-                      _textColor = previewColor;
-                      break;
-                    case 'box':
-                      _textBoxColor = previewColor;
-                      break;
-                    case 'shadow':
-                      _shadowColor = previewColor;
-                      break;
-                    case 'glow':
-                      _glowColor = previewColor;
-                      break;
-                    case 'stroke':
-                      _strokeColor = previewColor;
-                      break;
-                  }
-                });
-                Navigator.pop(context);
-              },
-              child: const Text('Apply'),
             ),
           ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AdvancedColorPicker(
+                initialColor: currentColor,
+                onColorChanged: (color) => selectedColor = color,
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      switch (type) {
+                        case 'text':
+                          _textColor = selectedColor;
+                          break;
+                        case 'box':
+                          _textBoxColor = selectedColor;
+                          break;
+                        case 'shadow':
+                          _shadowColor = selectedColor;
+                          break;
+                        case 'glow':
+                          _glowColor = selectedColor;
+                          break;
+                        case 'stroke':
+                          _strokeColor = selectedColor;
+                          break;
+                      }
+                    });
+                    Navigator.pop(context);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6C63FF),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('SELECT COLOR', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

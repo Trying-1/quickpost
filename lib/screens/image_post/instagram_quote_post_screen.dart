@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:csv/csv.dart';
 
 import '../../utils/font_selector.dart';
+import '../../widgets/advanced_color_picker.dart';
 import '../../utils/image_generator.dart';
 import 'package:quickpost/utils/watermark_settings.dart';
 import '../../services/app_review_service.dart';
@@ -2184,115 +2185,105 @@ class _InstagramQuotePostScreenState extends State<InstagramQuotePostScreen> {
   }
 
   Future<void> _showColorPicker(String type) async {
-    final List<Color> palette = [
-      Colors.white,
-      Colors.black,
-      Colors.grey.shade900,
-      Colors.grey.shade700,
-      Colors.grey.shade300,
-      Colors.deepPurple,
-      Colors.teal,
-      Colors.orange,
-      Colors.redAccent,
-      Colors.blueAccent,
-    ];
-
     final Color current;
+    String title;
+
     if (type == 'text') {
       current = _textColor;
+      title = 'Text Color';
     } else if (type == 'background') {
       current = _backgroundColor;
+      title = 'Background Color';
     } else if (type == 'author') {
       current = _authorColor;
+      title = 'Author Color';
     } else if (type == 'display') {
       current = _displayNameColor;
+      title = 'Username Color';
     } else if (type == 'handle') {
       current = _usernameColor;
+      title = 'Handle Color';
     } else if (type == 'quoteShadow') {
       current = _quoteShadowColor;
+      title = 'Quote Shadow Color';
     } else if (type == 'quoteGlow') {
       current = _quoteGlowColor;
+      title = 'Quote Glow Color';
     } else if (type == 'authorShadow') {
       current = _authorShadowColor;
+      title = 'Author Shadow Color';
     } else {
       current = _authorGlowColor;
+      title = 'Author Glow Color';
     }
 
-    await showDialog<void>(
+    Color selectedColor = current;
+
+    await showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text(
-            type == 'text'
-                ? 'Text Color'
-                : type == 'background'
-                    ? 'Background Color'
-                    : type == 'author'
-                        ? 'Author Color'
-                        : type == 'display'
-                            ? 'Username Color'
-                            : type == 'handle'
-                                ? 'Handle Color'
-                                : type == 'quoteShadow'
-                                    ? 'Quote Shadow Color'
-                                    : type == 'quoteGlow'
-                                        ? 'Quote Glow Color'
-                                        : type == 'authorShadow'
-                                            ? 'Author Shadow Color'
-                                            : 'Author Glow Color',
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-          ),
-          content: SizedBox(
-            width: 260,
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: palette.map((color) {
-                final bool isSelected = color.value == current.value;
-                return GestureDetector(
-                  onTap: () {
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+        contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            IconButton(
+              icon: const Icon(Icons.close, size: 20),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AdvancedColorPicker(
+                initialColor: current,
+                onColorChanged: (color) => selectedColor = color,
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
                     setState(() {
                       if (type == 'text') {
-                        _textColor = color;
+                        _textColor = selectedColor;
                       } else if (type == 'background') {
-                        _backgroundColor = color;
+                        _backgroundColor = selectedColor;
                       } else if (type == 'author') {
-                        _authorColor = color;
+                        _authorColor = selectedColor;
                       } else if (type == 'display') {
-                        _displayNameColor = color;
+                        _displayNameColor = selectedColor;
                       } else if (type == 'handle') {
-                        _usernameColor = color;
+                        _usernameColor = selectedColor;
                       } else if (type == 'quoteShadow') {
-                        _quoteShadowColor = color;
+                        _quoteShadowColor = selectedColor;
                       } else if (type == 'quoteGlow') {
-                        _quoteGlowColor = color;
+                        _quoteGlowColor = selectedColor;
                       } else if (type == 'authorShadow') {
-                        _authorShadowColor = color;
+                        _authorShadowColor = selectedColor;
                       } else {
-                        _authorGlowColor = color;
+                        _authorGlowColor = selectedColor;
                       }
                     });
-                    Navigator.of(context).pop();
+                    Navigator.pop(context);
                   },
-                  child: Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: color,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: isSelected ? Colors.white : Colors.black.withOpacity(0.15),
-                        width: isSelected ? 2 : 1,
-                      ),
-                    ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6C63FF),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                );
-              }).toList(),
-            ),
+                  child: const Text('SELECT COLOR', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 

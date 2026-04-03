@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../../utils/font_selector.dart';
+import '../../widgets/advanced_color_picker.dart';
 import '../../utils/image_generator.dart';
 
 class CountdownPostScreen extends StatefulWidget {
@@ -644,9 +645,10 @@ class _CountdownPostScreenState extends State<CountdownPostScreen> {
           selectedColor: currentColor,
           onColorSelected: setter,
           colors: customPalette,
+          title: elements[_selectedColorElementIndex],
         ),
         
-        const Spacer(),
+        const SizedBox(height: 12),
         
         _buildSegmentedControl(
           items: elements,
@@ -701,6 +703,7 @@ class _CountdownPostScreenState extends State<CountdownPostScreen> {
   Widget _buildColorPicker({
     required Color selectedColor,
     required Function(Color) onColorSelected,
+    required String title,
     List<Color>? colors,
   }) {
     final List<Color> displayColors = colors ?? [
@@ -711,31 +714,110 @@ class _CountdownPostScreenState extends State<CountdownPostScreen> {
     ];
 
     return SizedBox(
-      height: 30,
-      child: ListView.separated(
+      height: 32,
+      child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        itemCount: displayColors.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemCount: displayColors.length + 1,
         itemBuilder: (context, index) {
-          final color = displayColors[index];
-          final isSelected = selectedColor.value == color.value;
-          return GestureDetector(
-            onTap: () => onColorSelected(color),
-            child: Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isSelected ? Colors.black87 : Colors.grey.withOpacity(0.2),
-                  width: isSelected ? 2 : 1,
+          if (index == 0) {
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: GestureDetector(
+                onTap: () {
+                  Color previewColor = selectedColor;
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+                      contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                      title: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('$title Color', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 20),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                        ],
+                      ),
+                      content: SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AdvancedColorPicker(
+                              initialColor: selectedColor,
+                              onColorChanged: (color) => previewColor = color,
+                            ),
+                            const SizedBox(height: 20),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  onColorSelected(previewColor);
+                                  Navigator.pop(context);
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF6C63FF),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                                child: const Text('SELECT COLOR', style: TextStyle(fontWeight: FontWeight.bold)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Colors.red, Colors.blue, Colors.green, Colors.yellow],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.colorize, color: Colors.white, size: 16),
                 ),
-                boxShadow: isSelected ? [BoxShadow(color: color.withOpacity(0.3), blurRadius: 4, spreadRadius: 1)] : null,
               ),
-              child: isSelected 
-                ? Icon(Icons.check, color: color.computeLuminance() > 0.5 ? Colors.black : Colors.white, size: 14) 
-                : null,
+            );
+          }
+          final color = displayColors[index - 1];
+          final isSelected = selectedColor.value == color.value;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () => onColorSelected(color),
+              child: Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isSelected ? Colors.black87 : Colors.grey.withOpacity(0.2),
+                    width: isSelected ? 2 : 1,
+                  ),
+                  boxShadow: isSelected ? [BoxShadow(color: color.withOpacity(0.3), blurRadius: 4, spreadRadius: 1)] : null,
+                ),
+                child: isSelected 
+                  ? Icon(Icons.check, color: color.computeLuminance() > 0.5 ? Colors.black : Colors.white, size: 14) 
+                  : null,
+              ),
             ),
           );
         },

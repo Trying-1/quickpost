@@ -287,64 +287,14 @@ class _VideoTextOverlayScreenState extends State<VideoTextOverlayScreen> {
   }
 
   Future<String> _getSelectedFontPath() async {
-    final family = _selectedFont?.family;
-    if (family == null || family == 'Roboto') {
-      debugPrint('[VideoTextOverlay] _getSelectedFontPath family=$family -> /system/fonts/Roboto-Regular.ttf');
-      return '/system/fonts/Roboto-Regular.ttf';
-    }
-
-    final cached = _fontFileCache[family];
+    if (_selectedFont == null) return '/system/fonts/Roboto-Regular.ttf';
+    
+    final cached = _fontFileCache[_selectedFont!.family];
     if (cached != null) return cached;
 
-    const Map<String, String> fontFamilyToAssetPath = {
-      'Akony': 'assets/fonts/akony.ttf',
-      'AllertaStencil': 'assets/fonts/AllertaStencil-Regular.ttf',
-      'AlmendraDisplay': 'assets/fonts/AlmendraDisplay-Regular.ttf',
-      'AlumniSans': 'assets/fonts/AlumniSans-Regular.ttf',
-      'AlumniSansPinstripe': 'assets/fonts/AlumniSansPinstripe-Regular.ttf',
-      'Barrio': 'assets/fonts/Barrio-Regular.ttf',
-      'Bellota': 'assets/fonts/Bellota-Regular.ttf',
-      'BhuTukaExpandedOne': 'assets/fonts/BhuTukaExpandedOne-Regular.ttf',
-      'Bokor': 'assets/fonts/Bokor-Regular.ttf',
-      'BungeeHairline': 'assets/fonts/BungeeHairline-Regular.ttf',
-      'Caramel': 'assets/fonts/Caramel-Regular.ttf',
-      'Centralwell': 'assets/fonts/Centralwell.ttf',
-      'ChalkBoard': 'assets/fonts/Chalk Board.ttf',
-      'Explora': 'assets/fonts/Explora-Regular.ttf',
-      'GrandifloraOne': 'assets/fonts/GrandifloraOne-Regular.ttf',
-      'KleeOne': 'assets/fonts/KleeOne-SemiBold.ttf',
-      'Lacquer': 'assets/fonts/Lacquer-Regular.ttf',
-      'LibreBarcode39Text': 'assets/fonts/LibreBarcode39Text-Regular.ttf',
-      'LuckiestGuy': 'assets/fonts/LuckiestGuy-Regular.ttf',
-      'MajorMonoDisplay': 'assets/fonts/MajorMonoDisplay-Regular.ttf',
-      'Metrophobic': 'assets/fonts/Metrophobic-Regular.ttf',
-      'Michroma': 'assets/fonts/Michroma-Regular.ttf',
-      'NewRocker': 'assets/fonts/NewRocker-Regular.ttf',
-      'NewTegomin': 'assets/fonts/NewTegomin-Regular.ttf',
-      'Poppins': 'assets/fonts/Poppins-Regular.ttf',
-      'ProtestRevolution': 'assets/fonts/ProtestRevolution-Regular.ttf',
-      'SourGummy': 'assets/fonts/SourGummy-VariableFont_wdth,wght.ttf',
-    };
-
-    final assetPath = fontFamilyToAssetPath[family];
-    final resolvedAssetPath = assetPath ?? await _findFontAssetForFamily(family);
-    if (resolvedAssetPath == null) {
-      debugPrint('[VideoTextOverlay] _getSelectedFontPath family=$family assetPath=null -> /system/fonts/Roboto-Regular.ttf');
-      return '/system/fonts/Roboto-Regular.ttf';
-    }
-
-    final bytes = await rootBundle.load(resolvedAssetPath);
-    final dir = await getTemporaryDirectory();
-    final safeName = family.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-    final extension = resolvedAssetPath.toLowerCase().endsWith('.otf') ? 'otf' : 'ttf';
-    final file = File('${dir.path}/$safeName.$extension');
-
-    await file.writeAsBytes(bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes), flush: true);
-    final exists = await file.exists();
-    final size = exists ? await file.length() : -1;
-    debugPrint('[VideoTextOverlay] _getSelectedFontPath family=$family asset=$resolvedAssetPath -> ${file.path} exists=$exists size=$size');
-    _fontFileCache[family] = file.path;
-    return file.path;
+    final path = await FontInfo.getFontFilePath(_selectedFont!);
+    _fontFileCache[_selectedFont!.family] = path;
+    return path;
   }
 
   Future<void> _processVideo() async {
@@ -837,7 +787,7 @@ class _VideoTextOverlayScreenState extends State<VideoTextOverlayScreen> {
             separatorBuilder: (_, __) => const SizedBox(height: 4),
             itemBuilder: (context, index) {
               final font = getAllFonts()[index];
-              final isSelected = _selectedFont?.family == font.family;
+              final isSelected = _selectedFont == font;
               return Material(
                 color: isSelected ? Colors.blue.withOpacity(0.1) : Colors.transparent,
                 borderRadius: BorderRadius.circular(8),

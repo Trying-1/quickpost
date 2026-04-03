@@ -1,4 +1,7 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/watermark_preset.dart';
 
 class WatermarkPresetService {
@@ -17,6 +20,71 @@ class WatermarkPresetService {
 
   static List<WatermarkPreset> getAllPresets() {
     return _box.values.toList();
+  }
+
+  static Future<String> exportPresetsJson() async {
+    final presets = getAllPresets();
+    final List<Map<String, dynamic>> maps = [];
+    
+    for (final p in presets) {
+      final map = p.toMap();
+      if (p.profileImagePath != null) {
+        final file = File(p.profileImagePath!);
+        if (await file.exists()) {
+          final bytes = await file.readAsBytes();
+          map['profileImageBase64'] = base64Encode(bytes);
+          map['profileImageExt'] = p.profileImagePath!.split('.').last;
+        }
+      }
+      maps.add(map);
+    }
+    return jsonEncode(maps);
+  }
+
+  static Future<int> importPresetsJson(String jsonStr) async {
+    try {
+      print('[WatermarkService] Importing presets from JSON of length: ${jsonStr.length}');
+      final decoded = jsonDecode(jsonStr);
+      if (decoded is! List) {
+        print('[WatermarkService] Error: Decoded JSON is not a List, but ${decoded.runtimeType}');
+        return 0;
+      }
+      
+      final List<dynamic> list = decoded;
+      final directory = await getApplicationDocumentsDirectory();
+      final iconDir = Directory('${directory.path}/watermark_icons');
+      if (!await iconDir.exists()) {
+        await iconDir.create(recursive: true);
+      }
+
+      int imported = 0;
+      for (final item in list) {
+        if (item is Map) {
+          final Map<String, dynamic> map = Map<String, dynamic>.from(item);
+          final preset = WatermarkPreset.fromMap(map);
+          
+          if (map['profileImageBase64'] != null) {
+            final String base64Str = map['profileImageBase64'];
+            final String ext = map['profileImageExt'] ?? 'png';
+            final bytes = base64Decode(base64Str);
+            final fileName = 'icon_${preset.id}_${DateTime.now().millisecondsSinceEpoch}.$ext';
+            final file = File('${iconDir.path}/$fileName');
+            await file.writeAsBytes(bytes);
+            preset.profileImagePath = file.path;
+          }
+          
+          await savePreset(preset);
+          imported++;
+        } else {
+           print('[WatermarkService] Row skipped - not a Map: $item');
+        }
+      }
+      print('[WatermarkService] Successfully imported $imported presets.');
+      return imported;
+    } catch (e) {
+      print('[WatermarkService] Critical import error: $e');
+      return 0;
+    }
   }
 
   static WatermarkPreset? getLatestPreset() {
