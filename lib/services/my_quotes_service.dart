@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/quote_item.dart';
 
@@ -43,5 +44,30 @@ class MyQuotesService {
         .toList();
     categories.sort();
     return categories;
+  }
+
+  static Future<String> exportQuotesJson() async {
+    final quotes = getAllQuotes();
+    final List<Map<String, dynamic>> list = quotes.map((q) => q.toMap()).toList();
+    return jsonEncode(list);
+  }
+
+  static Future<int> importQuotesJson(String jsonStr) async {
+    try {
+      final decoded = jsonDecode(jsonStr);
+      if (decoded is! List) return 0;
+      int imported = 0;
+      for (final item in decoded) {
+        if (item is Map) {
+          final map = Map<String, dynamic>.from(item);
+          final quote = QuoteItem.fromMap(map);
+          await saveQuote(quote);
+          imported++;
+        }
+      }
+      return imported;
+    } catch (e) {
+      return 0;
+    }
   }
 }

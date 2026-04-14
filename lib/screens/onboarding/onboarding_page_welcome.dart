@@ -8,7 +8,6 @@ class OnboardingPageWelcome extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const OnboardingPageTemplate(
-      heroIcon: Icons.auto_awesome_rounded,
       title: 'Welcome to QuickPost',
       subtitle: 'The all-in-one toolkit for modern creators and social managers.',
       accentColor: AppColors.primary,

@@ -296,6 +296,16 @@ class MainActivity : FlutterActivity() {
                         result.error("INVALID_ARGUMENT", "Slides are required", null)
                     }
                 }
+                "createVideoFromImages" -> {
+                    val imagePaths = call.argument<List<String>>("imagePaths")
+                    val durationPerSlide = call.argument<Double>("durationPerSlide") ?: 3.0
+                    
+                    if (imagePaths != null && imagePaths.isNotEmpty()) {
+                        createVideoFromImages(imagePaths, durationPerSlide, result)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "Image paths are required", null)
+                    }
+                }
                 "createVideoWithFFmpeg" -> {
                     val imagePath = call.argument<String>("imagePath")
                     val duration = call.argument<Int>("duration") ?: 3
@@ -597,6 +607,14 @@ class MainActivity : FlutterActivity() {
                                     val cropH = (item["height"] as? Number)?.toInt() ?: 100
                                     val rotation = (item["rotation"] as? Number)?.toInt() ?: 0
                                     val isFlipped = item["isFlipped"] as? Boolean ?: false
+                                    val fillEnabled = item["fillEnabled"] as? Boolean ?: false
+                                    val bgColor = item["bgColor"] as? String ?: "#000000"
+                                    val bgImagePath = item["bgImagePath"] as? String
+                                    val bgBlur = (item["bgBlur"] as? Number)?.toFloat() ?: 10.0f
+                                    val bgImageBlur = (item["bgImageBlur"] as? Number)?.toFloat() ?: 0.0f
+                                    val bgBrightness = (item["bgBrightness"] as? Number)?.toFloat() ?: 1.0f
+                                    val bgSaturation = (item["bgSaturation"] as? Number)?.toFloat() ?: 1.0f
+                                    val bgOpacity = (item["bgOpacity"] as? Number)?.toFloat() ?: 0.0f
                                     
                                     val outFileName = "Crop_${System.currentTimeMillis()}_$index.mp4"
                                     val outputPath = getVideoOutputPath(outFileName)
@@ -604,7 +622,8 @@ class MainActivity : FlutterActivity() {
                                     val success = cropper.processVideo(
                                         inputPath, outputPath, 
                                         cropX, cropY, cropW, cropH, 
-                                        rotation, isFlipped,
+                                        rotation, isFlipped, fillEnabled, bgColor, bgImagePath, 
+                                        bgBlur, bgImageBlur, bgBrightness, bgSaturation, bgOpacity,
                                         object : OpenGLVideoCropper.ProgressCallback {
                                             override fun onProgress(progress: Double) {
                                                 val totalProgress = (index + progress) / items.size
@@ -851,7 +870,10 @@ class MainActivity : FlutterActivity() {
                                     "bgSaturation" to bgSaturation,
                                     "bgBlur" to bgBlur,
                                     "showStoryRing" to (call.argument<Boolean>("showStoryRing") ?: false),
+                                    "storyRingColor" to (call.argument<String>("storyRingColor") ?: "gradient"),
                                     "isVerified" to (call.argument<Boolean>("isVerified") ?: false),
+                                    "verifiedBadgeColor" to (call.argument<String>("verifiedBadgeColor") ?: "#1DA1F2"),
+                                    "verifiedBadgeAttachTo" to (call.argument<String>("verifiedBadgeAttachTo") ?: "handle"),
                                     "patches" to patches,
                                     // Shadow parameters
                                     "showUsernameShadow" to (call.argument<Boolean>("showUsernameShadow") ?: false),
@@ -870,7 +892,9 @@ class MainActivity : FlutterActivity() {
                                     "iconShadowOffsetX" to ((call.argument<Number>("iconShadowOffsetX"))?.toFloat() ?: 1.5f),
                                     "iconShadowOffsetY" to ((call.argument<Number>("iconShadowOffsetY"))?.toFloat() ?: 1.5f),
                                     "videoY" to videoY,
-                                    "textOverlays" to (call.argument<List<Map<String, Any?>>>("textOverlays") ?: emptyList())
+                                    "watermarkScale" to ((call.argument<Number>("watermarkScale"))?.toFloat() ?: 1.0f),
+                                    "textOverlays" to (call.argument<List<Map<String, Any?>>>("textOverlays") ?: emptyList()),
+                                    "imageOverlays" to (call.argument<List<Map<String, Any?>>>("imageOverlays") ?: emptyList())
                                 )
                                 val outputFile = java.io.File(outputPath)
                                 val callback = object : OpenGLWatermarkProcessor.ProgressCallback {
@@ -2021,4 +2045,47 @@ class MainActivity : FlutterActivity() {
             }
         }.start()
     }
+
+    private fun createVideoFromImages(
+        imagePaths: List<String>,
+        durationPerSlide: Double,
+        result: MethodChannel.Result
+    ) {
+        Thread {
+            try {
+                val processor = OpenGLCarouselProcessor(this)
+                val filename = "Carousel_${System.currentTimeMillis()}.mp4"
+                val outFile = File(getExternalFilesDir(null), filename)
+
+                val callback = object : OpenGLCarouselProcessor.ProgressCallback {
+                    override fun onProgress(progress: Double) {
+                        runOnUiThread { methodChannel?.invokeMethod("onProgress", progress) }
+                    }
+                    override fun onStep(step: String) {
+                        runOnUiThread { methodChannel?.invokeMethod("onStep", step) }
+                    }
+                }
+
+                val success = processor.processVideoFromImages(imagePaths, durationPerSlide, outFile, callback)
+
+                if (success) {
+                    val finalPath = outFile.absolutePath
+                    val galleryPath = moveVideoToGallery(finalPath) ?: finalPath
+                    runOnUiThread {
+                        methodChannel?.invokeMethod("onComplete", galleryPath)
+                        result.success(galleryPath)
+                    }
+                } else {
+                    runOnUiThread {
+                        result.error("PROCESS_FAILED", "Video encoding failed", null)
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    result.error("ERROR", e.message, null)
+                }
+            }
+        }.start()
+    }
 }
+

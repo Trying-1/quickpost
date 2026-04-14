@@ -11,6 +11,7 @@ import '../home/home_shell_screen.dart';
 import '../../services/app_review_service.dart';
 import '../../services/video_perf_service.dart';
 import '../../utils/video_crop_editor.dart';
+import '../../widgets/advanced_color_picker.dart';
 
 class VideoCropperScreen extends StatefulWidget {
   final List<String>? sharedVideoPaths;
@@ -49,6 +50,17 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
   // UI State for tabs
   int _selectedTabIndex = 0; // 0: Aspect Ratio, 1: Manager
   bool _isTabContentExpanded = true;
+  Color _fillColor = const Color(0xFF1A1A1A);
+  String? _bgImagePath;
+  double _bgBlur = 10.0;
+  double _bgImageBlur = 0.0;
+  double _bgBrightness = 1.0;
+  double _bgSaturation = 1.0;
+  double _bgOpacity = 0.0;
+
+  String _colorToHex(Color color) {
+    return '#${(color.value & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+  }
 
   @override
   void initState() {
@@ -222,10 +234,8 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
     });
   }
 
-  Future<void> _processAll() async {
+  Future<void> _processAll({bool fillEnabled = false}) async {
     if (_selectedVideos.isEmpty) return;
-    // Check if all videos have a crop rect (Done was pressed)
-    // For convenience, if not set, we could use a default center square
     
     setState(() {
       _isProcessing = true;
@@ -268,6 +278,14 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
           'height': crop.cropHeight,
           'rotation': crop.rotation,
           'isFlipped': crop.isFlipped,
+          'fillEnabled': fillEnabled,
+          'bgColor': _colorToHex(_fillColor),
+          'bgImagePath': _bgImagePath,
+          'bgBlur': _bgBlur,
+          'bgImageBlur': _bgImageBlur,
+          'bgBrightness': _bgBrightness,
+          'bgSaturation': _bgSaturation,
+          'bgOpacity': _bgOpacity,
         });
       }
 
@@ -403,7 +421,7 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
                   onPressed: () async {
                     final String path = outputPaths.first;
                     Navigator.pop(context);
-                    HomeShellScreen.navigateToTab(6, paths: [path], purpose: 'video_text');
+                    HomeShellScreen.navigateToTab(3, paths: [path], purpose: 'video_text');
                   },
                   icon: const Icon(Icons.auto_fix_high_rounded, size: 20),
                   label: const Text('Send to Designer', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -425,7 +443,7 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
                   onPressed: () async {
                     final String path = outputPaths.first;
                     Navigator.pop(context);
-                    HomeShellScreen.navigateToTab(7, paths: [path], purpose: 'watermark');
+                    HomeShellScreen.navigateToTab(1, paths: [path], purpose: 'watermark');
                   },
                   icon: const Icon(Icons.branding_watermark_rounded, size: 20),
                   label: const Text('Send to Watermark', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -555,10 +573,10 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: ElevatedButton(
-              onPressed: _isProcessing ? null : _processAll,
+              onPressed: _isProcessing ? null : () => _processAll(fillEnabled: false),
               child: const Text('SAVE ALL', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueAccent,
+                backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -576,6 +594,7 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
                   _buildTabItem(1, Icons.video_collection, 'Manager', AppColors.primary),
                   _buildTabItem(2, Icons.rotate_right, 'Rotate', Colors.teal),
                   _buildTabItem(5, Icons.flip, 'Flip', Colors.orange),
+                  _buildTabItem(6, Icons.format_color_fill, 'Fill', Colors.purple),
                   _buildTabItem(3, Icons.fullscreen_rounded, 'Fit', Colors.indigo),
                   _buildTabItem(4, Icons.center_focus_weak, 'Reset', Colors.deepOrange),
                 ],
@@ -591,7 +610,7 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
     final isSelected = _selectedTabIndex == index;
     return GestureDetector(
       onTap: () {
-        if (index >= 2) {
+        if (index >= 2 && index != 6) {
           // Immediate actions
           if (_editorKey.currentState != null) {
             if (index == 2) _editorKey.currentState!.rotateVideo();
@@ -652,6 +671,7 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
     switch (_selectedTabIndex) {
       case 0: return _buildRatioContent();
       case 1: return _buildManagerContent();
+      case 6: return _buildFillContent();
       default: return const SizedBox.shrink();
     }
   }
@@ -900,6 +920,268 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
         const SizedBox(height: 4),
         Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.black87, fontFamily: 'monospace')),
       ],
+    );
+  }
+
+  Future<void> _pickBgImage() async {
+    final picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      setState(() => _bgImagePath = image.path);
+    }
+  }
+
+  void _showColorPicker() {
+    Color selectedColor = _fillColor;
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateBuilder) {
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              title: const Text(
+                'Custom Colors',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.5,
+                  color: Colors.black87,
+                ),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AdvancedColorPicker(
+                      initialColor: selectedColor,
+                      onColorChanged: (color) => selectedColor = color,
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          setState(() => _fillColor = selectedColor);
+                          Navigator.pop(context);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF6C63FF),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'Apply Color',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildFillContent() {
+    final List<Color> colors = [
+      const Color(0xFF1A1A1A),
+      Colors.black,
+      Colors.white,
+      Colors.red,
+      Colors.pink,
+      Colors.purple,
+      Colors.deepPurple,
+      Colors.indigo,
+      Colors.blue,
+      Colors.lightBlue,
+      Colors.cyan,
+      Colors.teal,
+      Colors.green,
+      Colors.lightGreen,
+      Colors.lime,
+      Colors.yellow,
+      Colors.amber,
+      Colors.orange,
+      Colors.deepOrange,
+      Colors.brown,
+      Colors.grey,
+      Colors.blueGrey,
+    ];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('FILL BACKGROUND', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+              ElevatedButton.icon(
+                onPressed: _isProcessing ? null : () => _processAll(fillEnabled: true),
+                icon: const Icon(Icons.auto_fix_high, size: 14),
+                label: const Text('SAVE FILL (9:16)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purple[700],
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 40,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: colors.length + 1,
+              itemBuilder: (context, index) {
+                if (index == 0) {
+                  return GestureDetector(
+                    onTap: _showColorPicker,
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 12),
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.grey[300]!, width: 1),
+                      ),
+                      child: const Icon(Icons.colorize, size: 18, color: Colors.black54),
+                    ),
+                  );
+                }
+                final color = colors[index - 1];
+                final isSelected = _fillColor.value == color.value;
+                return GestureDetector(
+                  onTap: () => setState(() => _fillColor = color),
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 12),
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: isSelected ? AppColors.primary : Colors.grey.withOpacity(0.3),
+                        width: isSelected ? 3 : 1,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: _pickBgImage,
+                  child: Container(
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _bgImagePath != null ? AppColors.primary : Colors.grey[300]!),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(_bgImagePath != null ? Icons.image : Icons.image_outlined, 
+                          size: 18, color: _bgImagePath != null ? AppColors.primary : Colors.black54),
+                        const SizedBox(width: 8),
+                        Text(_bgImagePath != null ? 'Image Selected' : 'Pick Bg Image', 
+                          style: TextStyle(fontSize: 11, color: _bgImagePath != null ? AppColors.primary : Colors.black87)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              if (_bgImagePath != null) ...[
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: () => setState(() => _bgImagePath = null),
+                  icon: const Icon(Icons.close, color: Colors.redAccent, size: 20),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_bgImagePath != null) ...[
+            const Text('IMAGE & BACKDROP SETTINGS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 0.5)),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 180,
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                   _buildSliderRow('Video Backdrop Opacity', _bgOpacity, 0, 1.0, (v) => setState(() => _bgOpacity = v)),
+                   _buildSliderRow('Backdrop Blur Radius', _bgBlur, 0, 20.0, (v) => setState(() => _bgBlur = v)),
+                   _buildSliderRow('Image Blur Radius', _bgImageBlur, 0, 20.0, (v) => setState(() => _bgImageBlur = v)),
+                   _buildSliderRow('Image Brightness', _bgBrightness, 0.1, 2.0, (v) => setState(() => _bgBrightness = v)),
+                   _buildSliderRow('Image Saturation', _bgSaturation, 0, 2.0, (v) => setState(() => _bgSaturation = v)),
+                ],
+              ),
+            ),
+          ] else
+            const Text('Select a color above or pick a background image to enable advanced adjustments.', 
+              style: TextStyle(fontSize: 9, color: Colors.grey, height: 1.3)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSliderRow(String label, value, double min, double max, ValueChanged<double> onChanged) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+              Text(value.toStringAsFixed(2), style: const TextStyle(fontSize: 10, color: Colors.grey)),
+            ],
+          ),
+          SizedBox(
+            height: 30,
+            child: SliderTheme(
+              data: SliderThemeData(
+                trackHeight: 2,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              ),
+              child: Slider(
+                value: value,
+                min: min,
+                max: max,
+                onChanged: onChanged,
+                activeColor: AppColors.primary,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

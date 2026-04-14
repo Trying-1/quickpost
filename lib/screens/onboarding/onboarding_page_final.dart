@@ -8,7 +8,6 @@ class OnboardingPageFinal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const OnboardingPageTemplate(
-      heroIcon: Icons.rocket_launch_rounded,
       title: 'Ready to Create?',
       subtitle: 'Join creators who use QuickPost to grow their digital presence.',
       accentColor: AppColors.primary,

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../config/app_theme.dart';
 
 class OnboardingPageTemplate extends StatelessWidget {
-  final IconData heroIcon;
   final String title;
   final String subtitle;
   final List<FeatureItem> features;
@@ -10,7 +9,6 @@ class OnboardingPageTemplate extends StatelessWidget {
 
   const OnboardingPageTemplate({
     super.key,
-    required this.heroIcon,
     required this.title,
     required this.subtitle,
     required this.features,
@@ -28,7 +26,6 @@ class OnboardingPageTemplate extends StatelessWidget {
   }) {
     return OnboardingPageTemplate(
       key: key,
-      heroIcon: heroIcon,
       title: title,
       subtitle: description,
       features: bullets.map((b) => FeatureItem(text: b)).toList(),
@@ -46,23 +43,6 @@ class OnboardingPageTemplate extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Spacer(flex: 1),
-
-              // Hero Icon Container
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: accentColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: accentColor.withValues(alpha: 0.2),
-                    width: 1.5,
-                  ),
-                ),
-                child: Icon(heroIcon, size: 38, color: accentColor),
-              ),
-
-              const SizedBox(height: 32),
 
               // Title
               Text(

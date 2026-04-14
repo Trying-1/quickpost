@@ -14,6 +14,8 @@ import '../../widgets/advanced_color_picker.dart';
 import '../../utils/custom_font_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../services/app_review_service.dart';
+import '../quotes/my_quotes_screen.dart';
+import '../../models/quote_item.dart';
 
 import 'dart:math' as math;
 
@@ -70,6 +72,14 @@ class CarouselSlide {
   bool enableGlow = false;
   double glowRadius = 10.0;
   Color glowColor = Colors.white70;
+
+  // Image Adjustments
+  double brightness = 1.0;
+  double saturation = 1.0;
+
+  // Typography Adjustments
+  double slideFontSize = 28.0;
+  double textScale = 1.0;
 
   Alignment textAlignment = Alignment.center;
   FontInfo? font;
@@ -274,6 +284,21 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     });
   }
 
+  Future<void> _importFromMyQuotes() async {
+    final dynamic selected = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const MyQuotesScreen(selectMode: true),
+      ),
+    );
+
+    if (selected != null && selected is QuoteItem) {
+      setState(() {
+        _slides[_currentIndex].text = selected.text;
+      });
+    }
+  }
+
   void _removeSlide(int index) {
     if (_slides.length <= 1) return;
     setState(() {
@@ -420,88 +445,18 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
 
   Future<void> _processImageExport() async {
     const platform = MethodChannel('com.quickpost.app/processor');
-    
-    // 1. Prepare Slide Data (Asynchronously resolve fonts)
-    final List<Map<String, dynamic>> slideData = [];
-    for (final s in _slides) {
-      final String fontPath = await _resolveFontPath(s.font);
-      final Map<String, dynamic> data = {
-        'text': s.text,
-        'imagePath': s.image?.path,
-        'bgColor': '#${s.bgColor.value.toRadixString(16).padLeft(8, '0').substring(2)}',
-        'textColor': '#${s.textColor.value.toRadixString(16).padLeft(8, '0').substring(2)}',
-        'fontSize': 60.0,
-        'fontPath': fontPath,
-        'fontWeight': s.font?.weight?.value ?? _selectedFont?.weight?.value ?? 400,
-        'fontItalic': s.font?.style == FontStyle.italic || _selectedFont?.style == FontStyle.italic,
-        'enableShadow': s.enableShadow,
-        'shadowColor': '#${s.shadowColor.value.toRadixString(16).padLeft(8, '0').substring(2)}',
-        'shadowBlur': s.shadowBlur,
-        'shadowOffsetX': s.shadowOffset.dx,
-        'shadowOffsetY': s.shadowOffset.dy,
-        'enableGlow': s.enableGlow,
-        'glowColor': '#${s.glowColor.value.toRadixString(16).padLeft(8, '0').substring(2)}',
-        'glowRadius': s.glowRadius,
-        'textAlignX': s.textAlignment.x,
-        'textAlignY': s.textAlignment.y,
-        'imageZoom': s.transformationController.value.getMaxScaleOnAxis(),
-        'imageOffsetX': s.transformationController.value.storage[12] / 1080.0,
-        'imageOffsetY': s.transformationController.value.storage[13] / (1080.0 / _currentAspectRatio),
-        'useWordMode': s.useWordMode,
-      };
 
-      if (s.useWordMode && s.wordTokens.isNotEmpty) {
-        final List<Map<String, dynamic>> words = [];
-        for (final w in s.wordTokens) {
-          final String wordFontPath = await _resolveFontPath(w.font ?? s.font);
-          words.add({
-            'text': w.text,
-            'posX': w.position.x,
-            'posY': w.position.y,
-            'fontSize': w.fontSize,
-            'color': '#${w.color.value.toRadixString(16).padLeft(8, '0').substring(2)}',
-            'fontPath': wordFontPath,
-            'fontWeight': w.font?.weight?.value ?? s.font?.weight?.value ?? _selectedFont?.weight?.value ?? 400,
-            'fontItalic': w.font?.style == FontStyle.italic || s.font?.style == FontStyle.italic || _selectedFont?.style == FontStyle.italic,
-            'rotation': w.rotation,
-            'enableShadow': w.enableShadow,
-            'shadowColor': '#${w.shadowColor.value.toRadixString(16).padLeft(8, '0').substring(2)}',
-            'shadowBlur': w.shadowBlur,
-            'shadowOffsetX': w.shadowOffset.dx,
-            'shadowOffsetY': w.shadowOffset.dy,
-            'enableGlow': w.enableGlow,
-            'glowColor': '#${w.glowColor.value.toRadixString(16).padLeft(8, '0').substring(2)}',
-            'glowRadius': w.glowRadius,
-          });
-        }
-        data['words'] = words;
-      }
-      slideData.add(data);
-    }
-
-    // 2. Setup Dimensions
-    const int baseWidth = 1080;
-    final double aspect = _currentAspectRatio;
-    int exportWidth = baseWidth;
-    int exportHeight = (baseWidth / aspect).round();
-
-    // 3. UI State for Dialog
+    // Show progress dialog
     double currentProgress = 0.0;
-    String currentStep = 'Warming up GPU engine...';
+    String currentStep = 'Preparing slides...';
+    StateSetter? dialogSetState;
 
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          platform.setMethodCallHandler((call) async {
-            if (call.method == 'onProgress') {
-              setDialogState(() => currentProgress = (call.arguments as num).toDouble());
-            } else if (call.method == 'onStep') {
-              setDialogState(() => currentStep = call.arguments as String);
-            }
-          });
-
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          dialogSetState = setDialogState;
           return AlertDialog(
             title: const Text('Exporting Images'),
             content: Column(
@@ -519,118 +474,90 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     );
 
     try {
-      final List<dynamic>? results = await platform.invokeMethod('createCarouselImages', {
-        'slides': slideData,
-        'width': exportWidth,
-        'height': exportHeight,
-      });
+      int savedCount = 0;
+      final originalIndex = _currentIndex;
+
+      // Clear selection so borders don't appear in capture
+      setState(() => _selectedWordIndices.clear());
+
+      for (int i = 0; i < _slides.length; i++) {
+        final slide = _slides[i];
+
+        dialogSetState?.call(() {
+          currentStep = 'Capturing slide ${i + 1} of ${_slides.length}...';
+          currentProgress = i / _slides.length;
+        });
+
+        // Navigate to this slide so it gets rendered on screen
+        _pageController.jumpToPage(i);
+        setState(() => _currentIndex = i);
+
+        // Wait for the widget to fully paint
+        await Future.delayed(const Duration(milliseconds: 200));
+        await WidgetsBinding.instance.endOfFrame;
+        await Future.delayed(const Duration(milliseconds: 100));
+
+        // Capture the actual on-screen RepaintBoundary
+        final boundary = slide.previewKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+        if (boundary != null) {
+          final renderSize = boundary.size;
+          final exportPixelRatio = 1080.0 / renderSize.width;
+          final image = await boundary.toImage(pixelRatio: exportPixelRatio);
+          final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+          if (byteData != null) {
+            final pngBytes = byteData.buffer.asUint8List();
+            final filename = 'QuickPost_Carousel_${DateTime.now().millisecondsSinceEpoch}_$i.png';
+            await platform.invokeMethod('saveImageToGallery', {
+              'imageBytes': pngBytes,
+              'filename': filename,
+              'folderName': 'Quick Post',
+            });
+            savedCount++;
+          }
+        }
+      }
+
+      // Restore original slide
+      _pageController.jumpToPage(originalIndex);
+      setState(() => _currentIndex = originalIndex);
 
       if (mounted) Navigator.pop(context);
 
-      if (results != null && results.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Successfully exported ${results.length} images to gallery!')),
-        );
+      if (savedCount > 0) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Successfully exported $savedCount images to gallery!')),
+          );
+        }
         AppReviewService().incrementExportCount();
         AppReviewService().checkAndRequestReview();
       }
     } catch (e) {
       if (mounted) Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Image export failed: $e')),
-      );
-    } finally {
-      platform.setMethodCallHandler(null);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Image export failed: $e')),
+        );
+      }
     }
   }
 
+
+
   Future<void> _exportAsVideo() async {
     const platform = MethodChannel('com.quickpost.app/processor');
-    
-    // 1. Prepare Slide Data for Native (Asynchronously resolve fonts)
-    final List<Map<String, dynamic>> slideData = [];
-    for (final s in _slides) {
-      final String fontPath = await _resolveFontPath(s.font);
-      final Map<String, dynamic> data = {
-        'text': s.text,
-        'imagePath': s.image?.path,
-        'bgColor': '#${s.bgColor.value.toRadixString(16).padLeft(8, '0').substring(2)}',
-        'textColor': '#${s.textColor.value.toRadixString(16).padLeft(8, '0').substring(2)}',
-        'fontSize': 60.0,
-        'fontPath': fontPath,
-        'fontWeight': s.font?.weight?.value ?? _selectedFont?.weight?.value ?? 400,
-        'fontItalic': s.font?.style == FontStyle.italic || _selectedFont?.style == FontStyle.italic,
-        'enableShadow': s.enableShadow,
-        'shadowColor': '#${s.shadowColor.value.toRadixString(16).padLeft(8, '0').substring(2)}',
-        'shadowBlur': s.shadowBlur,
-        'shadowOffsetX': s.shadowOffset.dx,
-        'shadowOffsetY': s.shadowOffset.dy,
-        'enableGlow': s.enableGlow,
-        'glowColor': '#${s.glowColor.value.toRadixString(16).padLeft(8, '0').substring(2)}',
-        'glowRadius': s.glowRadius,
-        'textAlignX': s.textAlignment.x,
-        'textAlignY': s.textAlignment.y,
-        'imageZoom': s.transformationController.value.getMaxScaleOnAxis(),
-        'imageOffsetX': s.transformationController.value.storage[12] / 1080.0,
-        'imageOffsetY': s.transformationController.value.storage[13] / (1080.0 / _currentAspectRatio),
-        'useWordMode': s.useWordMode,
-      };
 
-      if (s.useWordMode && s.wordTokens.isNotEmpty) {
-        final List<Map<String, dynamic>> words = [];
-        for (final w in s.wordTokens) {
-          final String wordFontPath = await _resolveFontPath(w.font ?? s.font);
-          words.add({
-            'text': w.text,
-            'posX': w.position.x,
-            'posY': w.position.y,
-            'fontSize': w.fontSize,
-            'color': '#${w.color.value.toRadixString(16).padLeft(8, '0').substring(2)}',
-            'fontPath': wordFontPath,
-            'fontWeight': w.font?.weight?.value ?? s.font?.weight?.value ?? _selectedFont?.weight?.value ?? 400,
-            'fontItalic': w.font?.style == FontStyle.italic || s.font?.style == FontStyle.italic || _selectedFont?.style == FontStyle.italic,
-            'rotation': w.rotation,
-            'enableShadow': w.enableShadow,
-            'shadowColor': '#${w.shadowColor.value.toRadixString(16).padLeft(8, '0').substring(2)}',
-            'shadowBlur': w.shadowBlur,
-            'shadowOffsetX': w.shadowOffset.dx,
-            'shadowOffsetY': w.shadowOffset.dy,
-            'enableGlow': w.enableGlow,
-            'glowColor': '#${w.glowColor.value.toRadixString(16).padLeft(8, '0').substring(2)}',
-            'glowRadius': w.glowRadius,
-          });
-        }
-        data['words'] = words;
-      }
-      slideData.add(data);
-    }
-
-    // 2. Setup Dimensions
-    const int baseWidth = 1080;
-    final double aspect = _currentAspectRatio;
-    int exportWidth = baseWidth;
-    int exportHeight = (baseWidth / aspect).round();
-    if (exportHeight % 2 != 0) exportHeight--; // Even height for codec
-
-    // 3. Define Handlers
+    // Show progress dialog
     double currentProgress = 0.0;
-    String currentStep = 'Preparing GPU engine...';
-    
-    // 4. Show Loading Dialog
+    String currentStep = 'Preparing slides...';
+    StateSetter? dialogSetState;
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          // Listen to progress from channel
-          platform.setMethodCallHandler((call) async {
-            if (call.method == 'onProgress') {
-              setDialogState(() => currentProgress = (call.arguments as num).toDouble());
-            } else if (call.method == 'onStep') {
-              setDialogState(() => currentStep = call.arguments as String);
-            }
-          });
-
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          dialogSetState = setDialogState;
           return AlertDialog(
             title: const Text('Exporting Video'),
             content: Column(
@@ -648,60 +575,110 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     );
 
     try {
-      final String? result = await platform.invokeMethod('createCarouselVideo', {
-        'slides': slideData,
-        'width': exportWidth,
-        'height': exportHeight,
+      final tempDir = await Directory.systemTemp.createTemp('carousel_export_');
+      final List<String> framePaths = [];
+      final originalIndex = _currentIndex;
+
+      // Clear selection so borders don't appear in capture
+      setState(() => _selectedWordIndices.clear());
+
+      for (int i = 0; i < _slides.length; i++) {
+        final slide = _slides[i];
+        dialogSetState?.call(() {
+          currentStep = 'Capturing slide ${i + 1} of ${_slides.length}...';
+          currentProgress = (i / _slides.length) * 0.3;
+        });
+
+        // Navigate to this slide
+        _pageController.jumpToPage(i);
+        setState(() => _currentIndex = i);
+
+        await Future.delayed(const Duration(milliseconds: 200));
+        await WidgetsBinding.instance.endOfFrame;
+        await Future.delayed(const Duration(milliseconds: 100));
+
+        // Capture the actual on-screen RepaintBoundary
+        final boundary = slide.previewKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+        if (boundary != null) {
+          final renderSize = boundary.size;
+          final exportPixelRatio = 1080.0 / renderSize.width;
+          final image = await boundary.toImage(pixelRatio: exportPixelRatio);
+          final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+          if (byteData != null) {
+            final pngBytes = byteData.buffer.asUint8List();
+            final framePath = '${tempDir.path}/slide_$i.png';
+            await File(framePath).writeAsBytes(pngBytes);
+            framePaths.add(framePath);
+          }
+        }
+      }
+
+      // Restore original slide
+      _pageController.jumpToPage(originalIndex);
+      setState(() => _currentIndex = originalIndex);
+
+      if (framePaths.isEmpty) {
+        if (mounted) Navigator.pop(context);
+        return;
+      }
+
+      // Pass image paths to native for video encoding only
+      dialogSetState?.call(() {
+        currentStep = 'Encoding video...';
+        currentProgress = 0.3;
+      });
+
+      platform.setMethodCallHandler((call) async {
+        if (call.method == 'onProgress') {
+          final nativeProgress = (call.arguments as num).toDouble();
+          dialogSetState?.call(() {
+            currentProgress = 0.3 + nativeProgress * 0.7;
+            currentStep = 'Encoding video... ${(currentProgress * 100).toInt()}%';
+          });
+        } else if (call.method == 'onStep') {
+          dialogSetState?.call(() => currentStep = call.arguments as String);
+        }
+      });
+
+      final String? result = await platform.invokeMethod('createVideoFromImages', {
+        'imagePaths': framePaths,
         'durationPerSlide': 3.0,
       });
 
       if (mounted) Navigator.pop(context);
 
       if (result != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Video saved to gallery!')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Video saved to gallery!')),
+          );
+        }
         AppReviewService().incrementExportCount();
         AppReviewService().checkAndRequestReview();
       }
+
+      try { await tempDir.delete(recursive: true); } catch (_) {}
     } catch (e) {
       if (mounted) Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Video export failed: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Video export failed: $e')),
+        );
+      }
     } finally {
       platform.setMethodCallHandler(null);
     }
   }
 
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      appBar: AppBar(
-        title: const Text('Carousel Post Maker', style: TextStyle(fontSize: 16)),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.download),
-            tooltip: 'Export All Slides',
-            onPressed: _exportAllSlides,
-          ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          // Invisible layer to render all slides for export
-          Positioned(
-            left: -9999,
-            top: -9999,
-            child: Row(
-              children: _slides.map((s) => _buildSlideWidget(s, true)).toList(),
-            ),
-          ),
+      body: SafeArea(
+        child: Stack(
+          children: [
           
           Column(
             children: [
@@ -758,14 +735,18 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
           ),
         ],
       ),
+    ),
     );
   }
 
   Widget _buildSlideWidget(CarouselSlide slide, bool isExport) {
     Widget imageWidget = slide.image != null
-        ? Image.file(
-            slide.image!,
-            fit: BoxFit.cover,
+        ? ColorFiltered(
+            colorFilter: ui.ColorFilter.matrix(_getColorMatrix(slide.brightness, slide.saturation)),
+            child: Image.file(
+              slide.image!,
+              fit: BoxFit.cover,
+            ),
           )
         : const SizedBox.shrink();
 
@@ -790,11 +771,13 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                     maxScale: 5.0,
                     child: imageWidget,
                   ),
-          // --- Per-word mode ---
           if (slide.useWordMode && slide.wordTokens.isNotEmpty)
-            LayoutBuilder(
-              builder: (context, constraints) {
-                return GestureDetector(
+            Transform.scale(
+              scale: slide.textScale,
+              alignment: Alignment.center,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return GestureDetector(
                   onTap: isExport ? null : () {
                     setState(() => _selectedWordIndices.clear());
                   },
@@ -859,7 +842,7 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: word.color,
-                                  fontSize: isExport ? word.fontSize * (1080 / constraints.maxWidth) : word.fontSize,
+                                  fontSize: word.fontSize,
                                   fontFamily: word.font?.family ?? _selectedFont?.family,
                                   fontWeight: word.font?.weight ?? _selectedFont?.weight ?? FontWeight.bold,
                                   shadows: [
@@ -886,11 +869,15 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                   ),
                 );
               },
-            )
+            ),
+          )
           // --- Classic single-text mode ---
           else if (slide.text.isNotEmpty && !slide.useWordMode)
-            LayoutBuilder(
-              builder: (context, constraints) {
+            Transform.scale(
+              scale: slide.textScale,
+              alignment: Alignment.center,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
                 // Update tracked dimensions (avoid setState inside builder)
                 _lastPreviewWidth = constraints.maxWidth;
                 _lastPreviewHeight = constraints.maxHeight;
@@ -916,7 +903,7 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: slide.textColor,
-                              fontSize: 28,
+                              fontSize: slide.slideFontSize,
                               fontFamily: slide.font?.family ?? _selectedFont?.family,
                               fontWeight: slide.font?.weight ?? _selectedFont?.weight ?? FontWeight.bold,
                               shadows: [
@@ -942,6 +929,7 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                 );
               }
             ),
+          ),
           
           // --- Snapping Guides ---
           if (!isExport && _snapLineX != null)
@@ -962,21 +950,17 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
       ),
     );
 
-    if (isExport) {
-      return RepaintBoundary(
-        key: slide.previewKey,
-        child: SizedBox(
-          width: 1080,
-          height: 1080 / _currentAspectRatio,
-          child: content,
-        ),
-      );
-    }
     return Card(
       elevation: 4,
       clipBehavior: Clip.antiAlias,
       margin: const EdgeInsets.all(16),
-      child: content,
+      child: RepaintBoundary(
+        key: slide.previewKey,
+        child: Material(
+          type: MaterialType.transparency,
+          child: content,
+        ),
+      ),
     );
   }
 
@@ -1088,6 +1072,24 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     );
   }
 
+  List<double> _getColorMatrix(double brightness, double saturation) {
+    final double s = saturation;
+    final double b = brightness;
+    
+    // Combined Brightness and Saturation Matrix
+    // Saturation constant values
+    final double invLumR = 0.213 * (1 - s);
+    final double invLumG = 0.715 * (1 - s);
+    final double invLumB = 0.072 * (1 - s);
+
+    return <double>[
+      b * (invLumR + s), b * invLumG,       b * invLumB,       0, 0,
+      b * invLumR,       b * (invLumG + s), b * invLumB,       0, 0,
+      b * invLumR,       b * invLumG,       b * (invLumB + s), 0, 0,
+      0,                 0,                 0,                 1, 0,
+    ];
+  }
+
   Widget _buildControlsSection() {
     return Container(
       decoration: BoxDecoration(
@@ -1148,6 +1150,7 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
   }
 
   Widget _buildImageTab() {
+    final slide = _slides[_currentIndex];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1212,12 +1215,40 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
               ),
               const SizedBox(width: 8),
               _buildSmallImageAction(
-                onPressed: () => setState(() => _slides[_currentIndex].image = null),
+                onPressed: () {
+                  setState(() {
+                    slide.brightness = 1.0;
+                    slide.saturation = 1.0;
+                  });
+                },
+                icon: Icons.settings_backup_restore,
+                label: 'Reset Filters',
+                color: Colors.blueGrey,
+              ),
+              const SizedBox(width: 8),
+              _buildSmallImageAction(
+                onPressed: () => setState(() => slide.image = null),
                 icon: Icons.close,
                 label: 'Clear Image',
                 color: Colors.blueGrey,
               ),
             ],
+          ),
+          const SizedBox(height: 16),
+          _buildAdjustmentSlider(
+            label: 'Brightness',
+            value: slide.brightness,
+            min: 0.5,
+            max: 1.5,
+            onChanged: (val) => setState(() => slide.brightness = val),
+          ),
+          const SizedBox(height: 8),
+          _buildAdjustmentSlider(
+            label: 'Saturation',
+            value: slide.saturation,
+            min: 0.0,
+            max: 2.0,
+            onChanged: (val) => setState(() => slide.saturation = val),
           ),
           const SizedBox(height: 8),
           Text(
@@ -1225,6 +1256,46 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
             style: TextStyle(fontSize: 10, color: Colors.grey[600], fontStyle: FontStyle.italic),
           ),
         ],
+      ],
+    );
+  }
+
+  Widget _buildAdjustmentSlider({
+    required String label,
+    required double value,
+    required double min,
+    required double max,
+    required ValueChanged<double> onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
+            Text(value.toStringAsFixed(2), style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+          ],
+        ),
+        SizedBox(
+          height: 32,
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 2,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+              activeTrackColor: const Color(0xFF6C63FF),
+              inactiveTrackColor: Colors.grey[200],
+              thumbColor: const Color(0xFF6C63FF),
+            ),
+            child: Slider(
+              value: value,
+              min: min,
+              max: max,
+              onChanged: onChanged,
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -1326,6 +1397,23 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
             ],
           ),
         ],
+        // --- My Quotes Import ---
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _importFromMyQuotes,
+            icon: Icon(Icons.collections_bookmark_outlined, size: 16, color: Colors.indigo[400]),
+            label: Text('Import from My Quotes', style: TextStyle(fontSize: 11, color: Colors.indigo[700])),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.indigo,
+              side: BorderSide(color: Colors.indigo[100]!),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              backgroundColor: Colors.indigo.withOpacity(0.02),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ),
         // --- Bulk paste button ---
         const SizedBox(height: 8),
         SizedBox(
@@ -1346,7 +1434,7 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     );
   }
 
-  Widget _buildWordSelector(CarouselSlide slide) {
+  Widget _buildWordSelector(CarouselSlide slide, {bool showPropertyControls = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1420,7 +1508,7 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
             ],
           ),
         ),
-        if (_selectedWordIndices.isNotEmpty) ...[
+        if (showPropertyControls && _selectedWordIndices.isNotEmpty) ...[
           const SizedBox(height: 12),
           _buildWordPropertyControls(slide.wordTokens[_selectedWordIndices.first]),
         ],
@@ -1551,7 +1639,7 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildWordSelector(slide),
+        _buildWordSelector(slide, showPropertyControls: true),
         if (wordSelected) ...[
           const Divider(height: 32),
           _buildPositionControls(
@@ -1563,16 +1651,54 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
               }
             }),
           ),
-        ] else ...[
-          const SizedBox(height: 48),
-          const Center(
-            child: Text(
-              'Select a word above or on the canvas\nto adjust its position.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, fontSize: 12),
-            ),
-          ),
         ],
+        const Divider(height: 32),
+        _buildSectionHeader('Fine Adjustments'),
+        _buildAdjustmentSlider(
+          label: wordSelected ? 'Font Size (Selected)' : 'Font Size',
+          value: wordSelected ? slide.wordTokens[_selectedWordIndices.first].fontSize : slide.slideFontSize,
+          min: 10.0,
+          max: 100.0,
+          onChanged: (val) {
+            setState(() {
+              if (wordSelected) {
+                for (int idx in _selectedWordIndices) {
+                  slide.wordTokens[idx].fontSize = val;
+                }
+              } else {
+                slide.slideFontSize = val;
+              }
+            });
+          },
+        ),
+        const SizedBox(height: 8),
+        _buildAdjustmentSlider(
+          label: 'Text Scale',
+          value: slide.textScale,
+          min: 0.1,
+          max: 3.0,
+          onChanged: (val) {
+            setState(() {
+              slide.textScale = val;
+            });
+          },
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton(
+          onPressed: () {
+            setState(() {
+              if (wordSelected) {
+                for (int idx in _selectedWordIndices) {
+                  slide.wordTokens[idx].fontSize = 28.0;
+                }
+              } else {
+                slide.slideFontSize = 28.0;
+              }
+              slide.textScale = 1.0;
+            });
+          },
+          child: const Text('Reset Text Sizes'),
+        ),
       ],
     );
   }
@@ -1754,6 +1880,10 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (current.useWordMode && current.wordTokens.isNotEmpty) ...[
+          _buildWordSelector(current),
+          const Divider(height: 32),
+        ],
         _buildSectionHeader(wordMode ? 'Font for ${_selectedWordIndices.length} words' : 'Typography'),
         HorizontalFontSelector(
           selectedFont: (wordMode ? current.wordTokens[_selectedWordIndices.first].font : current.font) ?? _selectedFont,
@@ -1809,17 +1939,17 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                     }
                   });
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Imported ${result.files.length} font(s)')),
+                    SnackBar(content: Text('Custom font "${newFont.displayName}" added and applied!')),
                   );
                 }
               }
             },
-            icon: const Icon(Icons.add_circle_outline, size: 16),
-            label: const Text('Upload Custom Font', style: TextStyle(fontSize: 11)),
+            icon: const Icon(Icons.upload_file, size: 18),
+            label: const Text('Upload Custom Font'),
             style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              foregroundColor: Colors.blue,
-              side: BorderSide(color: Colors.blue[200]!),
+              foregroundColor: const Color(0xFF6C63FF),
+              side: const BorderSide(color: Color(0xFF6C63FF)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
           ),
         ),
@@ -1841,6 +1971,10 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (current.useWordMode && current.wordTokens.isNotEmpty) ...[
+          _buildWordSelector(current),
+          const Divider(height: 32),
+        ],
         _buildSectionHeader(wordMode ? 'Effects for ${_selectedWordIndices.length} words' : 'Text Styling'),
         SwitchListTile(
           title: const Text('Drop Shadow', style: TextStyle(fontSize: 12)),
@@ -1885,6 +2019,22 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
               current.shadowOffset = Offset(current.shadowOffset.dx, v);
             }
           })),
+          const SizedBox(height: 12),
+          _buildSectionHeader('Shadow Color'),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildCustomColorButton(isShadow: true),
+                _buildShadowColorVariant(Colors.black, 'Black'),
+                _buildShadowColorVariant(Colors.white, 'White'),
+                _buildShadowColorVariant(const Color(0xFF424242), 'Grey'),
+                _buildShadowColorVariant(Colors.red.shade900, 'Ruby'),
+                _buildShadowColorVariant(Colors.indigo.shade900, 'Indigo'),
+                _buildShadowColorVariant(const Color(0xFF6C63FF), 'Royal'),
+              ],
+            ),
+          ),
         ],
         const Divider(),
         SwitchListTile(
@@ -1941,12 +2091,16 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (current.useWordMode && current.wordTokens.isNotEmpty) ...[
+          _buildWordSelector(current),
+          const Divider(height: 32),
+        ],
         _buildSectionHeader('Slide Background'),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
             children: [
-              _buildCustomColorButton(true),
+              _buildCustomColorButton(isBg: true),
               _buildColorOption(const Color(0xFF121212), Colors.white, 'Ink', true),
               _buildColorOption(Colors.white, const Color(0xFF121212), 'Snow', true),
               _buildColorOption(const Color(0xFFFF4E50), Colors.white, 'Sunset', true),
@@ -1964,7 +2118,7 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
           scrollDirection: Axis.horizontal,
           child: Row(
             children: [
-              _buildCustomColorButton(false),
+              _buildCustomColorButton(isBg: false),
               _buildTextVariant(Colors.white, 'Bright'),
               _buildTextVariant(const Color(0xFF121212), 'Dark'),
               _buildTextVariant(const Color(0xFFFF4E50), 'Sunset'),
@@ -2010,7 +2164,7 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: isSel ? const Color(0xFF6C63FF) : Colors.grey[200]!,
-                  width: isSel ? 3 : 1,
+                  width: isSel ? 2 : 1,
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -2021,11 +2175,66 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                 ],
               ),
               child: isSel
-                  ? Icon(
-                      Icons.check,
-                      size: 14,
-                      color: color.computeLuminance() > 0.5 ? Colors.black : Colors.white,
-                    )
+                  ? Icon(Icons.check, size: 16, color: color.computeLuminance() > 0.5 ? Colors.black : Colors.white)
+                  : null,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSel ? const Color(0xFF6C63FF) : Colors.grey[600],
+                fontSize: 10,
+                fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildShadowColorVariant(Color color, String label) {
+    final current = _slides[_currentIndex];
+    final bool wordMode = current.useWordMode && _selectedWordIndices.isNotEmpty;
+    final Color activeColor = wordMode ? current.wordTokens[_selectedWordIndices.first].shadowColor : current.shadowColor;
+    bool isSel = activeColor == color;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          if (wordMode) {
+            for (int idx in _selectedWordIndices) {
+              current.wordTokens[idx].shadowColor = color;
+            }
+          } else {
+            current.shadowColor = color;
+          }
+        });
+      },
+      child: Padding(
+        padding: const EdgeInsets.only(right: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isSel ? const Color(0xFF6C63FF) : Colors.grey[200]!,
+                  width: isSel ? 2 : 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: isSel
+                  ? Icon(Icons.check, size: 16, color: color.computeLuminance() > 0.5 ? Colors.black : Colors.white)
                   : null,
             ),
             const SizedBox(height: 6),
@@ -2107,9 +2316,9 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     );
   }
 
-  Widget _buildCustomColorButton(bool isBg) {
+  Widget _buildCustomColorButton({bool isBg = false, bool isShadow = false}) {
     return GestureDetector(
-      onTap: () => _showColorPicker(isBg),
+      onTap: () => _showColorPicker(isBg: isBg, isShadow: isShadow),
       child: Padding(
         padding: const EdgeInsets.only(right: 16),
         child: Column(
@@ -2146,15 +2355,21 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     );
   }
 
-  Future<void> _showColorPicker(bool isBg) async {
+  Future<void> _showColorPicker({bool isBg = false, bool isShadow = false}) async {
     final slide = _slides[_currentIndex];
     final bool wordMode = slide.useWordMode && _selectedWordIndices.isNotEmpty;
     
     Color initialColor = isBg 
         ? slide.bgColor 
-        : (wordMode ? slide.wordTokens[_selectedWordIndices.first].color : slide.textColor);
+        : (isShadow 
+            ? (wordMode ? slide.wordTokens[_selectedWordIndices.first].shadowColor : slide.shadowColor)
+            : (wordMode ? slide.wordTokens[_selectedWordIndices.first].color : slide.textColor));
     
     Color selectedColor = initialColor;
+
+    String title = 'Text Color';
+    if (isBg) title = 'Background Color';
+    else if (isShadow) title = 'Shadow Color';
 
     await showDialog(
       context: context,
@@ -2165,8 +2380,7 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(isBg ? 'Background Color' : 'Text Color', 
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             IconButton(
               icon: const Icon(Icons.close, size: 20),
               onPressed: () => Navigator.pop(context),
@@ -2191,6 +2405,14 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                     setState(() {
                       if (isBg) {
                         slide.bgColor = selectedColor;
+                      } else if (isShadow) {
+                        if (wordMode) {
+                          for (int idx in _selectedWordIndices) {
+                            slide.wordTokens[idx].shadowColor = selectedColor;
+                          }
+                        } else {
+                          slide.shadowColor = selectedColor;
+                        }
                       } else {
                         if (wordMode) {
                           for (int idx in _selectedWordIndices) {
@@ -2209,7 +2431,7 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: const Text('SELECT COLOR', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: const Text('Select Color'),
                 ),
               ),
             ],

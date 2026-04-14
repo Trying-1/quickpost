@@ -7,8 +7,7 @@ class OnboardingPagePosts extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const OnboardingPageTemplate(
-      heroIcon: Icons.photo_library_rounded,
-      title: 'Professional Post Maker',
+      title: 'Dynamic Post Maker',
       subtitle: 'Stop wasting time on manual design. Create stunning grids and stories instantly.',
       accentColor: const Color(0xFF0D47A1), // Blue accent for posts
       features: [

@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../models/caption_group.dart';
 import '../../services/caption_backup_service.dart';
 import '../../services/caption_store_service.dart';
+import '../../config/app_theme.dart';
 
 class CaptionStoreScreen extends StatefulWidget {
   const CaptionStoreScreen({super.key});
@@ -115,7 +116,7 @@ class _CaptionStoreScreenState extends State<CaptionStoreScreen> {
           ),
           IconButton(
             onPressed: _showAddCaptionDialog,
-            icon: const Icon(Icons.add_circle_outline, color: Colors.purple, size: 28),
+            icon: const Icon(Icons.add_circle_outline, color: AppColors.primary, size: 28),
           ),
         ],
       ),
@@ -132,7 +133,7 @@ class _CaptionStoreScreenState extends State<CaptionStoreScreen> {
               const Spacer(),
               IconButton(
                 onPressed: _showAddCaptionDialog,
-                icon: const Icon(Icons.add, size: 18, color: Colors.purple),
+                icon: const Icon(Icons.add, size: 18, color: AppColors.primary),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 constraints: const BoxConstraints(),
               ),
@@ -148,7 +149,7 @@ class _CaptionStoreScreenState extends State<CaptionStoreScreen> {
               const Spacer(),
               IconButton(
                 onPressed: _showAddCaptionDialog,
-                icon: const Icon(Icons.add, size: 18, color: Colors.blue),
+                icon: const Icon(Icons.add, size: 18, color: AppColors.primaryLight),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 constraints: const BoxConstraints(),
               ),
@@ -218,9 +219,9 @@ class _CaptionStoreScreenState extends State<CaptionStoreScreen> {
                   }
                 }
               }),
-              selectedColor: Colors.purple.withOpacity(0.2),
+              selectedColor: AppColors.primary.withOpacity(0.2),
               labelStyle: TextStyle(
-                color: isSelected ? Colors.purple[800] : Colors.grey[700],
+                color: isSelected ? AppColors.primaryDark : Colors.grey[700],
                 fontSize: 13,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),
@@ -254,9 +255,9 @@ class _CaptionStoreScreenState extends State<CaptionStoreScreen> {
               label: Text(isAll ? 'Any' : name!),
               selected: isSelected,
               onSelected: (val) => setState(() => _selectedVariantName = val ? name : null),
-              selectedColor: Colors.blue.withOpacity(0.2),
+              selectedColor: AppColors.primaryLight.withOpacity(0.2),
               labelStyle: TextStyle(
-                color: isSelected ? Colors.blue[800] : Colors.grey[700],
+                color: isSelected ? AppColors.primaryDark : Colors.grey[700],
                 fontSize: 13,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),
@@ -302,11 +303,11 @@ class _CaptionStoreScreenState extends State<CaptionStoreScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.purple.withOpacity(0.05),
+                          color: AppColors.primary.withOpacity(0.05),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(group.category!, 
-                          style: TextStyle(color: Colors.purple[400], fontSize: 10, fontWeight: FontWeight.w600)),
+                          style: const TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w600)),
                       ),
                     const SizedBox(width: 8),
                     Container(
@@ -316,10 +317,10 @@ class _CaptionStoreScreenState extends State<CaptionStoreScreen> {
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(variant.name.toUpperCase(), 
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontWeight: FontWeight.bold, 
                           fontSize: 10, 
-                          color: Colors.blue[700],
+                          color: AppColors.primaryLight,
                           letterSpacing: 0.5,
                         )),
                     ),
@@ -327,7 +328,7 @@ class _CaptionStoreScreenState extends State<CaptionStoreScreen> {
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.content_copy_outlined, size: 18, color: Colors.purple),
+                icon: const Icon(Icons.content_copy_outlined, size: 18, color: AppColors.primary),
                 onPressed: () => _copyToClipboard(variant.content),
                 constraints: const BoxConstraints(),
                 padding: const EdgeInsets.all(8),
@@ -368,7 +369,7 @@ class _CaptionStoreScreenState extends State<CaptionStoreScreen> {
           const SizedBox(height: 8),
           ElevatedButton(
             onPressed: _showAddCaptionDialog,
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.purple, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
             child: const Text('Add Your First Caption'),
           ),
         ],
@@ -586,7 +587,7 @@ class _CaptionStoreScreenState extends State<CaptionStoreScreen> {
                           _loadData();
                         },
                         style: TextButton.styleFrom(
-                          foregroundColor: Colors.purple,
+                          foregroundColor: AppColors.primary,
                           textStyle: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                         child: Text(existingGroup == null ? 'CREATE' : 'UPDATE'),
@@ -744,7 +745,7 @@ class _CaptionStoreScreenState extends State<CaptionStoreScreen> {
                   fillColor: Colors.white,
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey[300]!)),
                   enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey[200]!)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.purple, width: 1.5)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 ),
         ),

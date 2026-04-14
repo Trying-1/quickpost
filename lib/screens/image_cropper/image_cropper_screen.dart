@@ -812,7 +812,7 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
                             onPressed: () async {
                               Navigator.of(context).pop();
                               HomeShellScreen.navigateToTab(
-                                5,
+                                8,
                                 paths: [path],
                                 purpose: 'cropper',
                               );
@@ -1033,7 +1033,7 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
                           Navigator.of(context).pop();
                           final firstImg = _croppedImages.firstWhere((img) => img.file != null);
                           HomeShellScreen.navigateToTab(
-                            5,
+                            8,
                             paths: [firstImg.file!.path],
                             purpose: 'cropper',
                           );

@@ -7,8 +7,7 @@ class OnboardingPageLibrary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const OnboardingPageTemplate(
-      heroIcon: Icons.library_music_rounded,
-      title: 'Content Library',
+      title: 'Built-in Libraries',
       subtitle: 'Your personal vault for tracks and captions. Copy-paste has never been easier.',
       accentColor: const Color(0xFF1B5E20), // Green accent for library
       features: [

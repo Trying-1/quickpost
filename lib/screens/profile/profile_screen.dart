@@ -10,6 +10,7 @@ import 'subscription_plan_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'terms_of_service_screen.dart';
 import 'user_profile_screen.dart';
+import '../../config/app_theme.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -340,12 +341,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   shape: BoxShape.circle,
                   color: Colors.white,
                   border: Border.all(
-                    color: Colors.purple.withOpacity(0.1),
+                    color: AppColors.primary.withOpacity(0.1),
                     width: 4,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.purple.withOpacity(0.08),
+                      color: AppColors.primary.withOpacity(0.08),
                       blurRadius: 24,
                       offset: const Offset(0, 8),
                     ),
@@ -355,7 +356,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Icon(
                     Icons.person_rounded,
                     size: 56,
-                    color: Colors.purple,
+                    color: AppColors.primary,
                   ),
                 ),
               ),
@@ -365,7 +366,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: const BoxDecoration(
-                    color: Colors.purple,
+                    color: AppColors.primary,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
@@ -407,10 +408,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.purple.withOpacity(0.05),
+              color: AppColors.primary.withOpacity(0.05),
               borderRadius: BorderRadius.circular(30),
               border: Border.all(
-                color: Colors.purple.withOpacity(0.1),
+                color: AppColors.primary.withOpacity(0.1),
                 width: 1,
               ),
             ),
@@ -420,13 +421,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const Icon(
                   Icons.verified_rounded,
                   size: 16,
-                  color: Colors.purple,
+                  color: AppColors.primary,
                 ),
                 const SizedBox(width: 8),
                 Text(
                   'Free Plan Member',
                   style: TextStyle(
-                    color: Colors.purple[700],
+                    color: AppColors.primaryDark,
                     fontWeight: FontWeight.w700,
                     fontSize: 13,
                     letterSpacing: 0.2,
@@ -494,13 +495,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: (titleColor ?? Colors.purple).withOpacity(0.08),
+          color: (titleColor ?? AppColors.primary).withOpacity(0.08),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Icon(
           icon,
           size: 20,
-          color: titleColor ?? Colors.purple,
+          color: titleColor ?? AppColors.primary,
         ),
       ),
       title: Text(
@@ -534,12 +535,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Container(
       color: Colors.grey[100],
       child: ListTile(
-        leading: Icon(icon, color: (titleColor ?? Colors.purple).withOpacity(0.5)),
+        leading: Icon(icon, color: (titleColor ?? AppColors.primary).withOpacity(0.5)),
         title: Text(
           title,
           style: TextStyle(
             fontWeight: FontWeight.w600,
-            color: (titleColor ?? Colors.purple).withOpacity(0.5),
+            color: (titleColor ?? AppColors.primary).withOpacity(0.5),
           ),
         ),
         subtitle: Text(

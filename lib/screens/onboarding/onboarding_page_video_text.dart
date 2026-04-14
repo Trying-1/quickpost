@@ -7,8 +7,7 @@ class OnboardingPageVideoText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const OnboardingPageTemplate(
-      heroIcon: Icons.movie_filter_rounded,
-      title: 'Elevate Your Videos',
+      title: 'Powerful Video Tools',
       subtitle: 'Add professional captions and overlays optimized for Shorts, Reels, and TikTok.',
       accentColor: const Color(0xFFE65100), // Orange accent for video
       features: [

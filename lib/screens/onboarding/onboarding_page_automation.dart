@@ -8,7 +8,6 @@ class OnboardingPageAutomation extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const OnboardingPageTemplate(
-      heroIcon: Icons.auto_mode_rounded,
       title: 'Smart Automation',
       subtitle: 'Let the app do the heavy lifting. Generate batches of content in minutes.',
       accentColor: AppColors.primary,
@@ -19,9 +18,9 @@ class OnboardingPageAutomation extends StatelessWidget {
           icon: Icons.bolt_rounded,
         ),
         FeatureItem(
-          text: 'Content Scheduling',
-          detail: 'Plan and prepare your posts in advance',
-          icon: Icons.calendar_month_rounded,
+          text: 'One-Click Workflows',
+          detail: 'Execute complex tasks with a single tap',
+          icon: Icons.touch_app_rounded,
         ),
         FeatureItem(
           text: 'Consistent Growth',

@@ -316,6 +316,107 @@ class OpenGLCarouselProcessor(private val context: Context) {
         return resultPaths
     }
 
+    /**
+     * Encodes pre-rendered images into an MP4 video.
+     * No text rendering — just loads PNGs and writes video frames.
+     */
+    fun processVideoFromImages(
+        imagePaths: List<String>,
+        durationPerSlide: Double,
+        outputFile: File,
+        callback: ProgressCallback
+    ): Boolean {
+        Log.d(TAG, "Starting Video from ${imagePaths.size} pre-rendered images")
+
+        // Read dimensions from first image
+        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(imagePaths[0], opts)
+        var outputWidth = opts.outWidth
+        var outputHeight = opts.outHeight
+        // Ensure even dimensions for H.264
+        if (outputWidth % 2 != 0) outputWidth--
+        if (outputHeight % 2 != 0) outputHeight--
+
+        val totalSlides = imagePaths.size
+        val totalDurationS = totalSlides * durationPerSlide
+        val totalFrames = (totalDurationS * FRAME_RATE).toInt()
+        val framesPerSlide = (durationPerSlide * FRAME_RATE).toInt()
+
+        // 1. Setup Encoder
+        val encoderFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, outputWidth, outputHeight).apply {
+            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+            setInteger(MediaFormat.KEY_BIT_RATE, DEFAULT_BITRATE)
+            setInteger(MediaFormat.KEY_FRAME_RATE, FRAME_RATE)
+            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, I_FRAME_INTERVAL)
+        }
+        val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        encoder.configure(encoderFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        val inputSurface = encoder.createInputSurface()
+        encoder.start()
+
+        // 2. Setup EGL/GL
+        initEGL(inputSurface)
+        initGL()
+
+        // 3. Setup Muxer
+        val muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        var muxerTrackIndex = -1
+        var muxerStarted = false
+        val bufferInfo = MediaCodec.BufferInfo()
+
+        try {
+            var currentFrame = 0
+            val mvpMatrix = FloatArray(16)
+            android.opengl.Matrix.setIdentityM(mvpMatrix, 0)
+
+            for (i in 0 until totalSlides) {
+                callback.onStep("Encoding slide ${i + 1} of $totalSlides")
+
+                // Load pre-rendered PNG as bitmap
+                val slideBitmap = BitmapFactory.decodeFile(imagePaths[i])
+                    ?: continue
+                val texId = loadBitmapTexture(slideBitmap)
+                slideBitmap.recycle()
+
+                for (f in 0 until framesPerSlide) {
+                    val ptsNs = currentFrame.toLong() * 1_000_000_000L / FRAME_RATE
+
+                    GLES20.glViewport(0, 0, outputWidth, outputHeight)
+                    GLES20.glClearColor(0f, 0f, 0f, 1f)
+                    GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+
+                    drawTexture(texId, mvpMatrix, 1.0f)
+
+                    EGLExt.eglPresentationTimeANDROID(eglDisplay, eglSurface, ptsNs)
+                    EGL14.eglSwapBuffers(eglDisplay, eglSurface)
+
+                    // Drain encoder
+                    muxerTrackIndex = drainEncoder(encoder, muxer, bufferInfo, muxerTrackIndex, muxerStarted)
+                    if (muxerTrackIndex >= 0) muxerStarted = true
+
+                    currentFrame++
+                    if (currentFrame % 10 == 0) {
+                        callback.onProgress(currentFrame.toDouble() / totalFrames)
+                    }
+                }
+                GLES20.glDeleteTextures(1, intArrayOf(texId), 0)
+            }
+
+            encoder.signalEndOfInputStream()
+            drainEncoder(encoder, muxer, bufferInfo, muxerTrackIndex, muxerStarted, true)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Video from images failed", e)
+            return false
+        } finally {
+            cleanup(encoder, inputSurface, muxer, muxerStarted)
+            releaseEGL()
+        }
+
+        return true
+    }
+
+
     private fun captureFrame(width: Int, height: Int): Bitmap {
         val buffer = ByteBuffer.allocateDirect(width * height * 4)
         buffer.order(ByteOrder.LITTLE_ENDIAN)
@@ -480,78 +581,83 @@ class OpenGLCarouselProcessor(private val context: Context) {
                 canvas.restore()
             }
         } else {
-            // --- Classic single-text rendering ---
+            // --- Classic single-text rendering with Auto-Wrapping ---
             val text = params["text"] as? String ?: ""
             if (text.isNotEmpty()) {
                 val textColor = Color.parseColor(params["textColor"] as? String ?: "#FFFFFF")
-                val fontSize = height * 0.06f
+                val dartFontSize = (params["fontSize"] as? Number)?.toFloat() ?: 28f
+                // Scale font to export resolution (preview ~350px wide vs export width)
+                val scaledFontSize = dartFontSize * (width.toFloat() / 350f)
+                
                 val fontPath = params["fontPath"] as? String
                 val fontWeight = (params["fontWeight"] as? Number)?.toInt() ?: 400
                 val fontItalic = params["fontItalic"] as? Boolean ?: false
 
-                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                val textPaint = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                     this.color = textColor
-                    this.textSize = fontSize
-                    this.textAlign = Paint.Align.CENTER
+                    this.textSize = scaledFontSize
                 }
 
                 if (!fontPath.isNullOrEmpty()) {
                     val customTypeface = getCustomTypeface(fontPath, fontWeight, fontItalic)
                     if (customTypeface != null) {
-                        paint.typeface = customTypeface
+                        textPaint.typeface = customTypeface
                     } else {
                         val style = if (fontItalic && fontWeight >= 700) Typeface.BOLD_ITALIC
                                     else if (fontItalic) Typeface.ITALIC
                                     else if (fontWeight >= 700) Typeface.BOLD
                                     else Typeface.NORMAL
-                        paint.typeface = Typeface.create(fontPath, style)
+                        textPaint.typeface = Typeface.create(fontPath, style)
                     }
                 }
 
-                val lines = text.split("\n")
                 val padding = width * 0.05f
                 val alignX = (params["textAlignX"] as? Number)?.toFloat() ?: 0f
                 val alignY = (params["textAlignY"] as? Number)?.toFloat() ?: 0f
-
-                val lineHeight = fontSize * 1.25f
-                val totalHeight = lines.size * lineHeight
-
-                val centerY = (height / 2f) + (alignY * (height / 2f - totalHeight / 2f - padding))
-
-                for (index in lines.indices) {
-                    val line = lines[index]
-                    val lineY = centerY - (totalHeight / 2f) + (index * lineHeight) + (fontSize * 0.8f)
-
-                    val bounds = Rect()
-                    paint.getTextBounds(line, 0, line.length, bounds)
-                    val lineTranslateX = alignX * (width / 2f - bounds.width() / 2f - padding)
-                    val lineX = (width / 2f) + lineTranslateX
-
-                    val enableGlow = params["enableGlow"] as? Boolean ?: false
-                    if (enableGlow) {
-                        val glowColor = Color.parseColor(params["glowColor"] as? String ?: "#FFFFFF")
-                        val glowRadius = (params["glowRadius"] as? Number)?.toFloat() ?: 10f
-                        val glowPaint = Paint(paint).apply {
-                            color = glowColor
-                            maskFilter = BlurMaskFilter(glowRadius, BlurMaskFilter.Blur.NORMAL)
-                        }
-                        canvas.drawText(line, lineX, lineY, glowPaint)
-                    }
-
-                    val enableShadow = params["enableShadow"] as? Boolean ?: false
-                    if (enableShadow) {
-                        val sColor = Color.parseColor(params["shadowColor"] as? String ?: "#88000000")
-                        val blur = (params["shadowBlur"] as? Number)?.toFloat() ?: 4f
-                        val dx = (params["shadowOffsetX"] as? Number)?.toFloat() ?: 2f
-                        val dy = (params["shadowOffsetY"] as? Number)?.toFloat() ?: 2f
-                        val shadowPaint = Paint(paint).apply {
-                            setShadowLayer(blur, dx, dy, sColor)
-                        }
-                        canvas.drawText(line, lineX, lineY, shadowPaint)
-                    }
-
-                    canvas.drawText(line, lineX, lineY, paint)
+                
+                val maxWidth = (width - 2 * padding).toInt()
+                val alignment = when {
+                    alignX < -0.3f -> android.text.Layout.Alignment.ALIGN_NORMAL
+                    alignX > 0.3f -> android.text.Layout.Alignment.ALIGN_OPPOSITE
+                    else -> android.text.Layout.Alignment.ALIGN_CENTER
                 }
+
+                // Shadow/Glow handling
+                val enableGlow = params["enableGlow"] as? Boolean ?: false
+                if (enableGlow) {
+                    val glowColor = Color.parseColor(params["glowColor"] as? String ?: "#FFFFFF")
+                    val glowRadius = (params["glowRadius"] as? Number)?.toFloat() ?: 10f
+                    textPaint.maskFilter = BlurMaskFilter(glowRadius, BlurMaskFilter.Blur.NORMAL)
+                    // Note: Glow with StaticLayout is tricky, usually involves multiple draws.
+                    // For now, we apply it to the main paint.
+                }
+
+                val enableShadow = params["enableShadow"] as? Boolean ?: false
+                if (enableShadow) {
+                    val sColor = Color.parseColor(params["shadowColor"] as? String ?: "#88000000")
+                    val blur = (params["shadowBlur"] as? Number)?.toFloat() ?: 4f
+                    val dx = (params["shadowOffsetX"] as? Number)?.toFloat() ?: 2f
+                    val dy = (params["shadowOffsetY"] as? Number)?.toFloat() ?: 2f
+                    textPaint.setShadowLayer(blur, dx, dy, sColor)
+                }
+
+                // Create StaticLayout for wrapping
+                val builder = android.text.StaticLayout.Builder.obtain(text, 0, text.length, textPaint, maxWidth)
+                    .setAlignment(alignment)
+                    .setLineSpacing(0f, 1.2f)
+                    .setIncludePad(false)
+                
+                val staticLayout = builder.build()
+                val totalHeight = staticLayout.height
+                
+                // Calculate position based on alignment
+                val x = padding + (maxWidth / 2f) // Center of the layout block
+                val y = (height / 2f) + (alignY * (height / 2f - totalHeight / 2f - padding))
+                
+                canvas.save()
+                canvas.translate(padding, y - totalHeight / 2f)
+                staticLayout.draw(canvas)
+                canvas.restore()
             }
         }
 

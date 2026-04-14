@@ -5,6 +5,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:csv/csv.dart';
 import '../../models/quote_item.dart';
 import '../../services/my_quotes_service.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
 
 class MyQuotesScreen extends StatefulWidget {
   final bool selectMode;
@@ -273,6 +275,25 @@ class _MyQuotesScreenState extends State<MyQuotesScreen> {
               _importCsv();
             },
           ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.backup_outlined, color: Colors.blue),
+            title: const Text('Backup Library (JSON)'),
+            subtitle: const Text('Exports all quotes with categories'),
+            onTap: () {
+              Navigator.pop(context);
+              _exportLibrary();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.settings_backup_restore_outlined, color: Colors.green),
+            title: const Text('Restore Library (JSON)'),
+            subtitle: const Text('Import from a JSON backup file'),
+            onTap: () {
+              Navigator.pop(context);
+              _importLibraryJson();
+            },
+          ),
           const SizedBox(height: 16),
         ],
       ),
@@ -470,6 +491,53 @@ class _MyQuotesScreenState extends State<MyQuotesScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error importing file: $e')));
+      }
+    }
+  }
+
+  Future<void> _exportLibrary() async {
+    try {
+      final json = await MyQuotesService.exportQuotesJson();
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/my_quotes_backup_${DateTime.now().millisecondsSinceEpoch}.json');
+      await file.writeAsString(json);
+      
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: 'My Quotes Backup',
+        text: 'Sharing my quotes backup file.',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error exporting library: $e')));
+      }
+    }
+  }
+
+  Future<void> _importLibraryJson() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json', 'txt'],
+      );
+      if (result != null) {
+        final file = File(result.files.single.path!);
+        final content = await file.readAsString();
+        final count = await MyQuotesService.importQuotesJson(content);
+        if (count > 0) {
+          _loadQuotes();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Successfully imported $count quotes')));
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No valid quotes found in file')));
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error importing library: $e')));
       }
     }
   }
