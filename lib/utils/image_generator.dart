@@ -66,19 +66,6 @@ class ImageGenerator {
     }
   }
   
-  static Uint8List? _resizeAndEncodePng(_ResizeParams params) {
-    final img.Image? pngImage = img.decodeImage(params.pngBytes);
-    if (pngImage == null) return null;
-
-    final img.Image resized = img.copyResize(
-      pngImage,
-      width: params.width,
-      height: params.height,
-      interpolation: img.Interpolation.cubic,
-    );
-
-    return img.encodePng(resized, level: 6);
-  }
 
   static Uint8List? _generatePostImageSync(_PostImageParams params) {
     final img.Image? src = img.decodeImage(params.imageBytes);
@@ -163,11 +150,15 @@ class ImageGenerator {
       throw Exception('Failed to generate image');
     }
 
-    final String? savedPath = await _saveImageToGallery(imageBytes);
+    final String? savedPath = await saveImageBytesToGallery(imageBytes);
     if (savedPath == null) {
       throw Exception('Failed to save image');
     }
     return savedPath;
+  }
+
+  static Future<String?> saveImageBytesToGallery(Uint8List imageBytes) async {
+    return _saveImageToGallery(imageBytes);
   }
 
   static Uint8List? _encodeValidJpg(img.Image image) {
@@ -296,25 +287,47 @@ class ImageGenerator {
     try {
       final RenderRepaintBoundary boundary = key.currentContext!.findRenderObject() as RenderRepaintBoundary;
       
-      // Capture at 4x resolution for maximum quality
-      final ui.Image image = await boundary.toImage(pixelRatio: 4.0);
+      final logicalSize = boundary.size;
+      final double targetW = (targetWidth ?? 1080).toDouble();
+      
+      // Calculate the exact pixel ratio needed to reach target width
+      // We use width as the primary anchor to match how CollageMaker calculates exportHeight
+      final double pixelRatio = targetW / logicalSize.width;
+      
+      final ui.Image image = await boundary.toImage(pixelRatio: pixelRatio);
       final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
 
       if (byteData == null) return null;
-
       final Uint8List pngBytes = byteData.buffer.asUint8List();
 
-      // Offload decoding, resizing, and encoding to a background isolate
-      final int width = targetWidth ?? 1080;
-      final int height = targetHeight ?? 1350;
-      return compute<_ResizeParams, Uint8List?>(
-        _resizeAndEncodePng,
-        _ResizeParams(pngBytes, width, height),
-      );
+      // If the resulting image is slightly different due to rounding,
+      // we CROP it to the target size instead of resizing (stretching) it.
+      // This prevents the "shifting" the user is seeing.
+      if (image.width != targetWidth || image.height != targetHeight) {
+         return compute<_ResizeParams, Uint8List?>(
+          _cropToExactSize,
+          _ResizeParams(pngBytes, targetWidth ?? 1080, targetHeight ?? 1350),
+        );
+      }
+      return pngBytes;
     } catch (e) {
-      // Return null on error - caller will handle
       return null;
     }
+  }
+
+  static Uint8List? _cropToExactSize(_ResizeParams params) {
+    final img.Image? fullImage = img.decodeImage(params.pngBytes);
+    if (fullImage == null) return null;
+
+    final img.Image cropped = img.copyCrop(
+      fullImage,
+      x: 0,
+      y: 0,
+      width: params.width,
+      height: params.height,
+    );
+
+    return img.encodePng(cropped, level: 6);
   }
   
   static Future<Uint8List?> _generatePostImage(String text, File imageFile, {TemplateTransform? transform, FontInfo? selectedFont}) async {

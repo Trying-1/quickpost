@@ -834,6 +834,43 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
                             ),
                           ),
                           const SizedBox(height: 12),
+                          // New Action: Save to Gallery
+                          StatefulBuilder(
+                            builder: (context, setDialogState) {
+                              bool isSaved = false;
+                              return OutlinedButton.icon(
+                                onPressed: isSaved ? null : () async {
+                                  try {
+                                    final result = await _channel.invokeMethod<String>('saveImageToGallery', {'imagePath': path});
+                                    if (result != null) {
+                                      setDialogState(() => isSaved = true);
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Image saved to Gallery!')),
+                                        );
+                                      }
+                                    }
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Save failed: $e')),
+                                      );
+                                    }
+                                  }
+                                },
+                                icon: Icon(isSaved ? Icons.check : Icons.download_rounded, size: 20),
+                                label: Text(isSaved ? 'Saved to Gallery' : 'Save to Gallery', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                style: OutlinedButton.styleFrom(
+                                  backgroundColor: isSaved ? Colors.grey[100] : Colors.blue[50],
+                                  foregroundColor: isSaved ? Colors.grey[600] : Colors.blue[700],
+                                  minimumSize: const Size(double.infinity, 54),
+                                  side: BorderSide(color: isSaved ? Colors.grey[300]! : Colors.blue[200]!),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 12),
                           Row(
                             children: [
                               Expanded(
@@ -1047,6 +1084,55 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
                           shadowColor: Colors.purple.withOpacity(0.4),
                         ),
                         child: const Text('Design with Text', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      ),
+                      const SizedBox(height: 12),
+                      // New Action: Save to Gallery
+                      StatefulBuilder(
+                        builder: (context, setDialogState) {
+                          bool isSaved = false;
+                          return OutlinedButton.icon(
+                            onPressed: isSaved ? null : () async {
+                              try {
+                                final List<String> newPaths = [];
+                                for (var imgData in _croppedImages) {
+                                  if (imgData.file != null) {
+                                    final result = await _channel.invokeMethod<String>('saveImageToGallery', {'imagePath': imgData.file!.path});
+                                    if (result != null) newPaths.add(result);
+                                  }
+                                }
+                                
+                                // Update file paths so subsequent actions use gallery paths
+                                for (int i = 0; i < _croppedImages.length; i++) {
+                                  if (i < newPaths.length) {
+                                    _croppedImages[i].file = File(newPaths[i]);
+                                  }
+                                }
+                                
+                                setDialogState(() => isSaved = true);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('All images saved to Gallery!')),
+                                  );
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Save failed: $e')),
+                                  );
+                                }
+                              }
+                            },
+                            icon: Icon(isSaved ? Icons.check : Icons.download_rounded, size: 20),
+                            label: Text(isSaved ? 'Saved to Gallery' : 'Save all to Gallery', style: const TextStyle(fontWeight: FontWeight.bold)),
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: isSaved ? Colors.grey[100] : Colors.blue[50],
+                              foregroundColor: isSaved ? Colors.grey[600] : Colors.blue[700],
+                              minimumSize: const Size(double.infinity, 54),
+                              side: BorderSide(color: isSaved ? Colors.grey[300]! : Colors.blue[200]!),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            ),
+                          );
+                        },
                       ),
                       const SizedBox(height: 12),
                       

@@ -116,6 +116,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         }
     """.trimIndent()
 
+
     // ── Geometry ─────────────────────────────────────────────────────
 
     private val QUAD_COORDS = floatArrayOf(
@@ -369,7 +370,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         decoder.start()
         Log.d(TAG, "Decoder started: ${decoder.name}")
 
-        var watermarkResult = renderWatermarkBitmap(params, 0, movie)
+        val watermarkResult = renderWatermarkBitmap(params, 0, movie, outWidth)
         var watermarkTexId = loadBitmapTexture(flipBitmapVertically(watermarkResult.bitmap))
         
         // Store box dims for positioning
@@ -551,14 +552,15 @@ class OpenGLWatermarkProcessor(private val context: Context) {
                            draw2DTexture(patchBottomTexId, identityMvp, 1.0f)
                         }
 
-                        // 3. Draw Video Frame (OES) - use straight alpha for video
+                        // 3. Draw Video Frame (OES)
                         GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
+                        
                         drawOESTexture(oesTexId, texMatrix, videoMvp, 1.0f)
 
                         // If GIF, re-render only the small box and update texture
                         if (movie != null && movie.duration() > 0) {
                             val timeMs = (frameIndex.toLong() * 1000 / FRAME_RATE).toInt() % movie.duration()
-                            val gifResult = renderWatermarkBitmap(params, timeMs, movie)
+                            val gifResult = renderWatermarkBitmap(params, timeMs, movie, outWidth)
                             val fGif = flipBitmapVertically(gifResult.bitmap)
                             updateBitmapTexture(watermarkTexId, fGif)
                             gifResult.bitmap.recycle()
@@ -687,7 +689,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
 
     class WatermarkResult(val bitmap: Bitmap, val boxWidth: Float, val boxHeight: Float)
 
-    private fun renderWatermarkBitmap(params: Map<String, Any?>, timeMs: Int, movieIn: Movie? = null): WatermarkResult {
+    private fun renderWatermarkBitmap(params: Map<String, Any?>, timeMs: Int, movieIn: Movie? = null, targetWidth: Int = 1080): WatermarkResult {
         val type = params["type"] as? String ?: "profile"
         val showBox = params["showBox"] as? Boolean ?: true
         val boxColorStr = params["boxColor"] as? String ?: "#000000"
@@ -698,10 +700,13 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         val username = params["username"] as? String ?: "Username"
         val handle = params["handle"] as? String ?: "@handle"
         val imagePath = params["profileImagePath"] as? String ?: ""
-        val textColorStr = params["textColor"] as? String ?: "#FFFFFF"
+        val textColorStr = params["textColor"] as? String ?: "#000000"
         val accentColorStr = params["accentColor"] as? String ?: "#AAAAAA"
         val fontSize = ((params["fontSize"] as? Number)?.toFloat() ?: 36f) * watermarkScale
+        val usernameSize = ((params["usernameSize"] as? Number)?.toFloat() ?: 36f) * watermarkScale
+        val handleSize = ((params["handleSize"] as? Number)?.toFloat() ?: 30f) * watermarkScale
         val iconSize = ((params["iconSize"] as? Number)?.toFloat() ?: 100f) * watermarkScale
+        val storyRingWidth = ((params["storyRingWidth"] as? Number)?.toFloat() ?: 5f) * watermarkScale
         val fontPath = params["fontPath"] as? String ?: ""
         val showUsernameShadow = params["showUsernameShadow"] as? Boolean ?: false
         val usernameShadowColorStr = params["usernameShadowColor"] as? String ?: "#000000"
@@ -737,12 +742,12 @@ class OpenGLWatermarkProcessor(private val context: Context) {
 
         val textPaint = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor(textColorStr)
-            textSize = fontSize
+            textSize = usernameSize
             style = Paint.Style.FILL
         }
         val handlePaint = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor(accentColorStr)
-            textSize = fontSize * 0.8f
+            textSize = handleSize
             style = Paint.Style.FILL
         }
 
@@ -770,8 +775,23 @@ class OpenGLWatermarkProcessor(private val context: Context) {
             }
         }
 
+        val basePadding = fontSize * 0.4f
+        val maxBlur = maxOf(if (showUsernameShadow) usernameShadowBlur else 0f, 
+                            maxOf(if (showHandleShadow) handleShadowBlur else 0f, 
+                                  if (showIconShadow) iconShadowBlur else 0f))
+        val maxOffset = maxOf(
+            maxOf(if (showUsernameShadow) kotlin.math.abs(usernameShadowOffsetX) else 0f, 
+                  if (showUsernameShadow) kotlin.math.abs(usernameShadowOffsetY) else 0f),
+            maxOf(if (showHandleShadow) kotlin.math.abs(handleShadowOffsetX) else 0f, 
+                  if (showHandleShadow) kotlin.math.abs(handleShadowOffsetY) else 0f),
+            maxOf(if (showIconShadow) kotlin.math.abs(iconShadowOffsetX) else 0f, 
+                  if (showIconShadow) kotlin.math.abs(iconShadowOffsetY) else 0f)
+        )
+        val extraPadding = (maxBlur * 2.5f + maxOffset + 5f).coerceAtLeast(0f)
+        val padding = basePadding + extraPadding
+
         when (type) {
-            "profile", "profile_vertical" -> {
+            "profile", "profile_vertical", "profile_dots" -> {
                 val showStoryRing = params["showStoryRing"] as? Boolean ?: false
                 val isVerified = params["isVerified"] as? Boolean ?: false
                 
@@ -804,16 +824,20 @@ class OpenGLWatermarkProcessor(private val context: Context) {
                 
                 val textW = maxOf(usernameWithBadgeW, handleWithBadgeW)
                 
-                val ringExtra = if (showStoryRing) fontSize * 0.45f else 0f
+                val ringExtra = if (showStoryRing) storyRingWidth * 2.2f else 0f
                 val iconW = if (iconBitmap != null || (movie != null && movie.width() > 0)) iconSize + ringExtra else 0f
                 
                 if (type == "profile_vertical") {
                     contentWidth = maxOf(iconW, textW)
-                    contentHeight = iconW + (if (iconW > 0) 12f else 0f) + (fontSize * 2.1f)
+                    contentHeight = iconW + (if (iconW > 0) 12f else 0f) + (usernameSize + handleSize + 12f)
+                } else if (type == "profile_dots") {
+                    val scale = (params["watermarkScale"] as? Number)?.toFloat() ?: 1.0f
+                    contentWidth = (targetWidth * scale) - (padding * 2) 
+                    contentHeight = maxOf(iconW, maxOf(usernameSize, handleSize) * 2.3f)
                 } else {
                     val gap = if (iconW > 0) 24f else 0f
                     contentWidth = iconW + gap + textW
-                    contentHeight = maxOf(iconW, fontSize * 2.3f)
+                    contentHeight = maxOf(iconW, maxOf(usernameSize, handleSize) * 2.3f)
                 }
             }
             "text" -> {
@@ -841,20 +865,6 @@ class OpenGLWatermarkProcessor(private val context: Context) {
             }
         }
 
-        val basePadding = fontSize * 0.4f
-        val maxBlur = maxOf(if (showUsernameShadow) usernameShadowBlur else 0f, 
-                            maxOf(if (showHandleShadow) handleShadowBlur else 0f, 
-                                  if (showIconShadow) iconShadowBlur else 0f))
-        val maxOffset = maxOf(
-            maxOf(if (showUsernameShadow) kotlin.math.abs(usernameShadowOffsetX) else 0f, 
-                  if (showUsernameShadow) kotlin.math.abs(usernameShadowOffsetY) else 0f),
-            maxOf(if (showHandleShadow) kotlin.math.abs(handleShadowOffsetX) else 0f, 
-                  if (showHandleShadow) kotlin.math.abs(handleShadowOffsetY) else 0f),
-            maxOf(if (showIconShadow) kotlin.math.abs(iconShadowOffsetX) else 0f, 
-                  if (showIconShadow) kotlin.math.abs(iconShadowOffsetY) else 0f)
-        )
-        val extraPadding = (maxBlur * 2.5f + maxOffset + 5f).coerceAtLeast(0f)
-        val padding = basePadding + extraPadding
         
         val boxW = contentWidth + (padding * 2)
         val boxH = contentHeight + (padding * 2)
@@ -876,12 +886,13 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         canvas.translate(padding, padding)
         
         when (type) {
-            "profile", "profile_vertical" -> {
+            "profile", "profile_vertical", "profile_dots" -> {
                 val showStoryRing = params["showStoryRing"] as? Boolean ?: false
                 val isVerified = params["isVerified"] as? Boolean ?: false
                 val verifiedBadgeColor = params["verifiedBadgeColor"] as? String ?: "#1DA1F2"
                 val verifiedBadgeAttachTo = params["verifiedBadgeAttachTo"] as? String ?: "handle"
                 val isVertical = type == "profile_vertical"
+                val hasDots = type == "profile_dots"
                 
                 var curX = 0f
                 var curY = 0f
@@ -898,7 +909,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
                         val storyRingColorStr = params["storyRingColor"] as? String ?: "gradient"
                         val ringP = Paint(Paint.ANTI_ALIAS_FLAG)
                         ringP.style = Paint.Style.STROKE
-                        ringP.strokeWidth = fontSize * 0.16f
+                        ringP.strokeWidth = storyRingWidth
                         
                         if (storyRingColorStr == "gradient") {
                             val colors = intArrayOf(
@@ -982,7 +993,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
                         drawVerifiedBadge(canvas, curX + nameW + verifiedGap, textBaselineY - (verifiedBadgeSize * 0.75f), verifiedBadgeSize, verifiedBadgeColor)
                     }
                     
-                    val handleY = textBaselineY + fontSize * 1.15f
+                    val handleY = textBaselineY + handleSize * 1.15f
                     handlePaint.clearShadowLayer()
                     if (showHandleShadow) {
                         handlePaint.setShadowLayer(handleShadowBlur.coerceAtLeast(0.1f), handleShadowOffsetX, handleShadowOffsetY, Color.parseColor(handleShadowColorStr))
@@ -991,6 +1002,23 @@ class OpenGLWatermarkProcessor(private val context: Context) {
                     
                     if (isVerified && verifiedBadgeAttachTo == "handle") {
                         drawVerifiedBadge(canvas, curX + handleW + verifiedGap, handleY - (verifiedBadgeSize * 0.75f), verifiedBadgeSize, verifiedBadgeColor)
+                    }
+
+                    val usernameWithBadgeW = if (isVerified && verifiedBadgeAttachTo == "username") nameW + verifiedBadgeSize + verifiedGap else nameW
+                    val handleWithBadgeW = if (isVerified && verifiedBadgeAttachTo == "handle") handleW + verifiedBadgeSize + verifiedGap else handleW
+                    val textW = maxOf(usernameWithBadgeW, handleWithBadgeW)
+
+                    if (hasDots) {
+                        val dotsX = contentWidth - (fontSize * 0.4f)
+                        val dotY = (contentHeight / 2f) + (fontSize * 0.15f)
+                        val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            color = Color.parseColor(accentColorStr)
+                        }
+                        val dotRadius = fontSize * 0.12f
+                        val dotSpacing = fontSize * 0.35f
+                        canvas.drawCircle(dotsX - dotSpacing * 2f, dotY, dotRadius, dotPaint)
+                        canvas.drawCircle(dotsX - dotSpacing, dotY, dotRadius, dotPaint)
+                        canvas.drawCircle(dotsX, dotY, dotRadius, dotPaint)
                     }
                 }
             }
@@ -1211,7 +1239,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         program2D = createProgram(VERTEX_SHADER, FRAGMENT_SHADER_2D)
         programBlurH = createProgram(VERTEX_SHADER, FRAGMENT_SHADER_BLUR_H)
         programBlurV = createProgram(VERTEX_SHADER, FRAGMENT_SHADER_BLUR_V)
-        createFBOs(1080, 1920) // Use standard portrait resolution for FBOs; ideally use outW/H
+        createFBOs(1080, 1920)
     }
 
     private fun createProgram(vs: String, fs: String): Int {

@@ -9,6 +9,7 @@ import 'instagram_quote_post_screen2.dart';
 import 'carousel_post_screen.dart';
 import 'countdown_post_screen.dart';
 import 'year_grid_post_screen.dart';
+import 'collage_maker_screen.dart';
 
 class PostMakerTemplatesScreen extends StatelessWidget {
   final List<String>? sharedImagePaths;
@@ -77,6 +78,13 @@ class PostMakerTemplatesScreen extends StatelessWidget {
         icon: Icons.grid_on_rounded,
         color: const Color(0xFF2ECC71),
       ),
+      _TemplateTileData(
+        id: 'collage_maker',
+        title: 'New Grid Maker',
+        description: 'Create beautiful collages with flexible grid layouts.',
+        icon: Icons.dashboard_customize_rounded,
+        color: const Color(0xFF6C63FF),
+      ),
     ];
 
     return Scaffold(
@@ -106,6 +114,16 @@ class PostMakerTemplatesScreen extends StatelessWidget {
                         builder: (_) => GridPostScreen(
                           sharedImagePaths: sharedImagePaths,
                           sharedPurpose: 'grid_post',
+                        ),
+                      ),
+                    );
+                    break;
+                  case 'collage_maker':
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => CollageMakerScreen(
+                          sharedImagePaths: sharedImagePaths,
+                          sharedPurpose: 'collage_maker',
                         ),
                       ),
                     );
@@ -214,6 +232,9 @@ class _TemplateTile extends StatelessWidget {
         previewAsset = 'assets/images/post_template_images/single_image_post.jpg';
         break;
       case 'grid_post':
+        previewAsset = 'assets/images/post_template_images/grid_image_post.jpg';
+        break;
+      case 'collage_maker':
         previewAsset = 'assets/images/post_template_images/grid_image_post.jpg';
         break;
       case 'text_post':

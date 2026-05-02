@@ -61,8 +61,9 @@ class CarouselSlide {
   Color bgColor = Colors.black87;
   Color textColor = Colors.white;
   GlobalKey previewKey = GlobalKey();
-  TransformationController transformationController = TransformationController();
-  
+  TransformationController transformationController =
+      TransformationController();
+
   // Text Effects (defaults for new words)
   bool enableShadow = true;
   double shadowBlur = 4.0;
@@ -80,13 +81,25 @@ class CarouselSlide {
   // Typography Adjustments
   double slideFontSize = 28.0;
   double textScale = 1.0;
+  double letterSpacing = 0.0;
+  double wordSpacing =
+      0.0; // Word spacing is mainly handled by the text painter in classic mode
+  double lineHeight = 1.2;
 
   Alignment textAlignment = Alignment.center;
   FontInfo? font;
 
+  // Mask Settings
+  Color maskColor = Colors.black;
+  double maskOpacity = 0.5;
+  int maskType = 0; // 0: None, 1: Bottom, 2: Top, 3: Full, 4: Left, 5: Right
+  double maskStart = 0.0;
+  double maskEnd = 1.0;
+
   // Per-word tokens
   List<WordToken> wordTokens = [];
   bool useWordMode = false;
+  bool isLocked = false;
 
   /// Split current text into WordTokens preserving their exact visual positions.
   void splitTextIntoTokens({
@@ -101,9 +114,12 @@ class CarouselSlide {
     final double baseY = textAlignment.y;
 
     final TextStyle style = TextStyle(
-      fontSize: 28.0,
+      fontSize: slideFontSize,
       fontFamily: font?.family ?? defaultFont?.family,
       fontWeight: font?.weight ?? defaultFont?.weight ?? FontWeight.bold,
+      letterSpacing: letterSpacing,
+      wordSpacing: wordSpacing,
+      height: lineHeight,
     );
 
     // 1. Measure the full text exactly as it appears in classic mode
@@ -135,16 +151,17 @@ class CarouselSlide {
     // 3. Extract each word and its rendered bounding box
     final wordRegex = RegExp(r'\S+');
     final matches = wordRegex.allMatches(text);
-    
+
     // Word widget padding (horizontal 6, vertical 2)
     const double wordPadH = 6.0;
     const double wordPadV = 2.0;
 
     for (final match in matches) {
       final String wordStr = match.group(0)!;
-      final range = TextSelection(baseOffset: match.start, extentOffset: match.end);
+      final range =
+          TextSelection(baseOffset: match.start, extentOffset: match.end);
       final boxes = fullPainter.getBoxesForSelection(range);
-      
+
       if (boxes.isEmpty) continue;
 
       // Use the first box (usually words don't wrap, but if they do, we pick the start)
@@ -172,12 +189,13 @@ class CarouselSlide {
         alignY = (2.0 * wordWidgetTop / denomY) - 1.0;
       }
 
-      final Alignment pos = Alignment(alignX.clamp(-1.0, 1.0), alignY.clamp(-1.0, 1.0));
+      final Alignment pos =
+          Alignment(alignX.clamp(-1.0, 1.0), alignY.clamp(-1.0, 1.0));
       wordTokens.add(WordToken(
         text: wordStr,
         position: pos,
         originalPosition: pos,
-        fontSize: 28.0,
+        fontSize: slideFontSize,
         color: textColor,
         font: font,
         enableShadow: enableShadow,
@@ -216,8 +234,10 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
   FontInfo? _selectedFont;
   int _selectedAspectIndex = 0; // 0: 4:5
 
-  int _selectedTabIndex = 0; // 0: Image, 1: Text, 2: Font, 3: Effects, 4: Color, 5: Config
+  int _selectedTabIndex =
+      0; // 0: Image, 1: Text, 2: Position, 3: Font, 4: Effects, 5: Mask, 6: Style, 7: Config
   bool _isTabContentExpanded = true;
+  bool _applyMaskToAll = false;
   Set<int> _selectedWordIndices = {}; // Multiple words selection
   bool _multiSelectMode = false;
   Timer? _nudgeTimer;
@@ -225,17 +245,30 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
   double? _snapLineX;
   double? _snapLineY;
 
+  // Eye Dropper State
+  bool _isEyeDropperMode = false;
+  ByteData? _eyeDropperByteData;
+  int? _eyeDropperImageWidth;
+  int? _eyeDropperImageHeight;
+  Offset? _eyeDropperPos;
+  Color _eyeDropperColor = Colors.transparent;
+  String _eyeDropperTarget = 'text'; // 'text', 'bg', 'shadow', 'mask'
+
   // Track preview dimensions for precise coordinate mapping
   double _lastPreviewWidth = 360;
   double _lastPreviewHeight = 450;
 
   double get _currentAspectRatio {
     switch (_selectedAspectIndex) {
-      case 1: return 1 / 1;
-      case 2: return 9 / 16;
-      case 3: return 16 / 9;
+      case 1:
+        return 1 / 1;
+      case 2:
+        return 9 / 16;
+      case 3:
+        return 16 / 9;
       case 0:
-      default: return 4 / 5;
+      default:
+        return 4 / 5;
     }
   }
 
@@ -246,7 +279,8 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
       (f) => f.family == 'Poppins' && f.weight == FontWeight.bold,
       orElse: () => FontInfo.availableFonts.first,
     );
-    if (widget.sharedImagePaths != null && widget.sharedImagePaths!.isNotEmpty) {
+    if (widget.sharedImagePaths != null &&
+        widget.sharedImagePaths!.isNotEmpty) {
       _slides.clear();
       for (final path in widget.sharedImagePaths!) {
         _slides.add(CarouselSlide()..image = File(path));
@@ -331,11 +365,13 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     try {
       final ImagePicker picker = ImagePicker();
       final List<XFile> images = await picker.pickMultiImage();
-      
+
       if (images.isNotEmpty) {
         setState(() {
-          // If we currently only have 1 empty slide, replace it. 
-          if (_slides.length == 1 && _slides[0].image == null && _slides[0].text.isEmpty) {
+          // If we currently only have 1 empty slide, replace it.
+          if (_slides.length == 1 &&
+              _slides[0].image == null &&
+              _slides[0].text.isEmpty) {
             _slides.clear();
           }
 
@@ -344,15 +380,20 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
               _slides.add(CarouselSlide()..image = File(img.path));
             } else {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Maximum 10 slides allowed. Some dropped.', style: TextStyle(color: Colors.white)), backgroundColor: Colors.red),
+                const SnackBar(
+                    content: Text('Maximum 10 slides allowed. Some dropped.',
+                        style: TextStyle(color: Colors.white)),
+                    backgroundColor: Colors.red),
               );
               break;
             }
           }
-          
-          if (_slides.isEmpty) { _slides.add(CarouselSlide()); } // safety
+
+          if (_slides.isEmpty) {
+            _slides.add(CarouselSlide());
+          } // safety
         });
-        
+
         Future.delayed(const Duration(milliseconds: 100), () {
           if (_pageController.hasClients) {
             if (mounted) {
@@ -373,7 +414,6 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
       );
     }
   }
-
 
   Future<String> _resolveFontPath(FontInfo? font) async {
     final f = font ?? _selectedFont ?? FontInfo.availableFonts.first;
@@ -454,23 +494,23 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          dialogSetState = setDialogState;
-          return AlertDialog(
-            title: const Text('Exporting Images'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                LinearProgressIndicator(value: currentProgress, color: const Color(0xFF6C63FF)),
-                const SizedBox(height: 16),
-                Text(currentStep, style: const TextStyle(fontSize: 12)),
-                Text('${(currentProgress * 100).toInt()}%', style: const TextStyle(fontWeight: FontWeight.bold)),
-              ],
-            ),
-          );
-        }
-      ),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setDialogState) {
+        dialogSetState = setDialogState;
+        return AlertDialog(
+          title: const Text('Exporting Images'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              LinearProgressIndicator(
+                  value: currentProgress, color: const Color(0xFF6C63FF)),
+              const SizedBox(height: 16),
+              Text(currentStep, style: const TextStyle(fontSize: 12)),
+              Text('${(currentProgress * 100).toInt()}%',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+        );
+      }),
     );
 
     try {
@@ -498,15 +538,18 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
         await Future.delayed(const Duration(milliseconds: 100));
 
         // Capture the actual on-screen RepaintBoundary
-        final boundary = slide.previewKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+        final boundary = slide.previewKey.currentContext?.findRenderObject()
+            as RenderRepaintBoundary?;
         if (boundary != null) {
           final renderSize = boundary.size;
           final exportPixelRatio = 1080.0 / renderSize.width;
           final image = await boundary.toImage(pixelRatio: exportPixelRatio);
-          final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+          final byteData =
+              await image.toByteData(format: ui.ImageByteFormat.png);
           if (byteData != null) {
             final pngBytes = byteData.buffer.asUint8List();
-            final filename = 'QuickPost_Carousel_${DateTime.now().millisecondsSinceEpoch}_$i.png';
+            final filename =
+                'QuickPost_Carousel_${DateTime.now().millisecondsSinceEpoch}_$i.png';
             await platform.invokeMethod('saveImageToGallery', {
               'imageBytes': pngBytes,
               'filename': filename,
@@ -526,7 +569,9 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
       if (savedCount > 0) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Successfully exported $savedCount images to gallery!')),
+            SnackBar(
+                content: Text(
+                    'Successfully exported $savedCount images to gallery!')),
           );
         }
         AppReviewService().incrementExportCount();
@@ -542,7 +587,90 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     }
   }
 
+  Future<void> _startEyeDropper(String target) async {
+    final slide = _slides[_currentIndex];
+    final boundary = slide.previewKey.currentContext?.findRenderObject()
+        as RenderRepaintBoundary?;
+    if (boundary == null) return;
 
+    // Capture the current view
+    final image = await boundary.toImage(
+        pixelRatio: 2.0); // Higher ratio for better precision
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+
+    if (byteData == null) return;
+
+    if (!mounted) return;
+    setState(() {
+      _isEyeDropperMode = true;
+      _eyeDropperTarget = target;
+      _eyeDropperByteData = byteData;
+      _eyeDropperImageWidth = image.width;
+      _eyeDropperImageHeight = image.height;
+      _eyeDropperPos = null;
+    });
+  }
+
+  void _pickColorAt(Offset localPos, Size widgetSize) {
+    if (_eyeDropperByteData == null ||
+        _eyeDropperImageWidth == null ||
+        _eyeDropperImageHeight == null) return;
+
+    // Map localPos (0..widgetSize) to image pixels (0..imageWidth)
+    final double xFactor = _eyeDropperImageWidth! / widgetSize.width;
+    final double yFactor = _eyeDropperImageHeight! / widgetSize.height;
+
+    final int px =
+        (localPos.dx * xFactor).round().clamp(0, _eyeDropperImageWidth! - 1);
+    final int py =
+        (localPos.dy * yFactor).round().clamp(0, _eyeDropperImageHeight! - 1);
+
+    final int offset = (py * _eyeDropperImageWidth! + px) * 4;
+    if (offset + 3 >= _eyeDropperByteData!.lengthInBytes) return;
+
+    final int r = _eyeDropperByteData!.getUint8(offset);
+    final int g = _eyeDropperByteData!.getUint8(offset + 1);
+    final int b = _eyeDropperByteData!.getUint8(offset + 2);
+    final int a = _eyeDropperByteData!.getUint8(offset + 3);
+
+    final Color picked = Color.fromARGB(a, r, g, b);
+
+    setState(() {
+      _eyeDropperPos = localPos;
+      _eyeDropperColor = picked;
+
+      // Reactive update
+      final slide = _slides[_currentIndex];
+      final bool wordMode =
+          slide.useWordMode && _selectedWordIndices.isNotEmpty;
+
+      if (_eyeDropperTarget == 'bg') {
+        slide.bgColor = picked;
+      } else if (_eyeDropperTarget == 'mask') {
+        if (_applyMaskToAll) {
+          for (var s in _slides) s.maskColor = picked;
+        } else {
+          slide.maskColor = picked;
+        }
+      } else if (_eyeDropperTarget == 'shadow') {
+        if (wordMode) {
+          for (int idx in _selectedWordIndices) {
+            slide.wordTokens[idx].shadowColor = picked;
+          }
+        } else {
+          slide.shadowColor = picked;
+        }
+      } else {
+        if (wordMode) {
+          for (int idx in _selectedWordIndices) {
+            slide.wordTokens[idx].color = picked;
+          }
+        } else {
+          slide.textColor = picked;
+        }
+      }
+    });
+  }
 
   Future<void> _exportAsVideo() async {
     const platform = MethodChannel('com.quickpost.app/processor');
@@ -555,23 +683,23 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          dialogSetState = setDialogState;
-          return AlertDialog(
-            title: const Text('Exporting Video'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                LinearProgressIndicator(value: currentProgress, color: const Color(0xFF6C63FF)),
-                const SizedBox(height: 16),
-                Text(currentStep, style: const TextStyle(fontSize: 12)),
-                Text('${(currentProgress * 100).toInt()}%', style: const TextStyle(fontWeight: FontWeight.bold)),
-              ],
-            ),
-          );
-        }
-      ),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setDialogState) {
+        dialogSetState = setDialogState;
+        return AlertDialog(
+          title: const Text('Exporting Video'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              LinearProgressIndicator(
+                  value: currentProgress, color: const Color(0xFF6C63FF)),
+              const SizedBox(height: 16),
+              Text(currentStep, style: const TextStyle(fontSize: 12)),
+              Text('${(currentProgress * 100).toInt()}%',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+        );
+      }),
     );
 
     try {
@@ -598,12 +726,14 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
         await Future.delayed(const Duration(milliseconds: 100));
 
         // Capture the actual on-screen RepaintBoundary
-        final boundary = slide.previewKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+        final boundary = slide.previewKey.currentContext?.findRenderObject()
+            as RenderRepaintBoundary?;
         if (boundary != null) {
           final renderSize = boundary.size;
           final exportPixelRatio = 1080.0 / renderSize.width;
           final image = await boundary.toImage(pixelRatio: exportPixelRatio);
-          final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+          final byteData =
+              await image.toByteData(format: ui.ImageByteFormat.png);
           if (byteData != null) {
             final pngBytes = byteData.buffer.asUint8List();
             final framePath = '${tempDir.path}/slide_$i.png';
@@ -633,14 +763,16 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
           final nativeProgress = (call.arguments as num).toDouble();
           dialogSetState?.call(() {
             currentProgress = 0.3 + nativeProgress * 0.7;
-            currentStep = 'Encoding video... ${(currentProgress * 100).toInt()}%';
+            currentStep =
+                'Encoding video... ${(currentProgress * 100).toInt()}%';
           });
         } else if (call.method == 'onStep') {
           dialogSetState?.call(() => currentStep = call.arguments as String);
         }
       });
 
-      final String? result = await platform.invokeMethod('createVideoFromImages', {
+      final String? result =
+          await platform.invokeMethod('createVideoFromImages', {
         'imagePaths': framePaths,
         'durationPerSlide': 3.0,
       });
@@ -657,7 +789,9 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
         AppReviewService().checkAndRequestReview();
       }
 
-      try { await tempDir.delete(recursive: true); } catch (_) {}
+      try {
+        await tempDir.delete(recursive: true);
+      } catch (_) {}
     } catch (e) {
       if (mounted) Navigator.pop(context);
       if (mounted) {
@@ -670,8 +804,6 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     }
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -679,70 +811,76 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-          
-          Column(
-            children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        height: MediaQuery.of(context).size.height * 0.55,
-                        child: PageView.builder(
-                          controller: _pageController,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _slides.length,
-                          onPageChanged: (idx) {
-                            setState(() {
-                              _currentIndex = idx;
-                              _selectedWordIndices.clear();
-                            });
-                          },
-                          itemBuilder: (context, index) {
-                            return Center(
-                              child: AspectRatio(
-                                aspectRatio: _currentAspectRatio,
-                                child: _buildSlideWidget(_slides[index], false),
+            Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.55,
+                          child: Stack(
+                            children: [
+                              PageView.builder(
+                                controller: _pageController,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: _slides.length,
+                                onPageChanged: (idx) {
+                                  setState(() {
+                                    _currentIndex = idx;
+                                    _selectedWordIndices.clear();
+                                  });
+                                },
+                                itemBuilder: (context, index) {
+                                  return Center(
+                                    child: AspectRatio(
+                                      aspectRatio: _currentAspectRatio,
+                                      child: _buildSlideWidget(
+                                          _slides[index], false),
+                                    ),
+                                  );
+                                },
                               ),
-                            );
-                          },
+                              _buildEyeDropperOverlay(),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onHorizontalDragEnd: (details) {
-                          if (details.primaryVelocity != null) {
-                            if (details.primaryVelocity! < -300) {
-                              _goToNext();
-                            } else if (details.primaryVelocity! > 300) {
-                              _goToPrevious();
+                        const SizedBox(height: 8),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onHorizontalDragEnd: (details) {
+                            if (details.primaryVelocity != null) {
+                              if (details.primaryVelocity! < -300) {
+                                _goToNext();
+                              } else if (details.primaryVelocity! > 300) {
+                                _goToPrevious();
+                              }
                             }
-                          }
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 20),
-                          child: _buildDotsIndicator(),
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 20),
+                            child: _buildDotsIndicator(),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              _buildControlsSection(),
-            ],
-          ),
-        ],
+                _buildControlsSection(),
+              ],
+            ),
+          ],
+        ),
       ),
-    ),
     );
   }
 
   Widget _buildSlideWidget(CarouselSlide slide, bool isExport) {
     Widget imageWidget = slide.image != null
         ? ColorFiltered(
-            colorFilter: ui.ColorFilter.matrix(_getColorMatrix(slide.brightness, slide.saturation)),
+            colorFilter: ui.ColorFilter.matrix(
+                _getColorMatrix(slide.brightness, slide.saturation)),
             child: Image.file(
               slide.image!,
               fit: BoxFit.cover,
@@ -771,155 +909,198 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                     maxScale: 5.0,
                     child: imageWidget,
                   ),
+          if (slide.maskType != 0) _buildMaskOverlay(slide),
           if (slide.useWordMode && slide.wordTokens.isNotEmpty)
-            Transform.scale(
-              scale: slide.textScale,
-              alignment: Alignment.center,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return GestureDetector(
-                  onTap: isExport ? null : () {
-                    setState(() => _selectedWordIndices.clear());
-                  },
+            LayoutBuilder(
+              builder: (context, constraints) {
+                // Calculate center of all word tokens for anchor-perfect grouping scale
+                Alignment wordsCenter = Alignment.center;
+                if (slide.wordTokens.isNotEmpty) {
+                  double minX = slide.wordTokens.first.position.x;
+                  double maxX = slide.wordTokens.first.position.x;
+                  double minY = slide.wordTokens.first.position.y;
+                  double maxY = slide.wordTokens.first.position.y;
+                  for (var t in slide.wordTokens) {
+                    minX = math.min(minX, t.position.x);
+                    maxX = math.max(maxX, t.position.x);
+                    minY = math.min(minY, t.position.y);
+                    maxY = math.max(maxY, t.position.y);
+                  }
+                  wordsCenter = Alignment((minX + maxX) / 2, (minY + maxY) / 2);
+                }
+
+                return GestureDetector(
+                  onTap: isExport
+                      ? null
+                      : () => setState(() => _selectedWordIndices.clear()),
                   behavior: HitTestBehavior.translucent,
-                  child: Stack(
-                    children: List.generate(slide.wordTokens.length, (i) {
-                      final word = slide.wordTokens[i];
-                      final bool isSelected = !isExport && _selectedWordIndices.contains(i);
-                      return Align(
-                        alignment: word.position,
-                        child: GestureDetector(
-                          onTap: isExport ? null : () {
-                            setState(() {
-                              if (_multiSelectMode) {
-                                if (_selectedWordIndices.contains(i)) {
-                                  _selectedWordIndices.remove(i);
-                                } else {
-                                  _selectedWordIndices.add(i);
-                                }
-                              } else {
-                                if (_selectedWordIndices.contains(i) && _selectedWordIndices.length == 1) {
-                                  _selectedWordIndices.clear();
-                                } else {
-                                  _selectedWordIndices.clear();
-                                  _selectedWordIndices.add(i);
-                                }
-                              }
-                            });
-                          },
-                          onPanUpdate: isExport ? null : (details) {
-                            setState(() {
-                              if (!_selectedWordIndices.contains(i)) {
-                                _selectedWordIndices.clear();
-                                _selectedWordIndices.add(i);
-                              }
-
-                              final double deltaX = details.delta.dx / (constraints.maxWidth / 2);
-                              final double deltaY = details.delta.dy / (constraints.maxHeight / 2);
-
-                              // Apply delta to ALL selected words
-                              for (int index in _selectedWordIndices) {
-                                final w = slide.wordTokens[index];
-                                w.position = Alignment(
-                                  (w.position.x + deltaX).clamp(-1.0, 1.0),
-                                  (w.position.y + deltaY).clamp(-1.0, 1.0),
-                                );
-                              }
-                            });
-                          },
-                          onPanEnd: (_) {},
-                          onPanCancel: () {},
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: isSelected ? BoxDecoration(
-                              border: Border.all(color: const Color(0xFF6C63FF), width: 1.5),
-                              borderRadius: BorderRadius.circular(6),
-                            ) : null,
-                            child: Transform.rotate(
-                              angle: word.rotation * math.pi / 180,
-                              child: Text(
-                                word.text,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: word.color,
-                                  fontSize: word.fontSize,
-                                  fontFamily: word.font?.family ?? _selectedFont?.family,
-                                  fontWeight: word.font?.weight ?? _selectedFont?.weight ?? FontWeight.bold,
-                                  shadows: [
-                                    if (word.enableShadow)
-                                      Shadow(
-                                        color: word.shadowColor,
-                                        offset: word.shadowOffset,
-                                        blurRadius: word.shadowBlur,
-                                      ),
-                                    if (word.enableGlow)
-                                      Shadow(
-                                        color: word.glowColor,
-                                        offset: Offset.zero,
-                                        blurRadius: word.glowRadius,
-                                      ),
-                                  ],
+                  child: Transform.scale(
+                    scale: slide.textScale,
+                    alignment: wordsCenter,
+                    child: Stack(
+                      children: List.generate(slide.wordTokens.length, (i) {
+                        final word = slide.wordTokens[i];
+                        final bool isSelected =
+                            !isExport && _selectedWordIndices.contains(i);
+                        return Align(
+                          alignment: word.position,
+                          child: GestureDetector(
+                            onTap: isExport
+                                ? null
+                                : () {
+                                    setState(() {
+                                      if (_multiSelectMode) {
+                                        if (_selectedWordIndices.contains(i)) {
+                                          _selectedWordIndices.remove(i);
+                                        } else {
+                                          _selectedWordIndices.add(i);
+                                        }
+                                      } else {
+                                        if (_selectedWordIndices.contains(i) &&
+                                            _selectedWordIndices.length == 1) {
+                                          _selectedWordIndices.clear();
+                                        } else {
+                                          _selectedWordIndices.clear();
+                                          _selectedWordIndices.add(i);
+                                        }
+                                      }
+                                    });
+                                  },
+                            onPanUpdate: isExport || slide.isLocked
+                                ? null
+                                : (details) {
+                                    setState(() {
+                                      if (!_selectedWordIndices.contains(i)) {
+                                        _selectedWordIndices.clear();
+                                        _selectedWordIndices.add(i);
+                                      }
+                                      final double deltaX = details.delta.dx /
+                                          (constraints.maxWidth / 2);
+                                      final double deltaY = details.delta.dy /
+                                          (constraints.maxHeight / 2);
+                                      for (int index in _selectedWordIndices) {
+                                        final w = slide.wordTokens[index];
+                                        w.position = Alignment(
+                                          (w.position.x + deltaX)
+                                              .clamp(-1.0, 1.0),
+                                          (w.position.y + deltaY)
+                                              .clamp(-1.0, 1.0),
+                                        );
+                                      }
+                                    });
+                                  },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: isSelected
+                                  ? BoxDecoration(
+                                      border: Border.all(
+                                          color: const Color(0xFF6C63FF)
+                                              .withValues(alpha: 0.5),
+                                          width: 1.5),
+                                      borderRadius: BorderRadius.circular(6),
+                                    )
+                                  : null,
+                              child: Transform.rotate(
+                                angle: word.rotation * math.pi / 180,
+                                child: Text(
+                                  word.text,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: word.color,
+                                    fontSize: word.fontSize,
+                                    fontFamily: word.font?.family ??
+                                        _selectedFont?.family,
+                                    fontWeight: word.font?.weight ??
+                                        _selectedFont?.weight ??
+                                        FontWeight.bold,
+                                    letterSpacing: slide.letterSpacing,
+                                    wordSpacing: slide.wordSpacing,
+                                    height: slide.lineHeight,
+                                    shadows: [
+                                      if (word.enableShadow)
+                                        Shadow(
+                                          color: word.shadowColor,
+                                          offset: word.shadowOffset,
+                                          blurRadius: word.shadowBlur,
+                                        ),
+                                      if (word.enableGlow)
+                                        Shadow(
+                                          color: word.glowColor,
+                                          offset: Offset.zero,
+                                          blurRadius: word.glowRadius,
+                                        ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      );
-                    }),
+                        );
+                      }),
+                    ),
                   ),
                 );
               },
-            ),
-          )
-          // --- Classic single-text mode ---
+            )
           else if (slide.text.isNotEmpty && !slide.useWordMode)
-            Transform.scale(
-              scale: slide.textScale,
-              alignment: Alignment.center,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                // Update tracked dimensions (avoid setState inside builder)
+            LayoutBuilder(
+              builder: (context, constraints) {
                 _lastPreviewWidth = constraints.maxWidth;
                 _lastPreviewHeight = constraints.maxHeight;
-
                 return Stack(
                   children: [
                     Align(
                       alignment: slide.textAlignment,
-                      child: GestureDetector(
-                        onPanUpdate: isExport ? null : (details) {
-                          setState(() {
-                            double dx = slide.textAlignment.x + (details.delta.dx / (constraints.maxWidth / 2));
-                            double dy = slide.textAlignment.y + (details.delta.dy / (constraints.maxHeight / 2));
-                            slide.textAlignment = Alignment(dx.clamp(-1.0, 1.0), dy.clamp(-1.0, 1.0));
-                          });
-                        },
-                        onPanEnd: (_) {},
-                        onPanCancel: () {},
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Text(
-                            slide.text,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: slide.textColor,
-                              fontSize: slide.slideFontSize,
-                              fontFamily: slide.font?.family ?? _selectedFont?.family,
-                              fontWeight: slide.font?.weight ?? _selectedFont?.weight ?? FontWeight.bold,
-                              shadows: [
-                                if (slide.enableShadow)
-                                  Shadow(
-                                    color: slide.shadowColor,
-                                    offset: slide.shadowOffset,
-                                    blurRadius: slide.shadowBlur,
-                                  ),
-                                if (slide.enableGlow)
-                                  Shadow(
-                                    color: slide.glowColor,
-                                    offset: Offset.zero,
-                                    blurRadius: slide.glowRadius,
-                                  ),
-                              ],
+                      child: Transform.scale(
+                        scale: slide.textScale,
+                        child: GestureDetector(
+                          onPanUpdate: isExport || slide.isLocked
+                              ? null
+                              : (details) {
+                                  setState(() {
+                                    double dx = slide.textAlignment.x +
+                                        (details.delta.dx /
+                                            (constraints.maxWidth / 2));
+                                    double dy = slide.textAlignment.y +
+                                        (details.delta.dy /
+                                            (constraints.maxHeight / 2));
+                                    slide.textAlignment = Alignment(
+                                        dx.clamp(-1.0, 1.0),
+                                        dy.clamp(-1.0, 1.0));
+                                  });
+                                },
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Text(
+                              slide.text,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: slide.textColor,
+                                fontSize: slide.slideFontSize,
+                                fontFamily:
+                                    slide.font?.family ?? _selectedFont?.family,
+                                fontWeight: slide.font?.weight ??
+                                    _selectedFont?.weight ??
+                                    FontWeight.bold,
+                                letterSpacing: slide.letterSpacing,
+                                wordSpacing: slide.wordSpacing,
+                                height: slide.lineHeight,
+                                shadows: [
+                                  if (slide.enableShadow)
+                                    Shadow(
+                                      color: slide.shadowColor,
+                                      offset: slide.shadowOffset,
+                                      blurRadius: slide.shadowBlur,
+                                    ),
+                                  if (slide.enableGlow)
+                                    Shadow(
+                                      color: slide.glowColor,
+                                      offset: Offset.zero,
+                                      blurRadius: slide.glowRadius,
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -927,23 +1108,26 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                     ),
                   ],
                 );
-              }
+              },
             ),
-          ),
-          
+
           // --- Snapping Guides ---
           if (!isExport && _snapLineX != null)
             IgnorePointer(
               child: Align(
                 alignment: Alignment(_snapLineX!, 0),
-                child: Container(width: 1.0, color: const Color(0xFF00796B).withValues(alpha: 0.5)),
+                child: Container(
+                    width: 1.0,
+                    color: const Color(0xFF00796B).withValues(alpha: 0.5)),
               ),
             ),
           if (!isExport && _snapLineY != null)
             IgnorePointer(
               child: Align(
                 alignment: Alignment(0, _snapLineY!),
-                child: Container(height: 1.0, color: const Color(0xFF00796B).withValues(alpha: 0.5)),
+                child: Container(
+                    height: 1.0,
+                    color: const Color(0xFF00796B).withValues(alpha: 0.5)),
               ),
             ),
         ],
@@ -978,10 +1162,12 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
         return Padding(
           padding: const EdgeInsets.only(right: 8),
           child: ChoiceChip(
-            label: Text(opt['label'] as String, style: const TextStyle(fontSize: 11)),
+            label: Text(opt['label'] as String,
+                style: const TextStyle(fontSize: 11)),
             selected: isSel,
             onSelected: (val) {
-              if (val) setState(() => _selectedAspectIndex = opt['index'] as int);
+              if (val)
+                setState(() => _selectedAspectIndex = opt['index'] as int);
             },
           ),
         );
@@ -1075,7 +1261,7 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
   List<double> _getColorMatrix(double brightness, double saturation) {
     final double s = saturation;
     final double b = brightness;
-    
+
     // Combined Brightness and Saturation Matrix
     // Saturation constant values
     final double invLumR = 0.213 * (1 - s);
@@ -1083,10 +1269,26 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     final double invLumB = 0.072 * (1 - s);
 
     return <double>[
-      b * (invLumR + s), b * invLumG,       b * invLumB,       0, 0,
-      b * invLumR,       b * (invLumG + s), b * invLumB,       0, 0,
-      b * invLumR,       b * invLumG,       b * (invLumB + s), 0, 0,
-      0,                 0,                 0,                 1, 0,
+      b * (invLumR + s),
+      b * invLumG,
+      b * invLumB,
+      0,
+      0,
+      b * invLumR,
+      b * (invLumG + s),
+      b * invLumB,
+      0,
+      0,
+      b * invLumR,
+      b * invLumG,
+      b * (invLumB + s),
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
     ];
   }
 
@@ -1123,14 +1325,24 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
   Widget _buildActiveTabContent() {
     final current = _slides[_currentIndex];
     switch (_selectedTabIndex) {
-      case 0: return _buildImageTab();
-      case 1: return _buildTextTab();
-      case 2: return _buildPositionTab();
-      case 3: return _buildFontTab();
-      case 4: return _buildEffectsTab();
-      case 5: return _buildStyleTab();
-      case 6: return _buildSettingsTab();
-      default: return _buildImageTab();
+      case 0:
+        return _buildImageTab();
+      case 1:
+        return _buildTextTab();
+      case 2:
+        return _buildPositionTab();
+      case 3:
+        return _buildFontTab();
+      case 4:
+        return _buildEffectsTab();
+      case 5:
+        return _buildMaskTab();
+      case 6:
+        return _buildStyleTab();
+      case 7:
+        return _buildSettingsTab();
+      default:
+        return _buildImageTab();
     }
   }
 
@@ -1158,8 +1370,9 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             _buildSectionHeader('Slide Management'),
-            Text('Slide ${_currentIndex + 1} of ${_slides.length}', 
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+            Text('Slide ${_currentIndex + 1} of ${_slides.length}',
+                style:
+                    const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
           ],
         ),
         SingleChildScrollView(
@@ -1206,7 +1419,8 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
               _buildSmallImageAction(
                 onPressed: () {
                   setState(() {
-                    _slides[_currentIndex].transformationController.value = Matrix4.identity();
+                    _slides[_currentIndex].transformationController.value =
+                        Matrix4.identity();
                   });
                 },
                 icon: Icons.center_focus_strong,
@@ -1253,7 +1467,10 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
           const SizedBox(height: 8),
           Text(
             'Tip: Drag on the image above to adjust its position.',
-            style: TextStyle(fontSize: 10, color: Colors.grey[600], fontStyle: FontStyle.italic),
+            style: TextStyle(
+                fontSize: 10,
+                color: Colors.grey[600],
+                fontStyle: FontStyle.italic),
           ),
         ],
       ],
@@ -1273,8 +1490,11 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
-            Text(value.toStringAsFixed(2), style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+            Text(label,
+                style:
+                    const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
+            Text(value.toStringAsFixed(2),
+                style: TextStyle(fontSize: 11, color: Colors.grey[600])),
           ],
         ),
         SizedBox(
@@ -1333,50 +1553,103 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
           children: [
             Expanded(
               child: ElevatedButton.icon(
-                onPressed: slide.text.trim().isEmpty ? null : () {
-                  setState(() {
-                    slide.splitTextIntoTokens(
-                      containerWidth: _lastPreviewWidth,
-                      containerHeight: _lastPreviewHeight,
-                      defaultFont: _selectedFont,
-                    );
-                    _selectedWordIndices.clear();
-                  });
-                },
+                onPressed: slide.text.trim().isEmpty
+                    ? null
+                    : () {
+                        setState(() {
+                          slide.splitTextIntoTokens(
+                            containerWidth: _lastPreviewWidth,
+                            containerHeight: _lastPreviewHeight,
+                            defaultFont: _selectedFont,
+                          );
+                          _selectedWordIndices.clear();
+                          slide.isLocked =
+                              true; // Auto-lock when splitting for precision
+                        });
+                      },
                 icon: const Icon(Icons.space_bar, size: 18),
-                label: Text(slide.useWordMode ? 'Re-split Words' : 'Split to Words', style: const TextStyle(fontSize: 11)),
+                label: Text(
+                    slide.useWordMode ? 'Re-split Words' : 'Split to Words',
+                    style: const TextStyle(fontSize: 11)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF6C63FF).withOpacity(0.1),
                   foregroundColor: const Color(0xFF6C63FF),
                   elevation: 0,
                   padding: const EdgeInsets.symmetric(vertical: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
               ),
             ),
-            if (slide.useWordMode) ...[
+            const SizedBox(width: 8),
+            Container(
+              decoration: BoxDecoration(
+                color: slide.isLocked
+                    ? Colors.orange.withOpacity(0.1)
+                    : Colors.grey.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: IconButton(
+                icon: Icon(
+                  slide.isLocked ? Icons.lock : Icons.lock_open,
+                  color: slide.isLocked ? Colors.orange : Colors.grey,
+                  size: 20,
+                ),
+                onPressed: () =>
+                    setState(() => slide.isLocked = !slide.isLocked),
+                tooltip: slide.isLocked ? 'Unlock Position' : 'Lock Position',
+              ),
+            ),
+          ],
+        ),
+        if (slide.useWordMode) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      slide.useWordMode = false;
+                      slide.wordTokens.clear();
+                      _selectedWordIndices.clear();
+                      slide.isLocked = false;
+                    });
+                  },
+                  icon: const Icon(Icons.undo, size: 16),
+                  label: const Text('Classic', style: TextStyle(fontSize: 11)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange.withOpacity(0.1),
+                    foregroundColor: Colors.orange,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 10, horizontal: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
               const SizedBox(width: 8),
-              ElevatedButton.icon(
+              OutlinedButton.icon(
                 onPressed: () {
                   setState(() {
-                    slide.useWordMode = false;
-                    slide.wordTokens.clear();
-                    _selectedWordIndices.clear();
+                    for (var s in _slides) {
+                      s.isLocked = true;
+                    }
                   });
                 },
-                icon: const Icon(Icons.undo, size: 16),
-                label: const Text('Classic', style: TextStyle(fontSize: 11)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange.withOpacity(0.1),
-                  foregroundColor: Colors.orange,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                icon: const Icon(Icons.lock_person, size: 16),
+                label: const Text('Lock All', style: TextStyle(fontSize: 11)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.grey[700],
+                  side: BorderSide(color: Colors.grey[300]!),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
                 ),
               ),
             ],
-          ],
-        ),
+          ),
+        ],
         // --- Word selector chips ---
         if (slide.useWordMode && slide.wordTokens.isNotEmpty) ...[
           const SizedBox(height: 12),
@@ -1386,13 +1659,19 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Tip: Drag text on the image to position it.', 
-                style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey)),
+              const Text('Tip: Drag text on the image to position it.',
+                  style: TextStyle(
+                      fontSize: 10,
+                      fontStyle: FontStyle.italic,
+                      color: Colors.grey)),
               TextButton.icon(
-                onPressed: () => setState(() => slide.textAlignment = Alignment.center),
+                onPressed: () =>
+                    setState(() => slide.textAlignment = Alignment.center),
                 icon: const Icon(Icons.center_focus_weak, size: 14),
-                label: const Text('Reset Position', style: TextStyle(fontSize: 10)),
-                style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero),
+                label: const Text('Reset Position',
+                    style: TextStyle(fontSize: 10)),
+                style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero, minimumSize: Size.zero),
               ),
             ],
           ),
@@ -1403,14 +1682,17 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
           width: double.infinity,
           child: OutlinedButton.icon(
             onPressed: _importFromMyQuotes,
-            icon: Icon(Icons.collections_bookmark_outlined, size: 16, color: Colors.indigo[400]),
-            label: Text('Import from My Quotes', style: TextStyle(fontSize: 11, color: Colors.indigo[700])),
+            icon: Icon(Icons.collections_bookmark_outlined,
+                size: 16, color: Colors.indigo[400]),
+            label: Text('Import from My Quotes',
+                style: TextStyle(fontSize: 11, color: Colors.indigo[700])),
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.indigo,
               side: BorderSide(color: Colors.indigo[100]!),
               padding: const EdgeInsets.symmetric(vertical: 8),
               backgroundColor: Colors.indigo.withOpacity(0.02),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
           ),
         ),
@@ -1421,12 +1703,14 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
           child: OutlinedButton.icon(
             onPressed: _showBulkPasteDialog,
             icon: const Icon(Icons.content_paste_go, size: 16),
-            label: const Text('Bulk Paste (one line per slide)', style: TextStyle(fontSize: 11)),
+            label: const Text('Bulk Paste (one line per slide)',
+                style: TextStyle(fontSize: 11)),
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.grey[700],
               side: BorderSide(color: Colors.grey[300]!),
               padding: const EdgeInsets.symmetric(vertical: 8),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
           ),
         ),
@@ -1434,7 +1718,8 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     );
   }
 
-  Widget _buildWordSelector(CarouselSlide slide, {bool showPropertyControls = false}) {
+  Widget _buildWordSelector(CarouselSlide slide,
+      {bool showPropertyControls = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1444,7 +1729,8 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
             _buildSectionHeader('Select Word'),
             Row(
               children: [
-                Text('Multi', style: TextStyle(fontSize: 10, color: Colors.grey[600])),
+                Text('Multi',
+                    style: TextStyle(fontSize: 10, color: Colors.grey[600])),
                 Switch(
                   value: _multiSelectMode,
                   onChanged: (v) => setState(() => _multiSelectMode = v),
@@ -1453,13 +1739,15 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                 ),
                 TextButton(
                   onPressed: () => setState(() {
-                    _selectedWordIndices.addAll(List.generate(slide.wordTokens.length, (i) => i));
+                    _selectedWordIndices.addAll(
+                        List.generate(slide.wordTokens.length, (i) => i));
                   }),
                   child: const Text('All', style: TextStyle(fontSize: 10)),
                 ),
                 TextButton(
                   onPressed: () => setState(() => _selectedWordIndices.clear()),
-                  child: const Text('Clear', style: TextStyle(fontSize: 10, color: Colors.red)),
+                  child: const Text('Clear',
+                      style: TextStyle(fontSize: 10, color: Colors.red)),
                 ),
               ],
             ),
@@ -1487,11 +1775,16 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                       }
                     }),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: isSel ? const Color(0xFF6C63FF) : Colors.grey[100],
+                        color:
+                            isSel ? const Color(0xFF6C63FF) : Colors.grey[100],
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: isSel ? const Color(0xFF6C63FF) : Colors.grey[300]!),
+                        border: Border.all(
+                            color: isSel
+                                ? const Color(0xFF6C63FF)
+                                : Colors.grey[300]!),
                       ),
                       child: Text(
                         slide.wordTokens[i].text,
@@ -1510,7 +1803,8 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
         ),
         if (showPropertyControls && _selectedWordIndices.isNotEmpty) ...[
           const SizedBox(height: 12),
-          _buildWordPropertyControls(slide.wordTokens[_selectedWordIndices.first]),
+          _buildWordPropertyControls(
+              slide.wordTokens[_selectedWordIndices.first]),
         ],
       ],
     );
@@ -1526,12 +1820,14 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
             const SizedBox(width: 4),
             const Icon(Icons.text_fields, size: 16, color: Colors.grey),
             const SizedBox(width: 6),
-            const Text('Size', style: TextStyle(fontSize: 11, color: Colors.grey)),
+            const Text('Size',
+                style: TextStyle(fontSize: 11, color: Colors.grey)),
             Expanded(
               child: SliderTheme(
                 data: SliderTheme.of(context).copyWith(
                   trackHeight: 2,
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                  thumbShape:
+                      const RoundSliderThumbShape(enabledThumbRadius: 6),
                 ),
                 child: Slider(
                   value: firstWord.fontSize,
@@ -1545,7 +1841,9 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                 ),
               ),
             ),
-            Text('${firstWord.fontSize.toInt()}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+            Text('${firstWord.fontSize.toInt()}',
+                style:
+                    const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
           ],
         ),
         // Rotation
@@ -1554,12 +1852,14 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
             const SizedBox(width: 4),
             const Icon(Icons.rotate_right, size: 16, color: Colors.grey),
             const SizedBox(width: 6),
-            const Text('Rotate', style: TextStyle(fontSize: 11, color: Colors.grey)),
+            const Text('Rotate',
+                style: TextStyle(fontSize: 11, color: Colors.grey)),
             Expanded(
               child: SliderTheme(
                 data: SliderTheme.of(context).copyWith(
                   trackHeight: 2,
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                  thumbShape:
+                      const RoundSliderThumbShape(enabledThumbRadius: 6),
                 ),
                 child: Slider(
                   value: firstWord.rotation,
@@ -1574,7 +1874,8 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
               ),
             ),
             IconButton(
-              icon: const Icon(Icons.refresh, size: 14, color: Color(0xFF6C63FF)),
+              icon:
+                  const Icon(Icons.refresh, size: 14, color: Color(0xFF6C63FF)),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
               tooltip: 'Reset Rotation',
@@ -1585,7 +1886,9 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
               }),
             ),
             const SizedBox(width: 8),
-            Text('${firstWord.rotation.toInt()}°', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+            Text('${firstWord.rotation.toInt()}°',
+                style:
+                    const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
           ],
         ),
         // Reset position
@@ -1601,8 +1904,10 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                 }
               }),
               icon: const Icon(Icons.history, size: 14),
-              label: const Text('Reset to Split', style: TextStyle(fontSize: 10)),
-              style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero),
+              label:
+                  const Text('Reset to Split', style: TextStyle(fontSize: 10)),
+              style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero, minimumSize: Size.zero),
             ),
           ],
         ),
@@ -1635,7 +1940,8 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
       );
     }
 
-    final bool wordSelected = slide.useWordMode && _selectedWordIndices.isNotEmpty;
+    final bool wordSelected =
+        slide.useWordMode && _selectedWordIndices.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1652,36 +1958,21 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
             }),
           ),
         ],
-        const Divider(height: 32),
-        _buildSectionHeader('Fine Adjustments'),
-        _buildAdjustmentSlider(
-          label: wordSelected ? 'Font Size (Selected)' : 'Font Size',
-          value: wordSelected ? slide.wordTokens[_selectedWordIndices.first].fontSize : slide.slideFontSize,
-          min: 10.0,
-          max: 100.0,
-          onChanged: (val) {
+        const SizedBox(height: 8),
+        OutlinedButton(
+          onPressed: () {
             setState(() {
               if (wordSelected) {
                 for (int idx in _selectedWordIndices) {
-                  slide.wordTokens[idx].fontSize = val;
+                  slide.wordTokens[idx].fontSize = 28.0;
                 }
               } else {
-                slide.slideFontSize = val;
+                slide.slideFontSize = 28.0;
               }
+              slide.textScale = 1.0;
             });
           },
-        ),
-        const SizedBox(height: 8),
-        _buildAdjustmentSlider(
-          label: 'Text Scale',
-          value: slide.textScale,
-          min: 0.1,
-          max: 3.0,
-          onChanged: (val) {
-            setState(() {
-              slide.textScale = val;
-            });
-          },
+          child: const Text('Reset Text Sizes'),
         ),
         const SizedBox(height: 8),
         OutlinedButton(
@@ -1719,7 +2010,8 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+        Text(label,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -1732,18 +2024,26 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                 child: GestureDetector(
                   onTap: () => onChanged(target),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
-                      color: isSelected ? const Color(0xFF6C63FF).withValues(alpha: 0.12) : Colors.grey[100],
+                      color: isSelected
+                          ? const Color(0xFF6C63FF).withValues(alpha: 0.12)
+                          : Colors.grey[100],
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: isSelected ? const Color(0xFF6C63FF) : Colors.grey[300]!),
+                      border: Border.all(
+                          color: isSelected
+                              ? const Color(0xFF6C63FF)
+                              : Colors.grey[300]!),
                     ),
                     child: Text(
                       preset['label'] as String,
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
-                        color: isSelected ? const Color(0xFF6C63FF) : Colors.grey[800],
+                        color: isSelected
+                            ? const Color(0xFF6C63FF)
+                            : Colors.grey[800],
                       ),
                     ),
                   ),
@@ -1759,26 +2059,46 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Fine Tune', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  const Text('Fine Tune',
+                      style:
+                          TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
                   Text(
                     'X: ${current.x.toStringAsFixed(3)}\nY: ${current.y.toStringAsFixed(3)}',
-                    style: TextStyle(fontSize: 10, color: Colors.grey[600], fontFamily: 'monospace', height: 1.5),
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey[600],
+                        fontFamily: 'monospace',
+                        height: 1.5),
                   ),
                 ],
               ),
             ),
             Column(
               children: [
-                _buildCompactNudgeButton(Icons.keyboard_arrow_up, () => onChanged(Alignment(current.x, (current.y - 0.01).clamp(-1.0, 1.0)))),
+                _buildCompactNudgeButton(
+                    Icons.keyboard_arrow_up,
+                    () => onChanged(Alignment(
+                        current.x, (current.y - 0.01).clamp(-1.0, 1.0)))),
                 Row(
                   children: [
-                    _buildCompactNudgeButton(Icons.keyboard_arrow_left, () => onChanged(Alignment((current.x - 0.01).clamp(-1.0, 1.0), current.y))),
-                    _buildCompactNudgeButton(Icons.adjust, () => onChanged(Alignment.center), isCenter: true),
-                    _buildCompactNudgeButton(Icons.keyboard_arrow_right, () => onChanged(Alignment((current.x + 0.01).clamp(-1.0, 1.0), current.y))),
+                    _buildCompactNudgeButton(
+                        Icons.keyboard_arrow_left,
+                        () => onChanged(Alignment(
+                            (current.x - 0.01).clamp(-1.0, 1.0), current.y))),
+                    _buildCompactNudgeButton(
+                        Icons.adjust, () => onChanged(Alignment.center),
+                        isCenter: true),
+                    _buildCompactNudgeButton(
+                        Icons.keyboard_arrow_right,
+                        () => onChanged(Alignment(
+                            (current.x + 0.01).clamp(-1.0, 1.0), current.y))),
                   ],
                 ),
-                _buildCompactNudgeButton(Icons.keyboard_arrow_down, () => onChanged(Alignment(current.x, (current.y + 0.01).clamp(-1.0, 1.0)))),
+                _buildCompactNudgeButton(
+                    Icons.keyboard_arrow_down,
+                    () => onChanged(Alignment(
+                        current.x, (current.y + 0.01).clamp(-1.0, 1.0)))),
               ],
             ),
           ],
@@ -1787,7 +2107,8 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     );
   }
 
-  Widget _buildCompactNudgeButton(IconData icon, VoidCallback action, {bool isCenter = false}) {
+  Widget _buildCompactNudgeButton(IconData icon, VoidCallback action,
+      {bool isCenter = false}) {
     return GestureDetector(
       onTapDown: (_) {
         setState(action);
@@ -1809,25 +2130,26 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: Colors.grey[300]!),
         ),
-        child: Icon(icon, size: isCenter ? 18 : 22, color: isCenter ? Colors.blue : Colors.grey[700]),
+        child: Icon(icon,
+            size: isCenter ? 18 : 22,
+            color: isCenter ? Colors.blue : Colors.grey[700]),
       ),
     );
   }
-
-
 
   void _showBulkPasteDialog() {
     final TextEditingController bulkController = TextEditingController();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Bulk Paste Text', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        title: const Text('Bulk Paste Text',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Each new line will be assigned to a separate slide.', 
-              style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const Text('Each new line will be assigned to a separate slide.',
+                style: TextStyle(fontSize: 12, color: Colors.grey)),
             const SizedBox(height: 16),
             TextField(
               controller: bulkController,
@@ -1836,16 +2158,22 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                 hintText: 'Line 1 for Slide 1\nLine 2 for Slide 2\n...',
                 filled: true,
                 fillColor: Colors.grey[50],
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () {
-              final lines = bulkController.text.split('\n').where((l) => l.trim().isNotEmpty).toList();
+              final lines = bulkController.text
+                  .split('\n')
+                  .where((l) => l.trim().isNotEmpty)
+                  .toList();
               if (lines.isNotEmpty) {
                 setState(() {
                   // If we have more lines than slides, add more blank slides
@@ -1859,7 +2187,9 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                 });
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Updated ${lines.length} slides with bulk text!')),
+                  SnackBar(
+                      content: Text(
+                          'Updated ${lines.length} slides with bulk text!')),
                 );
               }
             },
@@ -1876,7 +2206,8 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
 
   Widget _buildFontTab() {
     CarouselSlide current = _slides[_currentIndex];
-    final bool wordMode = current.useWordMode && _selectedWordIndices.isNotEmpty;
+    final bool wordMode =
+        current.useWordMode && _selectedWordIndices.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1884,9 +2215,14 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
           _buildWordSelector(current),
           const Divider(height: 32),
         ],
-        _buildSectionHeader(wordMode ? 'Font for ${_selectedWordIndices.length} words' : 'Typography'),
+        _buildSectionHeader(wordMode
+            ? 'Font for ${_selectedWordIndices.length} words'
+            : 'Typography'),
         HorizontalFontSelector(
-          selectedFont: (wordMode ? current.wordTokens[_selectedWordIndices.first].font : current.font) ?? _selectedFont,
+          selectedFont: (wordMode
+                  ? current.wordTokens[_selectedWordIndices.first].font
+                  : current.font) ??
+              _selectedFont,
           onFontSelected: (font) {
             setState(() {
               if (wordMode) {
@@ -1914,7 +2250,8 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                 for (final xFile in result.files) {
                   if (xFile.path == null) continue;
                   final path = xFile.path!;
-                  if (!path.toLowerCase().endsWith('.ttf') && !path.toLowerCase().endsWith('.otf')) {
+                  if (!path.toLowerCase().endsWith('.ttf') &&
+                      !path.toLowerCase().endsWith('.otf')) {
                     continue;
                   }
                   final file = File(path);
@@ -1939,7 +2276,9 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                     }
                   });
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Custom font "${newFont.displayName}" added and applied!')),
+                    SnackBar(
+                        content: Text(
+                            'Custom font "${newFont.displayName}" added and applied!')),
                   );
                 }
               }
@@ -1949,9 +2288,59 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
             style: OutlinedButton.styleFrom(
               foregroundColor: const Color(0xFF6C63FF),
               side: const BorderSide(color: Color(0xFF6C63FF)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
           ),
+        ),
+        const Divider(height: 32),
+        _buildSectionHeader('Sizing & Scale'),
+        _buildAdjustmentSlider(
+          label: wordMode ? 'Font Size (Selected)' : 'Font Size',
+          value: wordMode
+              ? current.wordTokens[_selectedWordIndices.first].fontSize
+              : current.slideFontSize,
+          min: 10.0,
+          max: 100.0,
+          onChanged: (val) {
+            setState(() {
+              if (wordMode) {
+                for (int idx in _selectedWordIndices) {
+                  current.wordTokens[idx].fontSize = val;
+                }
+              } else {
+                current.slideFontSize = val;
+              }
+            });
+          },
+        ),
+        const SizedBox(height: 8),
+        _buildAdjustmentSlider(
+          label: 'Text Scale',
+          value: current.textScale,
+          min: 0.1,
+          max: 3.0,
+          onChanged: (val) {
+            setState(() {
+              current.textScale = val;
+            });
+          },
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton(
+          onPressed: () {
+            setState(() {
+              if (wordMode) {
+                for (int idx in _selectedWordIndices) {
+                  current.wordTokens[idx].fontSize = 28.0;
+                }
+              } else {
+                current.slideFontSize = 28.0;
+              }
+              current.textScale = 1.0;
+            });
+          },
+          child: const Text('Reset Text Sizes'),
         ),
       ],
     );
@@ -1959,14 +2348,25 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
 
   Widget _buildEffectsTab() {
     CarouselSlide current = _slides[_currentIndex];
-    final bool wordMode = current.useWordMode && _selectedWordIndices.isNotEmpty;
-    
+    final bool wordMode =
+        current.useWordMode && _selectedWordIndices.isNotEmpty;
+
     // Target either the first selected word or the slide defaults for preview
-    final bool enableShadow = wordMode ? current.wordTokens[_selectedWordIndices.first].enableShadow : current.enableShadow;
-    final double shadowBlur = wordMode ? current.wordTokens[_selectedWordIndices.first].shadowBlur : current.shadowBlur;
-    final Offset shadowOffset = wordMode ? current.wordTokens[_selectedWordIndices.first].shadowOffset : current.shadowOffset;
-    final bool enableGlow = wordMode ? current.wordTokens[_selectedWordIndices.first].enableGlow : current.enableGlow;
-    final double glowRadius = wordMode ? current.wordTokens[_selectedWordIndices.first].glowRadius : current.glowRadius;
+    final bool enableShadow = wordMode
+        ? current.wordTokens[_selectedWordIndices.first].enableShadow
+        : current.enableShadow;
+    final double shadowBlur = wordMode
+        ? current.wordTokens[_selectedWordIndices.first].shadowBlur
+        : current.shadowBlur;
+    final Offset shadowOffset = wordMode
+        ? current.wordTokens[_selectedWordIndices.first].shadowOffset
+        : current.shadowOffset;
+    final bool enableGlow = wordMode
+        ? current.wordTokens[_selectedWordIndices.first].enableGlow
+        : current.enableGlow;
+    final double glowRadius = wordMode
+        ? current.wordTokens[_selectedWordIndices.first].glowRadius
+        : current.glowRadius;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1975,7 +2375,9 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
           _buildWordSelector(current),
           const Divider(height: 32),
         ],
-        _buildSectionHeader(wordMode ? 'Effects for ${_selectedWordIndices.length} words' : 'Text Styling'),
+        _buildSectionHeader(wordMode
+            ? 'Effects for ${_selectedWordIndices.length} words'
+            : 'Text Styling'),
         SwitchListTile(
           title: const Text('Drop Shadow', style: TextStyle(fontSize: 12)),
           value: enableShadow,
@@ -1992,33 +2394,50 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
           contentPadding: EdgeInsets.zero,
         ),
         if (enableShadow) ...[
-          _buildEffectSlider('Blur', shadowBlur, 0, 20, (v) => setState(() {
-            if (wordMode) {
-              for (int idx in _selectedWordIndices) {
-                current.wordTokens[idx].shadowBlur = v;
-              }
-            } else {
-              current.shadowBlur = v;
-            }
-          })),
-          _buildEffectSlider('Offset X', shadowOffset.dx, -10, 10, (v) => setState(() {
-            if (wordMode) {
-              for (int idx in _selectedWordIndices) {
-                current.wordTokens[idx].shadowOffset = Offset(v, current.wordTokens[idx].shadowOffset.dy);
-              }
-            } else {
-              current.shadowOffset = Offset(v, current.shadowOffset.dy);
-            }
-          })),
-          _buildEffectSlider('Offset Y', shadowOffset.dy, -10, 10, (v) => setState(() {
-            if (wordMode) {
-              for (int idx in _selectedWordIndices) {
-                current.wordTokens[idx].shadowOffset = Offset(current.wordTokens[idx].shadowOffset.dx, v);
-              }
-            } else {
-              current.shadowOffset = Offset(current.shadowOffset.dx, v);
-            }
-          })),
+          _buildEffectSlider(
+              'Blur',
+              shadowBlur,
+              0,
+              20,
+              (v) => setState(() {
+                    if (wordMode) {
+                      for (int idx in _selectedWordIndices) {
+                        current.wordTokens[idx].shadowBlur = v;
+                      }
+                    } else {
+                      current.shadowBlur = v;
+                    }
+                  })),
+          _buildEffectSlider(
+              'Offset X',
+              shadowOffset.dx,
+              -10,
+              10,
+              (v) => setState(() {
+                    if (wordMode) {
+                      for (int idx in _selectedWordIndices) {
+                        current.wordTokens[idx].shadowOffset =
+                            Offset(v, current.wordTokens[idx].shadowOffset.dy);
+                      }
+                    } else {
+                      current.shadowOffset = Offset(v, current.shadowOffset.dy);
+                    }
+                  })),
+          _buildEffectSlider(
+              'Offset Y',
+              shadowOffset.dy,
+              -10,
+              10,
+              (v) => setState(() {
+                    if (wordMode) {
+                      for (int idx in _selectedWordIndices) {
+                        current.wordTokens[idx].shadowOffset =
+                            Offset(current.wordTokens[idx].shadowOffset.dx, v);
+                      }
+                    } else {
+                      current.shadowOffset = Offset(current.shadowOffset.dx, v);
+                    }
+                  })),
           const SizedBox(height: 12),
           _buildSectionHeader('Shadow Color'),
           SingleChildScrollView(
@@ -2053,24 +2472,33 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
           contentPadding: EdgeInsets.zero,
         ),
         if (enableGlow) ...[
-          _buildEffectSlider('Radius', glowRadius, 0, 30, (v) => setState(() {
-            if (wordMode) {
-              for (int idx in _selectedWordIndices) {
-                current.wordTokens[idx].glowRadius = v;
-              }
-            } else {
-              current.glowRadius = v;
-            }
-          })),
+          _buildEffectSlider(
+              'Radius',
+              glowRadius,
+              0,
+              30,
+              (v) => setState(() {
+                    if (wordMode) {
+                      for (int idx in _selectedWordIndices) {
+                        current.wordTokens[idx].glowRadius = v;
+                      }
+                    } else {
+                      current.glowRadius = v;
+                    }
+                  })),
         ],
       ],
     );
   }
 
-  Widget _buildEffectSlider(String label, double val, double min, double max, Function(double) onChanged) {
+  Widget _buildEffectSlider(String label, double val, double min, double max,
+      Function(double) onChanged) {
     return Row(
       children: [
-        SizedBox(width: 60, child: Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey))),
+        SizedBox(
+            width: 60,
+            child: Text(label,
+                style: const TextStyle(fontSize: 10, color: Colors.grey))),
         Expanded(
           child: SliderTheme(
             data: SliderTheme.of(context).copyWith(
@@ -2087,7 +2515,8 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
 
   Widget _buildStyleTab() {
     CarouselSlide current = _slides[_currentIndex];
-    final bool wordMode = current.useWordMode && _selectedWordIndices.isNotEmpty;
+    final bool wordMode =
+        current.useWordMode && _selectedWordIndices.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2101,19 +2530,29 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
           child: Row(
             children: [
               _buildCustomColorButton(isBg: true),
-              _buildColorOption(const Color(0xFF121212), Colors.white, 'Ink', true),
-              _buildColorOption(Colors.white, const Color(0xFF121212), 'Snow', true),
-              _buildColorOption(const Color(0xFFFF4E50), Colors.white, 'Sunset', true),
-              _buildColorOption(const Color(0xFF6C63FF), Colors.white, 'Royal', true),
-              _buildColorOption(const Color(0xFF00D2FF), Colors.white, 'Ocean', true),
-              _buildColorOption(const Color(0xFFFC67FA), Colors.white, 'Electric', true),
-              _buildColorOption(const Color(0xFF00F260), const Color(0xFF121212), 'Cyber', true),
-              _buildColorOption(const Color(0xFFFDC830), const Color(0xFF121212), 'Gold', true),
+              _buildColorOption(
+                  const Color(0xFF121212), Colors.white, 'Ink', true),
+              _buildColorOption(
+                  Colors.white, const Color(0xFF121212), 'Snow', true),
+              _buildColorOption(
+                  const Color(0xFFFF4E50), Colors.white, 'Sunset', true),
+              _buildColorOption(
+                  const Color(0xFF6C63FF), Colors.white, 'Royal', true),
+              _buildColorOption(
+                  const Color(0xFF00D2FF), Colors.white, 'Ocean', true),
+              _buildColorOption(
+                  const Color(0xFFFC67FA), Colors.white, 'Electric', true),
+              _buildColorOption(const Color(0xFF00F260),
+                  const Color(0xFF121212), 'Cyber', true),
+              _buildColorOption(const Color(0xFFFDC830),
+                  const Color(0xFF121212), 'Gold', true),
             ],
           ),
         ),
         const SizedBox(height: 16),
-        _buildSectionHeader(wordMode ? 'Color for ${_selectedWordIndices.length} words' : 'Text Color'),
+        _buildSectionHeader(wordMode
+            ? 'Color for ${_selectedWordIndices.length} words'
+            : 'Text Color'),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -2136,8 +2575,11 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
 
   Widget _buildTextVariant(Color color, String label) {
     final current = _slides[_currentIndex];
-    final bool wordMode = current.useWordMode && _selectedWordIndices.isNotEmpty;
-    final Color activeColor = wordMode ? current.wordTokens[_selectedWordIndices.first].color : current.textColor;
+    final bool wordMode =
+        current.useWordMode && _selectedWordIndices.isNotEmpty;
+    final Color activeColor = wordMode
+        ? current.wordTokens[_selectedWordIndices.first].color
+        : current.textColor;
     bool isSel = activeColor == color;
     return GestureDetector(
       onTap: () {
@@ -2175,7 +2617,11 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                 ],
               ),
               child: isSel
-                  ? Icon(Icons.check, size: 16, color: color.computeLuminance() > 0.5 ? Colors.black : Colors.white)
+                  ? Icon(Icons.check,
+                      size: 16,
+                      color: color.computeLuminance() > 0.5
+                          ? Colors.black
+                          : Colors.white)
                   : null,
             ),
             const SizedBox(height: 6),
@@ -2195,8 +2641,11 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
 
   Widget _buildShadowColorVariant(Color color, String label) {
     final current = _slides[_currentIndex];
-    final bool wordMode = current.useWordMode && _selectedWordIndices.isNotEmpty;
-    final Color activeColor = wordMode ? current.wordTokens[_selectedWordIndices.first].shadowColor : current.shadowColor;
+    final bool wordMode =
+        current.useWordMode && _selectedWordIndices.isNotEmpty;
+    final Color activeColor = wordMode
+        ? current.wordTokens[_selectedWordIndices.first].shadowColor
+        : current.shadowColor;
     bool isSel = activeColor == color;
     return GestureDetector(
       onTap: () {
@@ -2234,7 +2683,11 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                 ],
               ),
               child: isSel
-                  ? Icon(Icons.check, size: 16, color: color.computeLuminance() > 0.5 ? Colors.black : Colors.white)
+                  ? Icon(Icons.check,
+                      size: 16,
+                      color: color.computeLuminance() > 0.5
+                          ? Colors.black
+                          : Colors.white)
                   : null,
             ),
             const SizedBox(height: 6),
@@ -2259,7 +2712,8 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
       onTap: () {
         setState(() {
           current.bgColor = bg;
-          if (current.textColor == Colors.white || current.textColor == const Color(0xFF121212)) {
+          if (current.textColor == Colors.white ||
+              current.textColor == const Color(0xFF121212)) {
             current.textColor = text;
           }
         });
@@ -2287,9 +2741,7 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                   ),
                 ],
               ),
-              child: isSel
-                  ? Icon(Icons.check, size: 16, color: text)
-                  : null,
+              child: isSel ? Icon(Icons.check, size: 16, color: text) : null,
             ),
             const SizedBox(height: 6),
             Text(
@@ -2316,9 +2768,11 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     );
   }
 
-  Widget _buildCustomColorButton({bool isBg = false, bool isShadow = false}) {
+  Widget _buildCustomColorButton(
+      {bool isBg = false, bool isShadow = false, bool isMask = false}) {
     return GestureDetector(
-      onTap: () => _showColorPicker(isBg: isBg, isShadow: isShadow),
+      onTap: () =>
+          _showColorPicker(isBg: isBg, isShadow: isShadow, isMask: isMask),
       child: Padding(
         padding: const EdgeInsets.only(right: 16),
         child: Column(
@@ -2339,7 +2793,8 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                   ),
                 ],
               ),
-              child: Icon(Icons.colorize_rounded, size: 16, color: Colors.grey[700]),
+              child: Icon(Icons.colorize_rounded,
+                  size: 16, color: Colors.grey[700]),
             ),
             const SizedBox(height: 6),
             Text(
@@ -2355,21 +2810,405 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     );
   }
 
-  Future<void> _showColorPicker({bool isBg = false, bool isShadow = false}) async {
+  Widget _buildMaskOverlay(CarouselSlide slide) {
+    if (slide.maskType == 0) return const SizedBox.shrink();
+
+    Alignment? begin, end;
+    if (slide.maskType == 1) {
+      // Bottom
+      begin = Alignment.topCenter;
+      end = Alignment.bottomCenter;
+    } else if (slide.maskType == 2) {
+      // Top
+      begin = Alignment.bottomCenter;
+      end = Alignment.topCenter;
+    } else if (slide.maskType == 4) {
+      // Left
+      begin = Alignment.centerRight;
+      end = Alignment.centerLeft;
+    } else if (slide.maskType == 5) {
+      // Right
+      begin = Alignment.centerLeft;
+      end = Alignment.centerRight;
+    }
+
+    return IgnorePointer(
+      child: Container(
+        decoration: BoxDecoration(
+          color: slide.maskType == 3
+              ? slide.maskColor.withOpacity(slide.maskOpacity)
+              : null,
+          gradient: (begin != null && end != null)
+              ? LinearGradient(
+                  begin: begin,
+                  end: end,
+                  colors: [
+                    Colors.transparent,
+                    slide.maskColor.withValues(alpha: slide.maskOpacity)
+                  ],
+                  stops: [
+                    slide.maskStart.clamp(0.0, 1.0),
+                    slide.maskEnd.clamp(0.0, 1.0),
+                  ],
+                )
+              : null,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMaskTab() {
+    final CarouselSlide current = _slides[_currentIndex];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildSectionHeader('Mask Type'),
+            Row(
+              children: [
+                const Text('Apply to all',
+                    style: TextStyle(fontSize: 10, color: Colors.grey)),
+                Switch(
+                  value: _applyMaskToAll,
+                  activeColor: const Color(0xFF6C63FF),
+                  onChanged: (v) => setState(() => _applyMaskToAll = v),
+                ),
+              ],
+            ),
+          ],
+        ),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              _buildMaskTypeOption(0, Icons.block, 'None'),
+              const SizedBox(width: 8),
+              _buildMaskTypeOption(1, Icons.vertical_align_bottom, 'Bottom'),
+              const SizedBox(width: 8),
+              _buildMaskTypeOption(2, Icons.vertical_align_top, 'Top'),
+              const SizedBox(width: 8),
+              _buildMaskTypeOption(
+                  4, Icons.align_horizontal_left_rounded, 'Left'),
+              const SizedBox(width: 8),
+              _buildMaskTypeOption(
+                  5, Icons.align_horizontal_right_rounded, 'Right'),
+              const SizedBox(width: 8),
+              _buildMaskTypeOption(3, Icons.format_color_fill, 'Full'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildSectionHeader('Mask Range Start'),
+            Text('${(current.maskStart * 100).toInt()}%',
+                style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF6C63FF))),
+          ],
+        ),
+        _buildSlider(
+          value: current.maskStart,
+          onChanged: (v) {
+            setState(() {
+              if (_applyMaskToAll) {
+                for (var s in _slides) {
+                  s.maskStart = v;
+                }
+              } else {
+                current.maskStart = v;
+              }
+            });
+          },
+        ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildSectionHeader('Mask Range End'),
+            Text('${(current.maskEnd * 100).toInt()}%',
+                style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF6C63FF))),
+          ],
+        ),
+        _buildSlider(
+          value: current.maskEnd,
+          onChanged: (v) {
+            setState(() {
+              if (_applyMaskToAll) {
+                for (var s in _slides) {
+                  s.maskEnd = v;
+                }
+              } else {
+                current.maskEnd = v;
+              }
+            });
+          },
+        ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildSectionHeader('Mask Opacity'),
+            Text('${(current.maskOpacity * 100).toInt()}%',
+                style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF6C63FF))),
+          ],
+        ),
+        _buildSlider(
+          value: current.maskOpacity,
+          onChanged: (v) {
+            setState(() {
+              if (_applyMaskToAll) {
+                for (var s in _slides) {
+                  s.maskOpacity = v;
+                }
+              } else {
+                current.maskOpacity = v;
+              }
+            });
+          },
+        ),
+        const SizedBox(height: 24),
+        _buildSectionHeader('Mask Color'),
+        Row(
+          children: [
+            _buildCustomColorButton(isMask: true),
+            const SizedBox(width: 8),
+            _buildMaskColorOption(Colors.black),
+            _buildMaskColorOption(const Color(0xFF1A1A1A)),
+            _buildMaskColorOption(Colors.white),
+            _buildMaskColorOption(const Color(0xFF6C63FF)),
+            _buildMaskColorOption(const Color(0xFFFF4E50)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSlider(
+      {required double value, required ValueChanged<double> onChanged}) {
+    return SliderTheme(
+      data: SliderTheme.of(context).copyWith(
+        trackHeight: 2,
+        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+        overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+      ),
+      child: Slider(
+        value: value,
+        min: 0.0,
+        max: 1.0,
+        activeColor: const Color(0xFF6C63FF),
+        onChanged: onChanged,
+      ),
+    );
+  }
+
+  Widget _buildMaskTypeOption(int type, IconData icon, String label) {
+    final CarouselSlide current = _slides[_currentIndex];
+    final bool isSelected = current.maskType == type;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          if (_applyMaskToAll) {
+            for (var s in _slides) {
+              s.maskType = type;
+            }
+          } else {
+            current.maskType = type;
+          }
+        });
+      },
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? const Color(0xFF6C63FF).withValues(alpha: 0.1)
+                  : Colors.grey[50],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color:
+                      isSelected ? const Color(0xFF6C63FF) : Colors.grey[200]!),
+            ),
+            child: Icon(icon,
+                color: isSelected ? const Color(0xFF6C63FF) : Colors.grey[400]),
+          ),
+          const SizedBox(height: 4),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 10,
+                  color:
+                      isSelected ? const Color(0xFF6C63FF) : Colors.grey[600])),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEyeDropperOverlay() {
+    if (!_isEyeDropperMode) return const SizedBox.shrink();
+    return Positioned.fill(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final size = Size(constraints.maxWidth, constraints.maxHeight);
+          return GestureDetector(
+            onPanUpdate: (details) => _pickColorAt(details.localPosition, size),
+            onPanDown: (details) => _pickColorAt(details.localPosition, size),
+            onPanEnd: (_) => setState(() => _isEyeDropperMode = false),
+            child: Container(
+              color: Colors.transparent,
+              child: Stack(
+                children: [
+                  if (_eyeDropperPos != null)
+                    Positioned(
+                      left: _eyeDropperPos!.dx - 40,
+                      top: _eyeDropperPos!.dy - 100,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 80,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 3),
+                              boxShadow: const [
+                                BoxShadow(color: Colors.black26, blurRadius: 10)
+                              ],
+                            ),
+                            child: ClipOval(
+                              child: Container(
+                                color: _eyeDropperColor,
+                                child: Center(
+                                  child: Container(
+                                    width: 4,
+                                    height: 4,
+                                    decoration: const BoxDecoration(
+                                        color: Colors.white,
+                                        shape: BoxShape.circle),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.black87,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '#${_eyeDropperColor.value.toRadixString(16).padLeft(8, '0').toUpperCase().substring(2)}',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontFamily: 'monospace'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  // Instructions
+                  Positioned(
+                    bottom: 40,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF6C63FF),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: const [
+                            BoxShadow(color: Colors.black26, blurRadius: 10)
+                          ],
+                        ),
+                        child: const Text(
+                          'Drag to pick color from image',
+                          style: TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildMaskColorOption(Color color) {
+    final CarouselSlide current = _slides[_currentIndex];
+    final isSelected = current.maskColor == color;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          if (_applyMaskToAll) {
+            for (var s in _slides) {
+              s.maskColor = color;
+            }
+          } else {
+            current.maskColor = color;
+          }
+        });
+      },
+      child: Container(
+        margin: const EdgeInsets.only(right: 8),
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(
+              color: isSelected ? const Color(0xFF6C63FF) : Colors.grey[300]!,
+              width: isSelected ? 2 : 1),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showColorPicker(
+      {bool isBg = false, bool isShadow = false, bool isMask = false}) async {
     final slide = _slides[_currentIndex];
     final bool wordMode = slide.useWordMode && _selectedWordIndices.isNotEmpty;
-    
-    Color initialColor = isBg 
-        ? slide.bgColor 
-        : (isShadow 
-            ? (wordMode ? slide.wordTokens[_selectedWordIndices.first].shadowColor : slide.shadowColor)
-            : (wordMode ? slide.wordTokens[_selectedWordIndices.first].color : slide.textColor));
-    
+
+    Color initialColor = isBg
+        ? slide.bgColor
+        : (isMask
+            ? slide.maskColor
+            : (isShadow
+                ? (wordMode
+                    ? slide.wordTokens[_selectedWordIndices.first].shadowColor
+                    : slide.shadowColor)
+                : (wordMode
+                    ? slide.wordTokens[_selectedWordIndices.first].color
+                    : slide.textColor)));
+
     Color selectedColor = initialColor;
 
     String title = 'Text Color';
-    if (isBg) title = 'Background Color';
-    else if (isShadow) title = 'Shadow Color';
+    if (isBg) {
+      title = 'Background Color';
+    } else if (isShadow) {
+      title = 'Shadow Color';
+    } else if (isMask) {
+      title = 'Mask Color';
+    }
 
     await showDialog(
       context: context,
@@ -2380,7 +3219,31 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Row(
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.colorize_rounded,
+                      size: 20, color: Color(0xFF6C63FF)),
+                  tooltip: 'Eye Dropper',
+                  onPressed: () {
+                    Navigator.pop(context);
+                    String target = 'text';
+                    if (isBg) {
+                      target = 'bg';
+                    } else if (isShadow) {
+                      target = 'shadow';
+                    } else if (isMask) {
+                      target = 'mask';
+                    }
+                    _startEyeDropper(target);
+                  },
+                ),
+              ],
+            ),
             IconButton(
               icon: const Icon(Icons.close, size: 20),
               onPressed: () => Navigator.pop(context),
@@ -2405,6 +3268,14 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                     setState(() {
                       if (isBg) {
                         slide.bgColor = selectedColor;
+                      } else if (isMask) {
+                        if (_applyMaskToAll) {
+                          for (var s in _slides) {
+                            s.maskColor = selectedColor;
+                          }
+                        } else {
+                          slide.maskColor = selectedColor;
+                        }
                       } else if (isShadow) {
                         if (wordMode) {
                           for (int idx in _selectedWordIndices) {
@@ -2429,7 +3300,8 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                     backgroundColor: const Color(0xFF6C63FF),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
                   ),
                   child: const Text('Select Color'),
                 ),
@@ -2443,13 +3315,34 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
 
   Widget _buildControlTabs() {
     final tabs = [
-      {'icon': Icons.photo_library_outlined, 'label': 'Image', 'color': Colors.blue},
+      {
+        'icon': Icons.photo_library_outlined,
+        'label': 'Image',
+        'color': Colors.blue
+      },
       {'icon': Icons.title_rounded, 'label': 'Text', 'color': Colors.amber},
       {'icon': Icons.open_with, 'label': 'Position', 'color': Colors.indigo},
-      {'icon': Icons.font_download_outlined, 'label': 'Font', 'color': Colors.green},
-      {'icon': Icons.auto_fix_high_outlined, 'label': 'Effects', 'color': Colors.pink},
-      {'icon': Icons.palette_outlined, 'label': 'Color', 'color': Colors.deepOrange},
-      {'icon': Icons.settings_outlined, 'label': 'Config', 'color': Colors.grey},
+      {
+        'icon': Icons.font_download_outlined,
+        'label': 'Font',
+        'color': Colors.green
+      },
+      {
+        'icon': Icons.auto_fix_high_outlined,
+        'label': 'Effects',
+        'color': Colors.pink
+      },
+      {'icon': Icons.layers_outlined, 'label': 'Mask', 'color': Colors.purple},
+      {
+        'icon': Icons.palette_outlined,
+        'label': 'Color',
+        'color': Colors.deepOrange
+      },
+      {
+        'icon': Icons.settings_outlined,
+        'label': 'Config',
+        'color': Colors.grey
+      },
     ];
 
     return Container(
@@ -2464,8 +3357,10 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.black87,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
                 elevation: 0,
               ),
               child: const Icon(Icons.download, size: 20),
@@ -2496,9 +3391,9 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                     width: 75,
                     margin: const EdgeInsets.symmetric(vertical: 4),
                     decoration: BoxDecoration(
-                    color: isSelected && _isTabContentExpanded
-                        ? baseColor.withValues(alpha: 0.12)
-                        : Colors.transparent,
+                      color: isSelected && _isTabContentExpanded
+                          ? baseColor.withValues(alpha: 0.12)
+                          : Colors.transparent,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Column(
@@ -2507,7 +3402,9 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                         Icon(
                           tab['icon'] as IconData,
                           size: 22,
-                          color: isSelected && _isTabContentExpanded ? baseColor : Colors.grey[600],
+                          color: isSelected && _isTabContentExpanded
+                              ? baseColor
+                              : Colors.grey[600],
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -2517,7 +3414,9 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                             fontWeight: isSelected && _isTabContentExpanded
                                 ? FontWeight.bold
                                 : FontWeight.normal,
-                            color: isSelected && _isTabContentExpanded ? baseColor : Colors.grey[700],
+                            color: isSelected && _isTabContentExpanded
+                                ? baseColor
+                                : Colors.grey[700],
                           ),
                         ),
                       ],

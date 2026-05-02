@@ -261,6 +261,7 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
 
         final outputPath = await _channel.invokeMethod<String>('getVideoOutputPath', {
           'filename': 'QuickPost_Cropped_${DateTime.now().millisecondsSinceEpoch}_$i.mp4',
+          'isTemporary': true,
         });
 
         debugPrint('[VideoCropper] Generated output path: $outputPath');
@@ -414,6 +415,54 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
               ),
               const SizedBox(height: 24),
               
+              // New Action: Save to Device
+              StatefulBuilder(
+                builder: (context, setDialogState) {
+                  bool isSaved = false;
+                  return SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: isSaved ? null : () async {
+                        try {
+                          final List<String> newPaths = [];
+                          for (var path in outputPaths) {
+                            final result = await _channel.invokeMethod<String>('saveVideoToGallery', {'videoPath': path});
+                            if (result != null) newPaths.add(result);
+                          }
+                          
+                          // Update outputPaths so subsequent actions use the gallery paths
+                          outputPaths.clear();
+                          outputPaths.addAll(newPaths);
+                          
+                          setDialogState(() => isSaved = true);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Videos saved to Gallery!')),
+                            );
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Save failed: $e')),
+                            );
+                          }
+                        }
+                      },
+                      icon: Icon(isSaved ? Icons.check : Icons.download_rounded, size: 20),
+                      label: Text(isSaved ? 'Saved to Gallery' : 'Save to Gallery', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: isSaved ? Colors.grey[400] : Colors.blueAccent,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+
               // Primary Action: Designer
               SizedBox(
                 width: double.infinity,

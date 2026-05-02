@@ -109,6 +109,39 @@ class WatermarkPreset extends HiveObject {
   @HiveField(37)
   double videoY;
 
+  @HiveField(38)
+  double storyRingWidth;
+
+  @HiveField(39)
+  String storyRingColor;
+
+  @HiveField(40)
+  bool isCustomRingColor;
+
+  @HiveField(41)
+  String verifiedBadgeColor;
+
+  @HiveField(42)
+  String verifiedBadgeAttachTo;
+
+  @HiveField(43)
+  double watermarkScale;
+
+  @HiveField(44)
+  double usernameSize;
+
+  @HiveField(45)
+  double handleSize;
+
+  @HiveField(46)
+  double bgBrightness;
+
+  @HiveField(47)
+  double bgSaturation;
+
+  @HiveField(48)
+  double bgBlur;
+
   WatermarkPreset({
     required this.id,
     required this.name,
@@ -148,6 +181,17 @@ class WatermarkPreset extends HiveObject {
     this.iconShadowOffsetX = 1.0,
     this.iconShadowOffsetY = 1.0,
     this.videoY = 0.5,
+    this.storyRingWidth = 5.0,
+    this.storyRingColor = '#FF4081',
+    this.isCustomRingColor = false,
+    this.verifiedBadgeColor = '#1DA1F2',
+    this.verifiedBadgeAttachTo = 'handle',
+    this.watermarkScale = 1.0,
+    this.usernameSize = 36.0,
+    this.handleSize = 30.0,
+    this.bgBrightness = 1.0,
+    this.bgSaturation = 1.0,
+    this.bgBlur = 0.0,
   });
 
   Map<String, dynamic> toMap() {
@@ -190,6 +234,17 @@ class WatermarkPreset extends HiveObject {
       'iconShadowOffsetX': iconShadowOffsetX,
       'iconShadowOffsetY': iconShadowOffsetY,
       'videoY': videoY,
+      'storyRingWidth': storyRingWidth,
+      'storyRingColor': storyRingColor,
+      'isCustomRingColor': isCustomRingColor,
+      'verifiedBadgeColor': verifiedBadgeColor,
+      'verifiedBadgeAttachTo': verifiedBadgeAttachTo,
+      'watermarkScale': watermarkScale,
+      'usernameSize': usernameSize,
+      'handleSize': handleSize,
+      'bgBrightness': bgBrightness,
+      'bgSaturation': bgSaturation,
+      'bgBlur': bgBlur,
     };
   }
 
@@ -233,6 +288,17 @@ class WatermarkPreset extends HiveObject {
       iconShadowOffsetX: (map['iconShadowOffsetX'] as num?)?.toDouble() ?? 1.0,
       iconShadowOffsetY: (map['iconShadowOffsetY'] as num?)?.toDouble() ?? 1.0,
       videoY: (map['videoY'] as num?)?.toDouble() ?? 0.5,
+      storyRingWidth: (map['storyRingWidth'] as num?)?.toDouble() ?? 5.0,
+      storyRingColor: map['storyRingColor'] ?? '#FF4081',
+      isCustomRingColor: map['isCustomRingColor'] ?? false,
+      verifiedBadgeColor: map['verifiedBadgeColor'] ?? '#1DA1F2',
+      verifiedBadgeAttachTo: map['verifiedBadgeAttachTo'] ?? 'handle',
+      watermarkScale: (map['watermarkScale'] as num?)?.toDouble() ?? 1.0,
+      usernameSize: (map['usernameSize'] as num?)?.toDouble() ?? 36.0,
+      handleSize: (map['handleSize'] as num?)?.toDouble() ?? 30.0,
+      bgBrightness: (map['bgBrightness'] as num?)?.toDouble() ?? 1.0,
+      bgSaturation: (map['bgSaturation'] as num?)?.toDouble() ?? 1.0,
+      bgBlur: (map['bgBlur'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }

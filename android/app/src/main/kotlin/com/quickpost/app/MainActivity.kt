@@ -15,6 +15,7 @@ import java.io.File
 import androidx.documentfile.provider.DocumentFile
 import org.json.JSONArray
 import org.json.JSONObject
+import com.quickpost.app.CollageRenderingBridge
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.quickpost.app/processor"
@@ -117,6 +118,7 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        CollageRenderingBridge.register(flutterEngine.dartExecutor.binaryMessenger, this)
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         methodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -269,7 +271,8 @@ class MainActivity : FlutterActivity() {
                 }
                 "getVideoOutputPath" -> {
                     val filename = call.argument<String>("filename") ?: "QuickPost_${System.currentTimeMillis()}.mp4"
-                    val outputPath = getVideoOutputPath(filename)
+                    val isTemporary = call.argument<Boolean>("isTemporary") ?: false
+                    val outputPath = getVideoOutputPath(filename, isTemporary)
                     result.success(outputPath)
                 }
                 "createCarouselVideo" -> {
@@ -617,7 +620,7 @@ class MainActivity : FlutterActivity() {
                                     val bgOpacity = (item["bgOpacity"] as? Number)?.toFloat() ?: 0.0f
                                     
                                     val outFileName = "Crop_${System.currentTimeMillis()}_$index.mp4"
-                                    val outputPath = getVideoOutputPath(outFileName)
+                                    val outputPath = (item["outputPath"] as? String) ?: getVideoOutputPath(outFileName)
                                     
                                     val success = cropper.processVideo(
                                         inputPath, outputPath, 
@@ -633,8 +636,7 @@ class MainActivity : FlutterActivity() {
                                     )
                                     
                                     if (success) {
-                                        val galleryPath = moveVideoToGallery(outputPath) ?: outputPath
-                                        outputPaths.add(galleryPath)
+                                        outputPaths.add(outputPath)
                                     }
                                 }
                                 
@@ -677,8 +679,7 @@ class MainActivity : FlutterActivity() {
                                     
                                     val success = cropper.processImage(inputPath, outPath, cropX, cropY, cropW, cropH, rotation, isFlipped)
                                     if (success) {
-                                        val galleryPath = moveImageToGallery(outPath) ?: outPath
-                                        outputPaths.add(galleryPath)
+                                        outputPaths.add(outPath)
                                     }
                                     
                                     runOnUiThread {
@@ -861,6 +862,8 @@ class MainActivity : FlutterActivity() {
                                     "y" to y,
                                     "profileImagePath" to profileImagePath,
                                     "iconSize" to iconSize,
+                                    "usernameSize" to ((call.argument<Number>("usernameSize"))?.toFloat() ?: 36f),
+                                    "handleSize" to ((call.argument<Number>("handleSize"))?.toFloat() ?: 30f),
                                     "textColor" to textColor,
                                     "accentColor" to accentColor,
                                     "fontPath" to fontPath,
@@ -871,6 +874,7 @@ class MainActivity : FlutterActivity() {
                                     "bgBlur" to bgBlur,
                                     "showStoryRing" to (call.argument<Boolean>("showStoryRing") ?: false),
                                     "storyRingColor" to (call.argument<String>("storyRingColor") ?: "gradient"),
+                                    "storyRingWidth" to ((call.argument<Number>("storyRingWidth"))?.toFloat() ?: 5f),
                                     "isVerified" to (call.argument<Boolean>("isVerified") ?: false),
                                     "verifiedBadgeColor" to (call.argument<String>("verifiedBadgeColor") ?: "#1DA1F2"),
                                     "verifiedBadgeAttachTo" to (call.argument<String>("verifiedBadgeAttachTo") ?: "handle"),
@@ -976,6 +980,24 @@ class MainActivity : FlutterActivity() {
                         }.start()
                     } else {
                         result.error("INVALID_ARGUMENT", "imagePath and automationSettings are required", null)
+                    }
+                }
+                "saveVideoToGallery" -> {
+                    val videoPath = call.argument<String>("videoPath")
+                    if (videoPath != null) {
+                        val galleryPath = moveVideoToGallery(videoPath)
+                        result.success(galleryPath)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "videoPath is required", null)
+                    }
+                }
+                "saveImageToGallery" -> {
+                    val imagePath = call.argument<String>("imagePath")
+                    if (imagePath != null) {
+                        val galleryPath = moveImageToGallery(imagePath)
+                        result.success(galleryPath)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "imagePath is required", null)
                     }
                 }
                 else -> result.notImplemented()
@@ -1882,13 +1904,22 @@ class MainActivity : FlutterActivity() {
         }
     }
     
-    fun getVideoOutputPath(filename: String): String {
-        val dcimDir = android.os.Environment.getExternalStoragePublicDirectory(
-            android.os.Environment.DIRECTORY_DCIM
-        )
-        val outputDir = java.io.File(dcimDir, "Quick Post")
-        if (!outputDir.exists()) {
-            outputDir.mkdirs()
+    fun getVideoOutputPath(filename: String, isTemporary: Boolean = false): String {
+        val outputDir = if (isTemporary) {
+            val tempDir = java.io.File(getExternalFilesDir(null), "temp_outputs")
+            if (!tempDir.exists()) {
+                tempDir.mkdirs()
+            }
+            tempDir
+        } else {
+            val dcimDir = android.os.Environment.getExternalStoragePublicDirectory(
+                android.os.Environment.DIRECTORY_DCIM
+            )
+            val dir = java.io.File(dcimDir, "Quick Post")
+            if (!dir.exists()) {
+                dir.mkdirs()
+            }
+            dir
         }
         return java.io.File(outputDir, filename).absolutePath
     }
