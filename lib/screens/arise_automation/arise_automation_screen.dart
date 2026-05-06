@@ -8,6 +8,7 @@ import '../../widgets/advanced_color_picker.dart';
 
 import 'arise_automation_config.dart';
 import '../video_creator/widgets/audio_selector_widget.dart';
+import '../../services/analytics_service.dart';
 
 class AriseAutomationScreen extends StatefulWidget {
   final List<String>? sharedPaths; // Generic naming
@@ -59,6 +60,7 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
     super.initState();
     _handleIncomingSharedMedia();
     _setupProgressListened();
+    AnalyticsService().setCurrentScreen(screenName: 'Arise Automation');
   }
 
   bool _isVideoFile(String path) {
@@ -263,6 +265,14 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
       await _pickMedia();
     }
     if (_selectedMedia.isEmpty || !mounted) return;
+    AnalyticsService().logSaveAction(feature: 'arise_automation', type: 'video_batch');
+    AnalyticsService().logEvent(
+      name: 'automation_started',
+      parameters: {
+        'item_count': _selectedMedia.length,
+        'template': templateId,
+      },
+    );
 
     setState(() {
       _isProcessing = true;

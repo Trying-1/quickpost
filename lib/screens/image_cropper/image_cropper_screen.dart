@@ -4,6 +4,8 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+import '../../services/analytics_service.dart';
+import '../../config/app_theme.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -73,6 +75,7 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
     super.initState();
     _requestPermissions();
     _loadSharedImages();
+    AnalyticsService().setCurrentScreen(screenName: 'Image Cropper');
   }
 
   @override
@@ -576,9 +579,14 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
 
   Future<void> _exportAllCroppedImages() async {
     if (_selectedImages.isEmpty) return;
+    AnalyticsService().logSaveAction(feature: 'image_cropper', type: 'image_batch');
+    AnalyticsService().logEvent(
+      name: 'bulk_crop_started',
+    );
     setState(() => _isLoading = true);
     
     try {
+      AnalyticsService().logImageBulkCropStarted(imageCount: _selectedImages.length);
       final List<Map<String, dynamic>> items = [];
       
       for (int i = 0; i < _selectedImages.length; i++) {
@@ -648,6 +656,10 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
         for (int i = 0; i < results.length; i++) {
           _croppedImages[i].file = File(results[i] as String);
         }
+        AnalyticsService().logImageBulkCropSuccess(
+          imageCount: results.length,
+          processingTimeMs: endTime.difference(startTime).inMilliseconds,
+        );
         _showExportSuccessDialog(results.length, 'Gallery', duration);
       }
       

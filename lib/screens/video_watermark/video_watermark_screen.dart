@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 import '../../utils/font_selector.dart';
 import '../../services/video_perf_service.dart';
+import '../../services/analytics_service.dart';
 import '../../models/watermark_preset.dart';
 import '../../services/watermark_preset_service.dart';
 import '../../config/app_config.dart';
@@ -616,6 +617,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
     _avgRatio = VideoPerfService.getAvgRatio();
     _loadPreset();
     _setupMethodCallHandler();
+    AnalyticsService().setCurrentScreen(screenName: 'Video Watermark');
     if (widget.sharedVideoPaths != null && widget.sharedVideoPaths!.isNotEmpty) {
       _loadVideo(File(widget.sharedVideoPaths!.first));
       // Auto-set vertical template at the top for cropper imports
@@ -734,6 +736,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
       bgBlur: _bgBlur,
     );
     await WatermarkPresetService.savePreset(preset);
+    AnalyticsService().logSaveAction(feature: 'video_watermark', type: 'preset');
 
     setState(() { 
       _isProcessing = true; 
@@ -746,6 +749,10 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
       _remainingTime = "--:--";
     });
     _startProgressTimer();
+    AnalyticsService().logVideoProcessingStarted(
+      type: _watermarkType,
+      durationMs: _inputDurationMs,
+    );
 
     try {
       final filename = "Watermark_${DateTime.now().millisecondsSinceEpoch}.mp4";
@@ -837,6 +844,11 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
             _outputFileName = outMeta['fileName'] as String? ?? "Output";
           }
         });
+        AnalyticsService().logVideoProcessingSuccess(
+          type: _watermarkType,
+          durationMs: _inputDurationMs,
+          processingTimeMs: _processStopwatch.elapsedMilliseconds,
+        );
         _showSuccess();
       }
     } catch (e) {
@@ -856,7 +868,11 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
         } else if (e.toString().contains("PlatformException(PROCESSING_FAILED")) {
           _showError("Failed to export video. Check file sizes or try another template.");
         } else {
-          _showError(e.toString());
+          AnalyticsService().logVideoProcessingFailed(
+          type: _watermarkType,
+          error: e.toString(),
+        );
+        _showError(e.toString());
         }
       }
     }

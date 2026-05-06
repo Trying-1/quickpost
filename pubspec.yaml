@@ -21,6 +21,10 @@ dependencies:
   file_picker: ^8.0.0
   csv: ^6.0.0
   intl: ^0.18.1
+
+  # Firebase
+  firebase_core: ^3.11.0
+  firebase_analytics: ^11.4.1
   
   # Database
   hive: ^2.2.3

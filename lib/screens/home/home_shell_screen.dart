@@ -13,6 +13,7 @@ import '../caption_store/caption_store_screen.dart';
 import '../quotes/my_quotes_screen.dart';
 import '../video_watermark/video_watermark_screen.dart';
 import '../../config/app_theme.dart';
+import '../../services/analytics_service.dart';
 
 class HomeShellScreen extends StatefulWidget {
   final List<String>? sharedImagePaths;
@@ -258,6 +259,16 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         setState(() {
           _currentBottomNavIndex = index;
         });
+        
+        // Log screen view
+        final screenNames = [
+          'Video Cropper', 'Watermark', 'Captions', 'Video Text', 
+          'Post Maker', 'My Quotes', 'Image Cropper', 'Image to Video', 
+          'Text Box', 'My Audios', 'Automation', 'Profile'
+        ];
+        if (index < screenNames.length) {
+          AnalyticsService().setCurrentScreen(screenName: screenNames[index]);
+        }
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),

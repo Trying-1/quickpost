@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import '../../services/analytics_service.dart';
 
 class GridCell {
   final Rect rect; // Normalized 0.0 to 1.0
@@ -435,6 +436,7 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
     if (widget.sharedImagePaths != null && widget.sharedImagePaths!.isNotEmpty) {
       _loadSharedImages();
     }
+    AnalyticsService().setCurrentScreen(screenName: 'Collage Maker');
   }
 
   void _initializeImageData() {
@@ -635,6 +637,10 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
           if (_layouts[_selectedLayoutIndex].name == 'Dynamic Grid') {
               _generateTiledGrid(_customGridRows, _customGridCols);
           }
+          AnalyticsService().logEvent(
+            name: 'images_picked',
+            parameters: {'count': pickedFiles.length}
+          );
         });
       }
     } catch (e) {
@@ -676,8 +682,10 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
       }
     } catch (e) {
       if (mounted) Navigator.pop(context);
+      if (mounted) Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $e')));
     }
+    AnalyticsService().logSaveAction(feature: 'collage_maker', type: 'image');
   }
 
   @override

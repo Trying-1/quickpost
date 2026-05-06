@@ -7,6 +7,7 @@ import '../../models/audio_folder.dart';
 import '../../services/audio_library_service.dart';
 import '../../services/audio_backup_service.dart';
 import '../../widgets/audio_progress_dialog.dart';
+import '../../services/analytics_service.dart';
 
 class AudioLibraryScreenWithFolders extends StatefulWidget {
   final Function(AudioFile)? onAudioSelected;
@@ -34,6 +35,7 @@ class _AudioLibraryScreenWithFoldersState extends State<AudioLibraryScreenWithFo
   void initState() {
     super.initState();
     _loadData();
+    AnalyticsService().setCurrentScreen(screenName: 'Audio Library');
   }
 
   @override
@@ -164,6 +166,7 @@ class _AudioLibraryScreenWithFoldersState extends State<AudioLibraryScreenWithFo
           await _stopAudio();
         }
         await AudioLibraryService.deleteAudioFile(audioFile.id);
+        AnalyticsService().logEvent(name: 'audio_deleted');
         if (_selectedFolderId != null) {
           await _loadAudioFiles(_selectedFolderId!);
         }
@@ -232,6 +235,10 @@ class _AudioLibraryScreenWithFoldersState extends State<AudioLibraryScreenWithFo
     if (targetFolder != null) {
       try {
         await AudioLibraryService.moveAudioToFolder(audioFile.id, targetFolder.id);
+        AnalyticsService().logEvent(
+          name: 'audio_moved',
+          parameters: {'target_folder': targetFolder.name}
+        );
         if (_selectedFolderId != null) {
           await _loadAudioFiles(_selectedFolderId!);
         }
@@ -348,6 +355,7 @@ class _AudioLibraryScreenWithFoldersState extends State<AudioLibraryScreenWithFo
           colorValue: selectedColor,
           iconName: 'folder',
         );
+        AnalyticsService().logEvent(name: 'audio_folder_created');
         await _loadData();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -873,6 +881,7 @@ class _AudioLibraryScreenWithFoldersState extends State<AudioLibraryScreenWithFo
           },
         ),
       );
+      AnalyticsService().logEvent(name: 'audio_library_exported');
 
       final exportPath = await AudioBackupService.exportAudioLibrary(
         onProgress: (progress, status, current, total) {
@@ -1080,6 +1089,7 @@ class _AudioLibraryScreenWithFoldersState extends State<AudioLibraryScreenWithFo
           },
         ),
       );
+      AnalyticsService().logEvent(name: 'audio_library_imported');
 
       final result = await AudioBackupService.importAudioLibrary(
         selectedBackup.path,

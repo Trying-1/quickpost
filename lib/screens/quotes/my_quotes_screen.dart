@@ -7,6 +7,7 @@ import '../../models/quote_item.dart';
 import '../../services/my_quotes_service.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import '../../services/analytics_service.dart';
 
 class MyQuotesScreen extends StatefulWidget {
   final bool selectMode;
@@ -33,6 +34,7 @@ class _MyQuotesScreenState extends State<MyQuotesScreen> {
   void initState() {
     super.initState();
     _initData();
+    AnalyticsService().setCurrentScreen(screenName: 'My Quotes');
   }
 
   Future<void> _initData() async {
@@ -137,6 +139,7 @@ class _MyQuotesScreenState extends State<MyQuotesScreen> {
                     );
 
                     await MyQuotesService.saveQuote(newItem);
+                    AnalyticsService().logEvent(name: 'quote_added', parameters: {'category': finalCategory});
                     if (mounted) {
                       Navigator.pop(context);
                       _loadQuotes();
@@ -381,6 +384,7 @@ class _MyQuotesScreenState extends State<MyQuotesScreen> {
                       );
                       await MyQuotesService.saveQuote(newItem);
                     }
+                    AnalyticsService().logEvent(name: 'quotes_pasted', parameters: {'count': lines.length, 'category': finalCategory});
                     if (mounted) {
                       _loadQuotes();
                     }
@@ -487,6 +491,7 @@ class _MyQuotesScreenState extends State<MyQuotesScreen> {
           _loadQuotes();
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Imported quotes successfully')));
         }
+        AnalyticsService().logEvent(name: 'quotes_imported_csv', parameters: {'category': finalCategory});
       }
     } catch (e) {
       if (mounted) {
@@ -496,6 +501,7 @@ class _MyQuotesScreenState extends State<MyQuotesScreen> {
   }
 
   Future<void> _exportLibrary() async {
+    AnalyticsService().logEvent(name: 'library_exported');
     try {
       final json = await MyQuotesService.exportQuotesJson();
       final directory = await getTemporaryDirectory();
@@ -515,6 +521,7 @@ class _MyQuotesScreenState extends State<MyQuotesScreen> {
   }
 
   Future<void> _importLibraryJson() async {
+    AnalyticsService().logEvent(name: 'library_imported');
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,

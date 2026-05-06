@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../utils/font_selector.dart';
 import '../../widgets/advanced_color_picker.dart';
 import '../../utils/image_generator.dart';
+import '../../services/analytics_service.dart';
 
 class CountdownPostScreen extends StatefulWidget {
   const CountdownPostScreen({super.key});
@@ -60,6 +61,7 @@ class _CountdownPostScreenState extends State<CountdownPostScreen> {
     _quoteFont = defaultFont;
     _daysFont = defaultFont;
     _quoteController.text = "The distance between who you are and who you want to be is separated only by your actions.";
+    AnalyticsService().setCurrentScreen(screenName: 'Year Progress Post');
   }
 
   int get _daysInYear {
@@ -101,8 +103,9 @@ class _CountdownPostScreenState extends State<CountdownPostScreen> {
                     outputWidth: 1080,
                     outputHeight: 1350,
                   );
-                  if (path != null && mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    if (path != null && mounted) {
+                      AnalyticsService().logSaveAction(feature: 'year_progress', type: 'image');
+                      ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('Saved to gallery!'),
                         behavior: SnackBarBehavior.floating,

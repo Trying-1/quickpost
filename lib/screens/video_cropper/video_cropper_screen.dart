@@ -10,6 +10,7 @@ import 'package:open_file/open_file.dart';
 import '../home/home_shell_screen.dart';
 import '../../services/app_review_service.dart';
 import '../../services/video_perf_service.dart';
+import '../../services/analytics_service.dart';
 import '../../utils/video_crop_editor.dart';
 import '../../widgets/advanced_color_picker.dart';
 
@@ -68,6 +69,7 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
     _avgRatio = VideoPerfService.getAvgRatio();
     _setupMethodCallHandler();
     _loadInitialVideos();
+    AnalyticsService().setCurrentScreen(screenName: 'Video Cropper');
   }
 
   @override
@@ -236,6 +238,7 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
 
   Future<void> _processAll({bool fillEnabled = false}) async {
     if (_selectedVideos.isEmpty) return;
+    AnalyticsService().logSaveAction(feature: 'video_cropper', type: 'video_batch');
     
     setState(() {
       _isProcessing = true;

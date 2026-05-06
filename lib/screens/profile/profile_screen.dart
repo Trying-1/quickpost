@@ -11,6 +11,7 @@ import 'privacy_policy_screen.dart';
 import 'terms_of_service_screen.dart';
 import 'user_profile_screen.dart';
 import '../../config/app_theme.dart';
+import '../../services/analytics_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -28,6 +29,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _loadPackageInfo();
+    AnalyticsService().setCurrentScreen(screenName: 'Profile Settings');
   }
 
   Future<void> _loadPackageInfo() async {
@@ -175,6 +177,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           setState(() {
                             _showWatermark = value;
                             WatermarkSettings.setShowWatermark(value);
+                            AnalyticsService().logEvent(
+                              name: 'watermark_toggled',
+                              parameters: {'enabled': value}
+                            );
                           });
                         },
                         title: const Text('Show watermark on posts'),
@@ -596,6 +602,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Cache cleared successfully!')),
               );
+              AnalyticsService().logEvent(name: 'cache_cleared');
             },
             child: const Text('Clear', style: TextStyle(color: Colors.red)),
           ),
@@ -692,6 +699,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               final feedback = feedbackController.text.trim();
               if (feedback.isNotEmpty) {
                 _sendFeedbackEmail(feedback);
+                AnalyticsService().logEvent(name: 'feedback_sent');
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Thank you for your feedback!')),
@@ -737,9 +745,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'Check out Meme Flow - Create stunning social media posts, videos, and more!\n\nhttps://play.google.com/store/apps/details?id=com.quickpost.app',
       subject: 'Download Meme Flow - Social Media Creator',
     );
+    AnalyticsService().logEvent(name: 'app_shared');
   }
 
   Future<void> _sendSupportEmail() async {
+    AnalyticsService().logEvent(name: 'support_email_started');
     final Uri emailUri = Uri(
       scheme: 'mailto',
       path: 'arisesoloapp@gmail.com',

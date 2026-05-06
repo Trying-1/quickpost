@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../services/onboarding_service.dart';
+import '../../services/analytics_service.dart';
 import 'onboarding_page_welcome.dart';
 import 'onboarding_page_posts.dart';
 import 'onboarding_page_video_text.dart';
@@ -25,6 +26,12 @@ class OnboardingFlowScreen extends StatefulWidget {
 class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
   final PageController _pageController = PageController();
   int _index = 0;
+  
+  @override
+  void initState() {
+    super.initState();
+    AnalyticsService().logOnboardingStarted();
+  }
 
   final List<Widget> _pages = [
     OnboardingPageWelcome(),
@@ -45,6 +52,7 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
 
   Future<void> _finish() async {
     await OnboardingService.setCompleted(true);
+    await AnalyticsService().logOnboardingCompleted();
     widget.onFinished?.call();
   }
 

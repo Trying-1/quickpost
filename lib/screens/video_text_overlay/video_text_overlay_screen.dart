@@ -8,6 +8,7 @@ import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 import '../video_creator/widgets/audio_selector_widget.dart';
+import '../../services/analytics_service.dart';
 import '../../utils/font_selector.dart';
 
 class VideoTextOverlayScreen extends StatefulWidget {
@@ -116,6 +117,7 @@ class _VideoTextOverlayScreenState extends State<VideoTextOverlayScreen> {
     _textController.text = _textContent;
     _setupMethodCallHandler();
     _handleSharedVideos();
+    AnalyticsService().setCurrentScreen(screenName: 'Video Text');
   }
 
   void _setupMethodCallHandler() {
@@ -299,6 +301,7 @@ class _VideoTextOverlayScreenState extends State<VideoTextOverlayScreen> {
 
   Future<void> _processVideo() async {
     if (_selectedVideo == null) return;
+    AnalyticsService().logSaveAction(feature: 'video_text', type: 'video');
     setState(() { _isProcessing = true; _progress = 0.0; });
     
     _progressTimer?.cancel();

@@ -14,6 +14,7 @@ import '../../widgets/advanced_color_picker.dart';
 import '../../utils/custom_font_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../services/app_review_service.dart';
+import '../../services/analytics_service.dart';
 import '../quotes/my_quotes_screen.dart';
 import '../../models/quote_item.dart';
 
@@ -281,11 +282,11 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     );
     if (widget.sharedImagePaths != null &&
         widget.sharedImagePaths!.isNotEmpty) {
-      _slides.clear();
       for (final path in widget.sharedImagePaths!) {
         _slides.add(CarouselSlide()..image = File(path));
       }
     }
+    AnalyticsService().setCurrentScreen(screenName: 'Carousel Post');
   }
 
   @override
@@ -473,6 +474,7 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
   }
 
   Future<void> _exportAllSlides() async {
+    AnalyticsService().logSaveAction(feature: 'carousel_post', type: 'image_batch');
     if (_slides.every((s) => s.image == null && s.text.isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please add content to export')),
@@ -673,6 +675,7 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
   }
 
   Future<void> _exportAsVideo() async {
+    AnalyticsService().logSaveAction(feature: 'carousel_post', type: 'video');
     const platform = MethodChannel('com.quickpost.app/processor');
 
     // Show progress dialog

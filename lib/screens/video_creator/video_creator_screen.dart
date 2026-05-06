@@ -12,6 +12,7 @@ import 'widgets/template_selector_widget.dart';
 import 'widgets/duration_selector_widget.dart';
 import 'widgets/create_button_widget.dart';
 import '../../services/app_review_service.dart';
+import '../../services/analytics_service.dart';
 
 class VideoCreatorScreen extends StatefulWidget {
   final List<String>? sharedImagePaths;
@@ -70,6 +71,7 @@ class _VideoCreatorScreenState extends State<VideoCreatorScreen> {
     _initializeTemplateSettings();
     _setupMethodCallHandler();
     _loadSharedImages();
+    AnalyticsService().setCurrentScreen(screenName: 'Video Creator');
   }
 
   @override
@@ -177,6 +179,7 @@ class _VideoCreatorScreenState extends State<VideoCreatorScreen> {
   }
   
   Future<void> _createVideo() async {
+    AnalyticsService().logSaveAction(feature: 'video_creator', type: 'video');
     // Validate based on template type
     if (_selectedTemplateId == 'image_sequence') {
       if (_selectedImages.isEmpty) {

@@ -1,7 +1,19 @@
 import 'package:flutter/material.dart';
+import '../../services/analytics_service.dart';
 
-class SubscriptionPlanScreen extends StatelessWidget {
+class SubscriptionPlanScreen extends StatefulWidget {
   const SubscriptionPlanScreen({super.key});
+
+  @override
+  State<SubscriptionPlanScreen> createState() => _SubscriptionPlanScreenState();
+}
+
+class _SubscriptionPlanScreenState extends State<SubscriptionPlanScreen> {
+  @override
+  void initState() {
+    super.initState();
+    AnalyticsService().setCurrentScreen(screenName: 'Subscription Plans');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -393,6 +405,7 @@ class SubscriptionPlanScreen extends StatelessWidget {
   }
 
   void _showComingSoon(BuildContext context) {
+    AnalyticsService().logEvent(name: 'upgrade_plan_clicked');
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Premium plans coming soon!'),

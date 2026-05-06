@@ -8,6 +8,7 @@ import '../../utils/font_selector.dart';
 import '../../utils/image_generator.dart';
 import '../../services/app_review_service.dart';
 import '../../widgets/advanced_color_picker.dart';
+import '../../services/analytics_service.dart';
 
 class TextPostScreen extends StatefulWidget {
   const TextPostScreen({super.key});
@@ -68,6 +69,7 @@ class _TextPostScreenState extends State<TextPostScreen> {
     _textController.addListener(() {
       setState(() {});
     });
+    AnalyticsService().setCurrentScreen(screenName: 'Text Post');
   }
 
   @override
@@ -729,6 +731,10 @@ class _TextPostScreenState extends State<TextPostScreen> {
             _bulkTexts = loadedTexts;
             _currentBulkIndex = 0;
           });
+          AnalyticsService().logEvent(
+            name: 'bulk_import_csv',
+            parameters: {'count': loadedTexts.length}
+          );
         }
       }
     } catch (e) {
@@ -1274,6 +1280,7 @@ class _TextPostScreenState extends State<TextPostScreen> {
       Navigator.of(context).pop();
 
       AppReviewService().incrementExportCount();
+      AnalyticsService().logSaveAction(feature: 'text_post', type: 'image');
       AppReviewService().checkAndRequestReview();
 
       if (savedPath != null) {

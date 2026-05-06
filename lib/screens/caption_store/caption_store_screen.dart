@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../models/caption_group.dart';
 import '../../services/caption_backup_service.dart';
 import '../../services/caption_store_service.dart';
+import '../../services/analytics_service.dart';
 import '../../config/app_theme.dart';
 
 class CaptionStoreScreen extends StatefulWidget {
@@ -26,6 +27,7 @@ class _CaptionStoreScreenState extends State<CaptionStoreScreen> {
   void initState() {
     super.initState();
     _loadData();
+    AnalyticsService().setCurrentScreen(screenName: 'Caption Store');
   }
 
   Future<void> _loadData() async {
@@ -379,12 +381,14 @@ class _CaptionStoreScreenState extends State<CaptionStoreScreen> {
 
   void _copyToClipboard(String text) {
     Clipboard.setData(ClipboardData(text: text));
+    AnalyticsService().logEvent(name: 'caption_copied');
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Caption copied to clipboard!'), duration: Duration(seconds: 1)),
     );
   }
 
   Future<void> _exportCaptions() async {
+    AnalyticsService().logEvent(name: 'captions_exported');
     try {
       final filePath = await CaptionBackupService.exportCaptionStore();
       if (!mounted) return;
@@ -451,6 +455,7 @@ class _CaptionStoreScreenState extends State<CaptionStoreScreen> {
   }
 
   Future<void> _importCaptions() async {
+    AnalyticsService().logEvent(name: 'captions_imported');
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -583,6 +588,10 @@ class _CaptionStoreScreenState extends State<CaptionStoreScreen> {
                             variants: variants,
                           );
                           await CaptionStoreService.saveCaptionGroup(group);
+                          AnalyticsService().logEvent(
+                            name: existingGroup == null ? 'caption_created' : 'caption_updated',
+                            parameters: {'category': group.category ?? 'none'}
+                          );
                           Navigator.pop(context);
                           _loadData();
                         },

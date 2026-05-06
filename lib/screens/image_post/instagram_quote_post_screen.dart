@@ -16,6 +16,7 @@ import '../../models/instagram_quote_template.dart';
 import '../../services/instagram_quote_template_service.dart';
 import '../quotes/my_quotes_screen.dart';
 import '../../models/quote_item.dart';
+import '../../services/analytics_service.dart';
 import '../../services/instagram_quote_template_service.dart';
 
 class InstagramQuotePostScreen extends StatefulWidget {
@@ -118,6 +119,7 @@ class _InstagramQuotePostScreenState extends State<InstagramQuotePostScreen> {
 
       setState(() {
         _backgroundImage = File(picked.path);
+        AnalyticsService().logEvent(name: 'background_image_picked');
       });
     } catch (_) {}
   }
@@ -145,6 +147,7 @@ class _InstagramQuotePostScreenState extends State<InstagramQuotePostScreen> {
     _quoteController.text =
         'Its not about if I can, I am doing thing because I wanted to';
     _authorController.text = 'Monkey D. Luffy';
+    AnalyticsService().setCurrentScreen(screenName: 'Instagram Quote Post');
   }
 
   @override
@@ -1102,6 +1105,7 @@ class _InstagramQuotePostScreenState extends State<InstagramQuotePostScreen> {
 
         Navigator.pop(context); // Close progress dialog
         _showSuccessSnackBar('$total posts saved to gallery!');
+        AnalyticsService().logSaveAction(feature: 'instagram_quote_bulk', type: 'image');
         AppReviewService().requestReview();
       } else {
         final result = await ImageGenerator.savePostToGallery(
@@ -1112,6 +1116,7 @@ class _InstagramQuotePostScreenState extends State<InstagramQuotePostScreen> {
         );
         if (result != null) {
           _showSuccessSnackBar('Saved to gallery!');
+          AnalyticsService().logSaveAction(feature: 'instagram_quote', type: 'image');
           AppReviewService().requestReview();
         }
       }

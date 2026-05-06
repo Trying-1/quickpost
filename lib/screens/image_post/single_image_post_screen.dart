@@ -15,6 +15,7 @@ import '../audio_extraction/audio_extraction_screen.dart';
 import '../audio_library/audio_library_screen_with_folders.dart';
 import '../text_box_overlay/text_box_overlay_screen.dart';
 import '../../services/app_review_service.dart';
+import '../../services/analytics_service.dart';
 import 'templates/image_template_section.dart';
 
 class SingleImagePostScreen extends StatefulWidget {
@@ -93,6 +94,7 @@ class _SingleImagePostScreenState extends State<SingleImagePostScreen> {
     _textController.addListener(() {
       setState(() {});
     });
+    AnalyticsService().setCurrentScreen(screenName: 'Single Image Post');
   }
 
   @override
@@ -160,6 +162,7 @@ class _SingleImagePostScreenState extends State<SingleImagePostScreen> {
   }
 
   Future<void> _savePost() async {
+    AnalyticsService().logSaveAction(feature: 'single_image_post', type: 'image');
     final bool hasText = _textController.text.trim().isNotEmpty;
 
     if (_selectedImage == null) {

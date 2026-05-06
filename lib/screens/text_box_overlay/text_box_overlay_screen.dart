@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 import '../video_creator/widgets/duration_selector_widget.dart';
 import '../video_creator/widgets/audio_selector_widget.dart';
+import '../../services/analytics_service.dart';
 import '../../utils/font_selector.dart';
 
 class TextBoxOverlayScreen extends StatefulWidget {
@@ -102,6 +103,7 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> {
     _boxColorController.text = _boxColor.replaceFirst('#', '');
     _setupMethodCallHandler();
     _handleSharedImages();
+    AnalyticsService().setCurrentScreen(screenName: 'Text Box Overlay');
   }
 
   double _calculateDynamicBoxHeight({required String text}) {
@@ -402,6 +404,7 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> {
       _showErrorDialog('No Media Selected', 'Please select a video or image first.');
       return;
     }
+    AnalyticsService().logSaveAction(feature: 'text_box_overlay', type: _isImageInput ? 'image_to_video' : 'video');
     
     setState(() {
       _isProcessing = true;

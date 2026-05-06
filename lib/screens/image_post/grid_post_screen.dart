@@ -15,6 +15,7 @@ import '../audio_extraction/audio_extraction_screen.dart';
 import '../audio_library/audio_library_screen_with_folders.dart';
 import '../text_box_overlay/text_box_overlay_screen.dart';
 import '../../services/app_review_service.dart';
+import '../../services/analytics_service.dart';
 import 'templates/image_template_section.dart';
 
 class GridPostScreen extends StatefulWidget {
@@ -92,6 +93,7 @@ class _GridPostScreenState extends State<GridPostScreen> {
     _textController.addListener(() {
       setState(() {});
     });
+    AnalyticsService().setCurrentScreen(screenName: 'Grid Post');
   }
 
   @override
@@ -178,6 +180,7 @@ class _GridPostScreenState extends State<GridPostScreen> {
   }
 
   Future<void> _savePost() async {
+    AnalyticsService().logSaveAction(feature: 'grid_post', type: 'image');
     final bool hasText = _textController.text.trim().isNotEmpty;
 
     if (_gridImages.every((img) => img == null)) {

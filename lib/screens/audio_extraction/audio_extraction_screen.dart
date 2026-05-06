@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import '../../models/audio_folder.dart';
 import '../../services/audio_library_service.dart';
+import '../../services/analytics_service.dart';
 
 class AudioExtractionScreen extends StatefulWidget {
   const AudioExtractionScreen({Key? key}) : super(key: key);
@@ -24,6 +25,7 @@ class _AudioExtractionScreenState extends State<AudioExtractionScreen> {
   void initState() {
     super.initState();
     _loadFolders();
+    AnalyticsService().setCurrentScreen(screenName: 'Audio Extraction');
   }
 
   @override
@@ -170,6 +172,7 @@ class _AudioExtractionScreenState extends State<AudioExtractionScreen> {
       return;
     }
 
+    AnalyticsService().logSaveAction(feature: 'audio_extraction', type: 'audio_batch');
     setState(() => _isExtracting = true);
 
     int successCount = 0;

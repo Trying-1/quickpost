@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../services/analytics_service.dart';
 
 class UserProfileScreen extends StatefulWidget {
   const UserProfileScreen({super.key});
@@ -18,6 +19,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     _nameController = TextEditingController(text: 'QuickPost User');
     _emailController = TextEditingController(text: 'user@quickpost.app');
     _bioController = TextEditingController(text: 'Creating amazing content with QuickPost');
+    AnalyticsService().setCurrentScreen(screenName: 'User Profile');
   }
 
   @override
@@ -49,6 +51,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       duration: Duration(seconds: 2),
                     ),
                   );
+                  AnalyticsService().logEvent(name: 'user_profile_updated');
                   Navigator.pop(context);
                 },
                 child: const Text(
