@@ -1,4 +1,5 @@
 import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
 class AnalyticsService {
@@ -6,27 +7,32 @@ class AnalyticsService {
   factory AnalyticsService() => _instance;
   AnalyticsService._internal();
 
-  final FirebaseAnalytics _analytics = FirebaseAnalytics.instance;
+  FirebaseAnalytics? get _analytics {
+    try {
+      if (Firebase.apps.isEmpty) {
+        debugPrint('AnalyticsService: Firebase not initialized (apps list is empty)');
+        return null;
+      }
+      return FirebaseAnalytics.instance;
+    } catch (e) {
+      debugPrint('AnalyticsService: Error getting FirebaseAnalytics instance: $e');
+      return null;
+    }
+  }
 
-  FirebaseAnalyticsObserver get observer => FirebaseAnalyticsObserver(analytics: _analytics);
+  FirebaseAnalyticsObserver? get observer {
+    final instance = _analytics;
+    return instance != null ? FirebaseAnalyticsObserver(analytics: instance) : null;
+  }
 
   /// Log custom event
-  Future<void> logEvent({
-    required String name,
-    Map<String, Object>? parameters,
-  }) async {
-    try {
-      await _analytics.logEvent(
-        name: name,
-        parameters: parameters,
-      );
-      if (kDebugMode) {
-        print('Analytics: Event logged -> $name with $parameters');
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print('Analytics: Failed to log event $name: $e');
-      }
+  Future<void> logEvent({required String name, Map<String, Object>? parameters}) async {
+    final analytics = _analytics;
+    if (analytics != null) {
+      debugPrint('Logging Analytics Event: $name, Params: $parameters');
+      await analytics.logEvent(name: name, parameters: parameters);
+    } else {
+      debugPrint('Analytics not available, skipping event: $name');
     }
   }
 
@@ -47,18 +53,13 @@ class AnalyticsService {
   }
 
   /// Screen tracking
-  Future<void> setCurrentScreen({
-    required String screenName,
-  }) async {
-    try {
-      await _analytics.logScreenView(screenName: screenName);
-      if (kDebugMode) {
-        print('Analytics: Screen view -> $screenName');
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print('Analytics: Failed to log screen view $screenName: $e');
-      }
+  Future<void> setCurrentScreen({required String screenName}) async {
+    final instance = _analytics;
+    if (instance != null) {
+      debugPrint('Setting Analytics Screen: $screenName');
+      await instance.logScreenView(screenName: screenName);
+    } else {
+      debugPrint('Analytics not available, skipping screen view: $screenName');
     }
   }
 

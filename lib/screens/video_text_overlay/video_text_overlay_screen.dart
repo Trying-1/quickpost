@@ -10,6 +10,7 @@ import 'package:video_player/video_player.dart';
 import '../video_creator/widgets/audio_selector_widget.dart';
 import '../../services/analytics_service.dart';
 import '../../utils/font_selector.dart';
+import '../../services/ad_service.dart';
 
 class VideoTextOverlayScreen extends StatefulWidget {
   final List<String>? sharedVideoPaths;
@@ -367,6 +368,7 @@ class _VideoTextOverlayScreenState extends State<VideoTextOverlayScreen> {
   }
 
   void _showSuccessDialog() {
+    AdService().showInterstitialAd();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(

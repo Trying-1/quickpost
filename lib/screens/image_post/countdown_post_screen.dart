@@ -7,6 +7,8 @@ import '../../utils/font_selector.dart';
 import '../../widgets/advanced_color_picker.dart';
 import '../../utils/image_generator.dart';
 import '../../services/analytics_service.dart';
+import '../../services/ad_service.dart';
+import '../../services/app_review_service.dart';
 
 class CountdownPostScreen extends StatefulWidget {
   const CountdownPostScreen({super.key});
@@ -105,8 +107,10 @@ class _CountdownPostScreenState extends State<CountdownPostScreen> {
                   );
                     if (path != null && mounted) {
                       AnalyticsService().logSaveAction(feature: 'year_progress', type: 'image');
+                      AdService().showInterstitialAd();
+                      AppReviewService().requestReview();
                       ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
+                      const SnackBar(
                         content: Text('Saved to gallery!'),
                         behavior: SnackBarBehavior.floating,
                         backgroundColor: Colors.green,

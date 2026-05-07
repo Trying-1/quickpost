@@ -9,6 +9,7 @@ import '../../widgets/advanced_color_picker.dart';
 import 'arise_automation_config.dart';
 import '../video_creator/widgets/audio_selector_widget.dart';
 import '../../services/analytics_service.dart';
+import '../../services/ad_service.dart';
 
 class AriseAutomationScreen extends StatefulWidget {
   final List<String>? sharedPaths; // Generic naming
@@ -400,6 +401,7 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
   }
 
   void _showSuccessDialog() {
+    AdService().showInterstitialAd();
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -426,7 +428,10 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(entry.key),
+                    Expanded(
+                      child: Text(entry.key, overflow: TextOverflow.ellipsis),
+                    ),
+                    const SizedBox(width: 8),
                     Text('${seconds.toStringAsFixed(2)}s', style: const TextStyle(fontFamily: 'monospace')),
                   ],
                 ),
@@ -1053,6 +1058,7 @@ class _AriseAutomationScreenState extends State<AriseAutomationScreen> {
         return;
       }
 
+      AdService().showInterstitialAd();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Saved ${_outputPaths.length} images to gallery'),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'screens/home/home_shell_screen.dart';
 import 'screens/onboarding/onboarding_flow_screen.dart';
 import 'services/audio_library_service.dart';
@@ -11,21 +12,39 @@ import 'widgets/share_intent_handler.dart';
 import 'utils/custom_font_manager.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'services/analytics_service.dart';
+import 'services/ad_service.dart';
 import 'firebase_options.dart';
 import 'config/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Small delay to ensure logs are captured by the logger
+  await Future.delayed(const Duration(milliseconds: 500));
+  
+  print('====================================================');
+  print('APP STARTING: main()');
+  print('PLATFORM: $defaultTargetPlatform');
+  print('APPS BEFORE: ${Firebase.apps.length}');
   
   // Initialize Firebase
   try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    print('FIREBASE: Initializing...');
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      // On Android, Firebase.initializeApp() without options reads from google-services.json automatically
+      // which is often more robust when dealing with channel-errors.
+      await Firebase.initializeApp();
+    } else {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+    print('FIREBASE: Success! Apps: ${Firebase.apps.length}');
     await AnalyticsService().logAppOpen();
   } catch (e) {
-    debugPrint('Firebase initialization failed: $e');
+    print('FIREBASE: FAILED');
+    print('ERROR: $e');
   }
+  print('====================================================');
   
   // Initialize Audio Library Service
   await AudioLibraryService.init();
@@ -42,6 +61,9 @@ void main() async {
   
   // Initialize App Review Service
   await AppReviewService().initialize();
+  
+  // Initialize AdService
+  await AdService().initialize();
   
   // App update checks disabled in this build to reduce noisy logs and PlayCore errors.
   // If you want to re-enable, call AppUpdateService().checkForUpdate() here.
@@ -77,7 +99,7 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   String? _sharedPurpose;
   List<String>? _sharedImagePaths;
   bool _forceSkipOnboarding = false;
@@ -86,7 +108,26 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _onboardingCompletedFuture = OnboardingService.isCompleted();
+    
+    // Show App Open Ad on first launch
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AdService().showAppOpenAdIfAvailable();
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      AdService().showAppOpenAdIfAvailable();
+    }
   }
 
   void _markOnboardingDoneAndShowHome() {

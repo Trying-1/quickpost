@@ -12,6 +12,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:open_file/open_file.dart';
 import '../home/home_shell_screen.dart';
 import '../../services/app_review_service.dart';
+import '../../services/ad_service.dart';
 
 class ImageCropperScreen extends StatefulWidget {
   final List<String>? sharedImagePaths;
@@ -674,6 +675,7 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
 
 
   void _showSingleCropSuccessDialog(String path, double duration) {
+    AdService().showInterstitialAd();
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -926,6 +928,7 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
   }
 
   void _showExportSuccessDialog(int count, String path, double duration) {
+    AdService().showInterstitialAd();
     showDialog(
       context: context,
       barrierDismissible: false,

@@ -15,6 +15,7 @@ import '../../utils/custom_font_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../services/app_review_service.dart';
 import '../../services/analytics_service.dart';
+import '../../services/ad_service.dart';
 import '../quotes/my_quotes_screen.dart';
 import '../../models/quote_item.dart';
 
@@ -76,8 +77,9 @@ class CarouselSlide {
   Color glowColor = Colors.white70;
 
   // Image Adjustments
-  double brightness = 1.0;
-  double saturation = 1.0;
+  double brightness = 1.0; // 0.0 to 2.0 (multiplicative/gain)
+  double saturation = 1.0; // 0.0 to 2.0
+  double hue = 0.0;        // -3.14 to 3.14
 
   // Typography Adjustments
   double slideFontSize = 28.0;
@@ -568,8 +570,9 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
 
       if (mounted) Navigator.pop(context);
 
-      if (savedCount > 0) {
-        if (mounted) {
+        if (savedCount > 0) {
+          AdService().showInterstitialAd();
+          if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
                 content: Text(
@@ -783,6 +786,7 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
       if (mounted) Navigator.pop(context);
 
       if (result != null) {
+        AdService().showInterstitialAd();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Video saved to gallery!')),
@@ -883,7 +887,7 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     Widget imageWidget = slide.image != null
         ? ColorFiltered(
             colorFilter: ui.ColorFilter.matrix(
-                _getColorMatrix(slide.brightness, slide.saturation)),
+                _getColorMatrix(slide.brightness, slide.saturation, slide.hue)),
             child: Image.file(
               slide.image!,
               fit: BoxFit.cover,
@@ -1261,37 +1265,55 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     );
   }
 
-  List<double> _getColorMatrix(double brightness, double saturation) {
+  List<double> _getColorMatrix(double brightness, double saturation, double hue) {
     final double s = saturation;
     final double b = brightness;
+    final double h = hue;
+    final double bOffset = b * 255.0;
 
-    // Combined Brightness and Saturation Matrix
-    // Saturation constant values
-    final double invLumR = 0.213 * (1 - s);
-    final double invLumG = 0.715 * (1 - s);
-    final double invLumB = 0.072 * (1 - s);
+    // Saturation matrix coefficients
+    const double lumR = 0.2126;
+    const double lumG = 0.7152;
+    const double lumB = 0.0722;
+
+    // Hue rotation components
+    final double cosH = math.cos(h);
+    final double sinH = math.sin(h);
+
+    // Hue rotation matrix elements (standard luminance-preserving)
+    final double hR1 = lumR + cosH * (1 - lumR) + sinH * (-lumR);
+    final double hR2 = lumG + cosH * (-lumG) + sinH * (-lumG);
+    final double hR3 = lumB + cosH * (-lumB) + sinH * (1 - lumB);
+
+    final double hG1 = lumR + cosH * (-lumR) + sinH * (0.143);
+    final double hG2 = lumG + cosH * (1 - lumG) + sinH * (0.140);
+    final double hG3 = lumB + cosH * (-lumB) + sinH * (-0.283);
+
+    final double hB1 = lumR + cosH * (-lumR) + sinH * (-(1 - lumR));
+    final double hB2 = lumG + cosH * (-lumG) + sinH * (lumG);
+    final double hB3 = lumB + cosH * (1 - lumB) + sinH * (lumB);
+
+    // Saturation matrix
+    final double sr1 = lumR + (1 - lumR) * s;
+    final double sr2 = lumG - lumG * s;
+    final double sr3 = lumB - lumB * s;
+
+    final double sg1 = lumR - lumR * s;
+    final double sg2 = lumG + (1 - lumG) * s;
+    final double sg3 = lumB - lumB * s;
+
+    final double sb1 = lumR - lumR * s;
+    final double sb2 = lumG - lumG * s;
+    final double sb3 = lumB + (1 - lumB) * s;
+
+    // We simplify by combining them (order: Hue -> Saturation -> Brightness/Gain)
+    final double bGain = brightness;
 
     return <double>[
-      b * (invLumR + s),
-      b * invLumG,
-      b * invLumB,
-      0,
-      0,
-      b * invLumR,
-      b * (invLumG + s),
-      b * invLumB,
-      0,
-      0,
-      b * invLumR,
-      b * invLumG,
-      b * (invLumB + s),
-      0,
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
+      (hR1 * sr1 + hR2 * sg1 + hR3 * sb1) * bGain, (hR1 * sr2 + hR2 * sg2 + hR3 * sb2) * bGain, (hR1 * sr3 + hR2 * sg3 + hR3 * sb3) * bGain, 0, 0,
+      (hG1 * sr1 + hG2 * sg1 + hG3 * sb1) * bGain, (hG1 * sr2 + hG2 * sg2 + hG3 * sb2) * bGain, (hG1 * sr3 + hG2 * sg3 + hG3 * sb3) * bGain, 0, 0,
+      (hB1 * sr1 + hB2 * sg1 + hB3 * sb1) * bGain, (hB1 * sr2 + hB2 * sg2 + hB3 * sb2) * bGain, (hB1 * sr3 + hB2 * sg3 + hB3 * sb3) * bGain, 0, 0,
+      0, 0, 0, 1, 0,
     ];
   }
 
@@ -1436,6 +1458,7 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                   setState(() {
                     slide.brightness = 1.0;
                     slide.saturation = 1.0;
+                    slide.hue = 0.0;
                   });
                 },
                 icon: Icons.settings_backup_restore,
@@ -1455,8 +1478,8 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
           _buildAdjustmentSlider(
             label: 'Brightness',
             value: slide.brightness,
-            min: 0.5,
-            max: 1.5,
+            min: 0.0,
+            max: 2.0,
             onChanged: (val) => setState(() => slide.brightness = val),
           ),
           const SizedBox(height: 8),
@@ -1466,6 +1489,14 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
             min: 0.0,
             max: 2.0,
             onChanged: (val) => setState(() => slide.saturation = val),
+          ),
+          const SizedBox(height: 8),
+          _buildAdjustmentSlider(
+            label: 'Hue',
+            value: slide.hue,
+            min: -math.pi,
+            max: math.pi,
+            onChanged: (val) => setState(() => slide.hue = val),
           ),
           const SizedBox(height: 8),
           Text(

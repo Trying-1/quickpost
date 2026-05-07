@@ -13,6 +13,7 @@ import 'widgets/duration_selector_widget.dart';
 import 'widgets/create_button_widget.dart';
 import '../../services/app_review_service.dart';
 import '../../services/analytics_service.dart';
+import '../../services/ad_service.dart';
 
 class VideoCreatorScreen extends StatefulWidget {
   final List<String>? sharedImagePaths;
@@ -274,6 +275,9 @@ class _VideoCreatorScreenState extends State<VideoCreatorScreen> {
     // Increment export count and check for review request
     AppReviewService().incrementExportCount();
     AppReviewService().checkAndRequestReview();
+    
+    // Show interstitial ad after success
+    AdService().showInterstitialAd();
     
     showDialog(
       context: context,

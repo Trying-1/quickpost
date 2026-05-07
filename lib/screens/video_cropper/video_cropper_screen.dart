@@ -13,6 +13,7 @@ import '../../services/video_perf_service.dart';
 import '../../services/analytics_service.dart';
 import '../../utils/video_crop_editor.dart';
 import '../../widgets/advanced_color_picker.dart';
+import '../../services/ad_service.dart';
 
 class VideoCropperScreen extends StatefulWidget {
   final List<String>? sharedVideoPaths;
@@ -354,6 +355,7 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
   }
 
   void _showCompletionDialog(List<String> outputPaths, double durationInSeconds) {
+    AdService().showInterstitialAd();
     showDialog(
       context: context,
       barrierDismissible: false,

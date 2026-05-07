@@ -15,6 +15,7 @@ import 'package:open_file/open_file.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../../services/analytics_service.dart';
+import '../../services/ad_service.dart';
 
 class GridCell {
   final Rect rect; // Normalized 0.0 to 1.0
@@ -675,6 +676,7 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
 
           if (mounted) {
             Navigator.pop(context); // Close progress
+            AdService().showInterstitialAd();
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Collage saved to gallery!')));
             AppReviewService().incrementExportCount();
             AppReviewService().checkAndRequestReview();
@@ -2418,6 +2420,7 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
   }
 
   Future<void> _showSuccessDialog(String? path) async {
+    AdService().showInterstitialAd();
     return showDialog(
       context: context,
       builder: (ctx) => AlertDialog(

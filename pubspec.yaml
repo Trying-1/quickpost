@@ -43,6 +43,7 @@ dependencies:
   share_plus: ^12.0.1
   uuid: ^4.5.3
   shared_preferences: ^2.5.3
+  google_mobile_ads: ^5.1.0
 
 
 dev_dependencies:
@@ -72,51 +73,39 @@ flutter:
     - family: AlumniSans
       fonts:
         - asset: assets/fonts/AlumniSans-Regular.ttf
+    - family: AlumniSans-Bold
+      fonts:
         - asset: assets/fonts/AlumniSans-Bold.ttf
-          weight: 700
+    - family: AlumniSans-Black
+      fonts:
         - asset: assets/fonts/AlumniSans-Black.ttf
-          weight: 900
+    - family: AlumniSans-Light
+      fonts:
         - asset: assets/fonts/AlumniSans-Light.ttf
-          weight: 300
+    - family: AlumniSans-Medium
+      fonts:
         - asset: assets/fonts/AlumniSans-Medium.ttf
-          weight: 500
+    - family: AlumniSans-SemiBold
+      fonts:
         - asset: assets/fonts/AlumniSans-SemiBold.ttf
-          weight: 600
+    - family: AlumniSans-Thin
+      fonts:
         - asset: assets/fonts/AlumniSans-Thin.ttf
-          weight: 100
+    - family: AlumniSans-ExtraLight
+      fonts:
         - asset: assets/fonts/AlumniSans-ExtraLight.ttf
-          weight: 200
+    - family: AlumniSans-ExtraBold
+      fonts:
         - asset: assets/fonts/AlumniSans-ExtraBold.ttf
-          weight: 800
+    - family: AlumniSans-Italic
+      fonts:
         - asset: assets/fonts/AlumniSans-Italic.ttf
-          style: italic
-        - asset: assets/fonts/AlumniSans-BoldItalic.ttf
-          weight: 700
-          style: italic
-        - asset: assets/fonts/AlumniSans-BlackItalic.ttf
-          weight: 900
-          style: italic
-        - asset: assets/fonts/AlumniSans-LightItalic.ttf
-          weight: 300
-          style: italic
-        - asset: assets/fonts/AlumniSans-MediumItalic.ttf
-          weight: 500
-          style: italic
-        - asset: assets/fonts/AlumniSans-SemiBoldItalic.ttf
-          weight: 600
-          style: italic
-        - asset: assets/fonts/AlumniSans-ThinItalic.ttf
-          weight: 100
-          style: italic
-        - asset: assets/fonts/AlumniSans-ExtraLightItalic.ttf
-          weight: 200
-          style: italic
-        - asset: assets/fonts/AlumniSans-ExtraBoldItalic.ttf
-          weight: 800
           style: italic
     - family: AlumniSansPinstripe
       fonts:
         - asset: assets/fonts/AlumniSansPinstripe-Regular.ttf
+    - family: AlumniSansPinstripe-Italic
+      fonts:
         - asset: assets/fonts/AlumniSansPinstripe-Italic.ttf
           style: italic
     - family: Barrio
@@ -125,17 +114,15 @@ flutter:
     - family: Bellota
       fonts:
         - asset: assets/fonts/Bellota-Regular.ttf
+    - family: Bellota-Bold
+      fonts:
         - asset: assets/fonts/Bellota-Bold.ttf
-          weight: 700
+    - family: Bellota-Light
+      fonts:
         - asset: assets/fonts/Bellota-Light.ttf
-          weight: 300
+    - family: Bellota-Italic
+      fonts:
         - asset: assets/fonts/Bellota-Italic.ttf
-          style: italic
-        - asset: assets/fonts/Bellota-BoldItalic.ttf
-          weight: 700
-          style: italic
-        - asset: assets/fonts/Bellota-LightItalic.ttf
-          weight: 300
           style: italic
     - family: BhuTukaExpandedOne
       fonts:
@@ -158,7 +145,6 @@ flutter:
     - family: KleeOne
       fonts:
         - asset: assets/fonts/KleeOne-SemiBold.ttf
-          weight: 600
     - family: Lacquer
       fonts:
         - asset: assets/fonts/Lacquer-Regular.ttf
@@ -186,44 +172,33 @@ flutter:
     - family: Poppins
       fonts:
         - asset: assets/fonts/Poppins-Regular.ttf
+    - family: Poppins-Bold
+      fonts:
         - asset: assets/fonts/Poppins-Bold.ttf
-          weight: 700
+    - family: Poppins-Black
+      fonts:
         - asset: assets/fonts/Poppins-Black.ttf
-          weight: 900
+    - family: Poppins-Light
+      fonts:
         - asset: assets/fonts/Poppins-Light.ttf
-          weight: 300
+    - family: Poppins-Medium
+      fonts:
         - asset: assets/fonts/Poppins-Medium.ttf
-          weight: 500
+    - family: Poppins-SemiBold
+      fonts:
         - asset: assets/fonts/Poppins-SemiBold.ttf
-          weight: 600
+    - family: Poppins-Thin
+      fonts:
         - asset: assets/fonts/Poppins-Thin.ttf
-          weight: 100
+    - family: Poppins-ExtraLight
+      fonts:
         - asset: assets/fonts/Poppins-ExtraLight.ttf
-          weight: 200
+    - family: Poppins-ExtraBold
+      fonts:
         - asset: assets/fonts/Poppins-ExtraBold.ttf
-          weight: 800
+    - family: Poppins-Italic
+      fonts:
         - asset: assets/fonts/Poppins-Italic.ttf
-          style: italic
-        - asset: assets/fonts/Poppins-BoldItalic.ttf
-          weight: 700
-          style: italic
-        - asset: assets/fonts/Poppins-BlackItalic.ttf
-          weight: 900
-          style: italic
-        - asset: assets/fonts/Poppins-LightItalic.ttf
-          weight: 300
-          style: italic
-        - asset: assets/fonts/Poppins-MediumItalic.ttf
-          weight: 500
-          style: italic
-        - asset: assets/fonts/Poppins-SemiBoldItalic.ttf
-          weight: 600
-          style: italic
-        - asset: assets/fonts/Poppins-ThinItalic.ttf
-          weight: 100
-          style: italic
-        - asset: assets/fonts/Poppins-ExtraLightItalic.ttf
-          weight: 200
           style: italic
     - family: ProtestRevolution
       fonts:

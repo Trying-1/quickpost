@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 import '../../models/audio_folder.dart';
 import '../../services/audio_library_service.dart';
 import '../../services/analytics_service.dart';
+import '../../services/ad_service.dart';
 
 class AudioExtractionScreen extends StatefulWidget {
   const AudioExtractionScreen({Key? key}) : super(key: key);
@@ -249,6 +250,9 @@ class _AudioExtractionScreenState extends State<AudioExtractionScreen> {
     });
 
     if (mounted) {
+      if (successCount > 0) {
+        AdService().showInterstitialAd();
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Extracted $successCount audio${successCount != 1 ? 's' : ''}'

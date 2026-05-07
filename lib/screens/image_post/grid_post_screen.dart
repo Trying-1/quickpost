@@ -16,6 +16,7 @@ import '../audio_library/audio_library_screen_with_folders.dart';
 import '../text_box_overlay/text_box_overlay_screen.dart';
 import '../../services/app_review_service.dart';
 import '../../services/analytics_service.dart';
+import '../../services/ad_service.dart';
 import 'templates/image_template_section.dart';
 
 class GridPostScreen extends StatefulWidget {
@@ -257,6 +258,7 @@ class _GridPostScreenState extends State<GridPostScreen> {
       AppReviewService().checkAndRequestReview();
 
       if (savedPath != null) {
+        AdService().showInterstitialAd();
         showDialog(
           context: context,
           barrierDismissible: false,

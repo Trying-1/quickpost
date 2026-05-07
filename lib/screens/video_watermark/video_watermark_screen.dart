@@ -16,6 +16,7 @@ import '../../models/watermark_preset.dart';
 import '../../services/watermark_preset_service.dart';
 import '../../config/app_config.dart';
 import '../../widgets/advanced_color_picker.dart';
+import '../../services/ad_service.dart';
 
 class VideoWatermarkScreen extends StatefulWidget {
   final List<String>? sharedVideoPaths;
@@ -338,8 +339,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
         _profileImage = null;
       }
       
-      _selectedUsernameFont = FontInfo(family: target.fontFamily, displayName: target.fontFamily);
-      _selectedHandleFont = FontInfo(family: target.handleFontFamily ?? target.fontFamily, displayName: target.handleFontFamily ?? target.fontFamily);
+      _selectedUsernameFont = FontInfo.getFontByFamily(target.fontFamily) ?? FontInfo(family: target.fontFamily, displayName: target.fontFamily);
+      _selectedHandleFont = FontInfo.getFontByFamily(target.handleFontFamily ?? target.fontFamily) ?? _selectedUsernameFont;
       _showStoryRing = target.showStoryRing;
       _isVerified = target.isVerified;
       _videoY = target.videoY;
@@ -939,6 +940,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
   }
 
   void _showSuccess() {
+    AdService().showInterstitialAd();
     showDialog(
       context: context, 
       builder: (c) => Dialog(

@@ -752,12 +752,28 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         }
 
         if (fontPath.isNotEmpty() && File(fontPath).exists()) {
-             try { textPaint.typeface = Typeface.createFromFile(fontPath) } catch (_: Exception) {}
+             try { 
+                 textPaint.typeface = Typeface.createFromFile(fontPath) 
+                 Log.d(TAG, "Successfully loaded username typeface from: $fontPath")
+             } catch (e: Exception) {
+                 Log.e(TAG, "Failed to load username typeface from $fontPath: ${e.message}")
+             }
+        } else {
+             Log.w(TAG, "Username fontPath is empty or file does not exist: $fontPath")
         }
+
         if (handleFontPath.isNotEmpty() && File(handleFontPath).exists()) {
-             try { handlePaint.typeface = Typeface.createFromFile(handleFontPath) } catch (_: Exception) {}
+             try { 
+                 handlePaint.typeface = Typeface.createFromFile(handleFontPath) 
+                 Log.d(TAG, "Successfully loaded handle typeface from: $handleFontPath")
+             } catch (e: Exception) {
+                 Log.e(TAG, "Failed to load handle typeface from $handleFontPath: ${e.message}")
+             }
         } else if (fontPath.isNotEmpty() && File(fontPath).exists()) {
-             try { handlePaint.typeface = Typeface.createFromFile(fontPath) } catch (_: Exception) {}
+             try { 
+                 handlePaint.typeface = Typeface.createFromFile(fontPath) 
+                 Log.d(TAG, "Fallback: Loaded handle typeface from username fontPath")
+             } catch (_: Exception) {}
         }
 
         // 1. Prepare Content & Icon

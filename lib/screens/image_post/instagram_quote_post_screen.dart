@@ -17,6 +17,7 @@ import '../../services/instagram_quote_template_service.dart';
 import '../quotes/my_quotes_screen.dart';
 import '../../models/quote_item.dart';
 import '../../services/analytics_service.dart';
+import '../../services/ad_service.dart';
 import '../../services/instagram_quote_template_service.dart';
 
 class InstagramQuotePostScreen extends StatefulWidget {
@@ -1106,6 +1107,7 @@ class _InstagramQuotePostScreenState extends State<InstagramQuotePostScreen> {
         Navigator.pop(context); // Close progress dialog
         _showSuccessSnackBar('$total posts saved to gallery!');
         AnalyticsService().logSaveAction(feature: 'instagram_quote_bulk', type: 'image');
+        AdService().showInterstitialAd();
         AppReviewService().requestReview();
       } else {
         final result = await ImageGenerator.savePostToGallery(
@@ -1117,6 +1119,7 @@ class _InstagramQuotePostScreenState extends State<InstagramQuotePostScreen> {
         if (result != null) {
           _showSuccessSnackBar('Saved to gallery!');
           AnalyticsService().logSaveAction(feature: 'instagram_quote', type: 'image');
+          AdService().showInterstitialAd();
           AppReviewService().requestReview();
         }
       }
