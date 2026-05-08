@@ -60,9 +60,32 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         varying vec2 vTexCoord;
         uniform samplerExternalOES sTexture;
         uniform float uAlpha;
+        uniform vec2 uSize;
+        uniform float uRadius;
+        uniform vec3 uBorderColor;
+        uniform float uBorderWidth;
+
+        float roundedRect(vec2 p, vec2 b, float r) {
+            vec2 d = abs(p - b) - (b - r);
+            return length(max(d, 0.0)) - r;
+        }
+
         void main() {
             vec4 color = texture2D(sTexture, vTexCoord);
-            gl_FragColor = vec4(color.rgb * uAlpha, color.a * uAlpha);
+            
+            vec2 p = vTexCoord * uSize;
+            float d = roundedRect(p, uSize * 0.5, uRadius);
+            
+            // Main clip mask
+            float mask = 1.0 - smoothstep(-1.0, 0.0, d);
+            
+            if (uBorderWidth > 0.0) {
+                // Border mask: 1.0 when -uBorderWidth < d < 0
+                float borderMask = smoothstep(-uBorderWidth - 1.0, -uBorderWidth, d) * (1.0 - smoothstep(-1.0, 0.0, d));
+                color.rgb = mix(color.rgb, uBorderColor, borderMask);
+            }
+            
+            gl_FragColor = vec4(color.rgb * uAlpha * mask, color.a * uAlpha * mask);
         }
     """.trimIndent()
 
@@ -227,6 +250,15 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         val bgSaturation = (params["bgSaturation"] as? Number)?.toFloat() ?: 1.0f
         val bgBlur = (params["bgBlur"] as? Number)?.toFloat() ?: 0f
         val videoY = (params["videoY"] as? Number)?.toFloat() ?: 0.5f
+        val videoScale = (params["videoScale"] as? Number)?.toFloat() ?: 1.0f
+        
+        // Video Shadow parameters
+        val showVideoShadow = params["showVideoShadow"] as? Boolean ?: false
+        val videoShadowColorStr = params["videoShadowColor"] as? String ?: "#000000"
+        val videoShadowBlur = (params["videoShadowBlur"] as? Number)?.toFloat() ?: 10f
+        val videoShadowSpread = (params["videoShadowSpread"] as? Number)?.toFloat() ?: 0f
+        val videoShadowOffsetX = (params["videoShadowOffsetX"] as? Number)?.toFloat() ?: 0f
+        val videoShadowOffsetY = (params["videoShadowOffsetY"] as? Number)?.toFloat() ?: 0f
 
         // 1. Open input video
         val extractor = MediaExtractor()
@@ -378,6 +410,50 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         val boxH = watermarkResult.boxHeight
         watermarkResult.bitmap.recycle()
 
+        // --- Video Shadow Texture ---
+        var videoShadowTexId = 0
+        val videoShadowMvp = FloatArray(16)
+        var shadowBmpW = 0f
+        var shadowBmpH = 0f
+
+        if (showVideoShadow) {
+            // Calculate effective video dimensions in outWidth/outHeight space
+            val aspectIn = inputWidth.toFloat() / inputHeight.toFloat()
+            val aspectOut = outWidth.toFloat() / outHeight.toFloat()
+            val sY = if (aspectIn > aspectOut) aspectOut / aspectIn else 1.0f
+            val sX = if (aspectIn < aspectOut) aspectIn / aspectOut else 1.0f
+            
+            val effVideoW = outWidth * sX
+            val effVideoH = outHeight * sY
+            
+            // Scale blur and spread to match visual proportion (reference width 360)
+            val shadowScale = outWidth / 360f
+            val scaledBlur = videoShadowBlur * shadowScale
+            val scaledSpread = videoShadowSpread * shadowScale
+            
+            val radiusScale = outWidth / 360f
+            val scaledRadius = (params["videoRadius"] as? Number)?.toFloat() ?: 0f
+            val shadowResult = renderVideoShadowBitmap(effVideoW, effVideoH, videoShadowColorStr, scaledBlur, scaledSpread, scaledRadius * radiusScale)
+            videoShadowTexId = loadBitmapTexture(flipBitmapVertically(shadowResult.bitmap))
+            shadowBmpW = shadowResult.fullWidth
+            shadowBmpH = shadowResult.fullHeight
+            
+            // Calculate Shadow MVP
+            android.opengl.Matrix.setIdentityM(videoShadowMvp, 0)
+            
+            // Initial translation for video centering
+            val glVideoY = (0.5f - videoY) * 2f * (1.0f - sY)
+            
+            // Apply User Offsets (convert pixels to NDC)
+            val glShadowOffsetX = (videoShadowOffsetX / outWidth.toFloat()) * 2f
+            val glShadowOffsetY = -(videoShadowOffsetY / outHeight.toFloat()) * 2f
+            
+            android.opengl.Matrix.translateM(videoShadowMvp, 0, glShadowOffsetX, glVideoY + glShadowOffsetY, 0f)
+            android.opengl.Matrix.scaleM(videoShadowMvp, 0, (shadowBmpW / outWidth.toFloat()) * videoScale, (shadowBmpH / outHeight.toFloat()) * videoScale, 1.0f)
+            
+            shadowResult.bitmap.recycle()
+        }
+
         // Patch textures (shared for all patches render)
         patchTopTexId = createEmptyTexture(outWidth, outHeight)
         patchBottomTexId = createEmptyTexture(outWidth, outHeight)
@@ -480,7 +556,9 @@ class OpenGLWatermarkProcessor(private val context: Context) {
              // 3. Apply Transformations: Translate FIRST, then Scale
              // This ensures translation is in NDC space relative to the canvas, not the video's fitted size.
              android.opengl.Matrix.translateM(videoMvp, 0, 0f, glVideoY, 0f)
-             android.opengl.Matrix.scaleM(videoMvp, 0, sX, sY, 1.0f)
+             android.opengl.Matrix.scaleM(videoMvp, 0, sX * videoScale, sY * videoScale, 1.0f)
+        } else {
+             android.opengl.Matrix.scaleM(videoMvp, 0, videoScale, videoScale, 1.0f)
         }
 
         val identityMvp = FloatArray(16)
@@ -552,10 +630,35 @@ class OpenGLWatermarkProcessor(private val context: Context) {
                            draw2DTexture(patchBottomTexId, identityMvp, 1.0f)
                         }
 
-                        // 3. Draw Video Frame (OES)
+                        // 3. Draw Video Shadow
+                        if (videoShadowTexId != 0) {
+                            GLES20.glEnable(GLES20.GL_BLEND)
+                            // Use premultiplied alpha blending for Android Bitmaps
+                            GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA)
+                            draw2DTexture(videoShadowTexId, videoShadowMvp, 1.0f)
+                        }
+
+                        // 4. Draw Video Frame (OES)
+                        GLES20.glEnable(GLES20.GL_BLEND)
                         GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
                         
-                        drawOESTexture(oesTexId, texMatrix, videoMvp, 1.0f)
+                        // Calculate effective dimensions for the shader's corner radius math
+                        val aspectIn = inputWidth.toFloat() / inputHeight.toFloat()
+                        val aspectOut = outWidth.toFloat() / outHeight.toFloat()
+                        val sY = if (aspectIn > aspectOut) aspectOut / aspectIn else 1.0f
+                        val sX = if (aspectIn < aspectOut) aspectIn / aspectOut else 1.0f
+                        val vW = outWidth * sX
+                        val vH = outHeight * sY
+                        val rawRadius = (params["videoRadius"] as? Number)?.toFloat() ?: 0f
+                        val radiusScale = outWidth / 360f
+                        val vRadius = rawRadius * radiusScale
+                        val vBorderWidth = (params["videoBorderWidth"] as? Number)?.toFloat() ?: 0f
+                        val vBorderColor = params["videoBorderColor"] as? String ?: "#000000"
+                        
+                        val borderScale = outWidth / 360f
+                        val scaledBorderWidth = vBorderWidth * borderScale
+
+                        drawOESTexture(oesTexId, texMatrix, videoMvp, 1.0f, vW, vH, vRadius, scaledBorderWidth, vBorderColor)
 
                         // If GIF, re-render only the small box and update texture
                         if (movie != null && movie.duration() > 0) {
@@ -647,7 +750,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
             throw e
         } finally {
             val overlayTexIds = overlayRuntimes.map { it.texId }.toIntArray()
-            cleanup(encoder, encoderSurface, extractor, decoder, decoderSurface, muxer, oesTexId, watermarkTexId, bgTexId, patchTopTexId, patchBottomTexId, *overlayTexIds)
+            cleanup(encoder, encoderSurface, extractor, decoder, decoderSurface, muxer, oesTexId, watermarkTexId, bgTexId, patchTopTexId, patchBottomTexId, videoShadowTexId, *overlayTexIds)
             releaseEGL()
             surfaceTexture.release()
         }
@@ -1264,7 +1367,17 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         return GLES20.glCreateProgram().apply { GLES20.glAttachShader(this, v); GLES20.glAttachShader(this, f); GLES20.glLinkProgram(this) }
     }
 
-    private fun drawOESTexture(texId: Int, texMat: FloatArray, mvp: FloatArray, alpha: Float) {
+    private fun drawOESTexture(
+        texId: Int, 
+        texMat: FloatArray, 
+        mvp: FloatArray, 
+        alpha: Float, 
+        width: Float = 1080f, 
+        height: Float = 1920f, 
+        radius: Float = 0f,
+        borderWidth: Float = 0f,
+        borderColor: String = "#FFFFFF"
+    ) {
         GLES20.glUseProgram(programOES)
         val pos = GLES20.glGetAttribLocation(programOES, "aPosition")
         val tex = GLES20.glGetAttribLocation(programOES, "aTexCoord")
@@ -1273,6 +1386,14 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         GLES20.glUniformMatrix4fv(GLES20.glGetUniformLocation(programOES, "uMVPMatrix"), 1, false, mvp, 0)
         GLES20.glUniformMatrix4fv(GLES20.glGetUniformLocation(programOES, "uTexMatrix"), 1, false, texMat, 0)
         GLES20.glUniform1f(GLES20.glGetUniformLocation(programOES, "uAlpha"), alpha)
+        GLES20.glUniform2f(GLES20.glGetUniformLocation(programOES, "uSize"), width, height)
+        GLES20.glUniform1f(GLES20.glGetUniformLocation(programOES, "uRadius"), radius)
+        GLES20.glUniform1f(GLES20.glGetUniformLocation(programOES, "uBorderWidth"), borderWidth)
+        
+        val color = try { Color.parseColor(borderColor) } catch (e: Exception) { Color.WHITE }
+        GLES20.glUniform3f(GLES20.glGetUniformLocation(programOES, "uBorderColor"), 
+            Color.red(color)/255f, Color.green(color)/255f, Color.blue(color)/255f)
+
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0); GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, texId)
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
     }
@@ -1422,5 +1543,58 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         if (validTexs.isNotEmpty()) {
             GLES20.glDeleteTextures(validTexs.size, validTexs.toIntArray(), 0)
         }
+    }
+
+    class VideoShadowResult(val bitmap: Bitmap, val fullWidth: Float, val fullHeight: Float)
+
+    private fun renderVideoShadowBitmap(
+        width: Float, 
+        height: Float, 
+        colorStr: String, 
+        blur: Float, 
+        spread: Float,
+        radius: Float = 0f
+    ): VideoShadowResult {
+        // Padding for blur and spread - needs to be generous to avoid clipping
+        val padding = (blur * 4 + spread * 2).toInt().coerceAtLeast(40)
+        val bmpW = (width + padding).toInt()
+        val bmpH = (height + padding).toInt()
+        
+        val bitmap = Bitmap.createBitmap(bmpW, bmpH, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        
+        val shadowColor = try { Color.parseColor(colorStr) } catch (e: Exception) { Color.BLACK }
+        
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = shadowColor
+            style = Paint.Style.FILL
+            if (blur > 0) {
+                // NORMAL blur provides the softest, most accurate Gaussian falloff.
+                maskFilter = BlurMaskFilter(blur.coerceAtLeast(0.1f), BlurMaskFilter.Blur.NORMAL)
+            }
+        }
+        
+        // The rect is centered in the bitmap and expanded by 'spread'
+        // We use spread/2 because we want to expand by 'spread' in total width/height 
+        // (Wait, Flutter's spreadRadius expands by that amount on EACH side)
+        // So rect should be expanded by 'spread' on each side.
+        val rectX = (bmpW - width) / 2f - spread
+        val rectY = (bmpH - height) / 2f - spread
+        val shadowRect = RectF(
+            rectX,
+            rectY,
+            rectX + width + spread * 2,
+            rectY + height + spread * 2
+        )
+        
+        // Draw twice for density - this solves the "faded" look while keeping the edges soft
+        if (radius > 0) {
+            canvas.drawRoundRect(shadowRect, radius + spread, radius + spread, paint)
+            canvas.drawRoundRect(shadowRect, radius + spread, radius + spread, paint)
+        } else {
+            canvas.drawRect(shadowRect, paint)
+            canvas.drawRect(shadowRect, paint)
+        }
+        return VideoShadowResult(bitmap, bmpW.toFloat(), bmpH.toFloat())
     }
 }

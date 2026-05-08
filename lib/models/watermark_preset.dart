@@ -142,6 +142,18 @@ class WatermarkPreset extends HiveObject {
   @HiveField(48)
   double bgBlur;
 
+  @HiveField(49)
+  double videoRadius;
+
+  @HiveField(50)
+  double videoBorderWidth;
+
+  @HiveField(51)
+  String videoBorderColor;
+
+  @HiveField(52)
+  double videoScale;
+
   WatermarkPreset({
     required this.id,
     required this.name,
@@ -192,6 +204,10 @@ class WatermarkPreset extends HiveObject {
     this.bgBrightness = 1.0,
     this.bgSaturation = 1.0,
     this.bgBlur = 0.0,
+    this.videoRadius = 0.0,
+    this.videoBorderWidth = 0.0,
+    this.videoBorderColor = "#000000",
+    this.videoScale = 1.0,
   });
 
   Map<String, dynamic> toMap() {
@@ -245,6 +261,10 @@ class WatermarkPreset extends HiveObject {
       'bgBrightness': bgBrightness,
       'bgSaturation': bgSaturation,
       'bgBlur': bgBlur,
+      'videoRadius': videoRadius,
+      'videoBorderWidth': videoBorderWidth,
+      'videoBorderColor': videoBorderColor,
+      'videoScale': videoScale,
     };
   }
 
@@ -299,6 +319,10 @@ class WatermarkPreset extends HiveObject {
       bgBrightness: (map['bgBrightness'] as num?)?.toDouble() ?? 1.0,
       bgSaturation: (map['bgSaturation'] as num?)?.toDouble() ?? 1.0,
       bgBlur: (map['bgBlur'] as num?)?.toDouble() ?? 0.0,
+      videoRadius: (map['videoRadius'] as num?)?.toDouble() ?? 0.0,
+      videoBorderWidth: (map['videoBorderWidth'] as num?)?.toDouble() ?? 0.0,
+      videoBorderColor: map['videoBorderColor'] ?? '#FFFFFF',
+      videoScale: (map['videoScale'] as num?)?.toDouble() ?? 1.0,
     );
   }
 }

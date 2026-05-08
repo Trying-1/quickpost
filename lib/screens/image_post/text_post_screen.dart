@@ -70,6 +70,19 @@ class _TextOverlay {
   double shadowOffsetY;
   TextAlign textAlign;
   double scale;
+  
+  // New unified fields
+  double letterSpacing;
+  double lineHeight;
+  bool showGlow;
+  Color glowColor;
+  double glowRadius;
+  
+  // Box properties
+  bool showBox;
+  Color boxColor;
+  double boxOpacity;
+  double boxRadius;
 
   _TextOverlay({
     required this.text,
@@ -85,6 +98,15 @@ class _TextOverlay {
     this.shadowOffsetY = 2.0,
     this.textAlign = TextAlign.center,
     this.scale = 1.0,
+    this.letterSpacing = 0.0,
+    this.lineHeight = 1.2,
+    this.showGlow = false,
+    this.glowColor = Colors.white,
+    this.glowRadius = 10.0,
+    this.showBox = false,
+    this.boxColor = Colors.white,
+    this.boxOpacity = 0.8,
+    this.boxRadius = 8.0,
   });
 }
 
@@ -102,18 +124,26 @@ class _TextPostScreenState extends State<TextPostScreen> {
   FontInfo? _selectedFont;
   Color _textColor = Colors.black87;
   Color _backgroundColor = Colors.white;
-  bool _enableTextShadow = false;
-  bool _enableTextGlow = false;
-  Color _shadowColor = Colors.black;
-  Color _glowColor = Colors.white;
-  double _glowRadius = 10.0;
-  double _shadowOffsetX = 2.0;
-  double _shadowOffsetY = 2.0;
-  double _shadowBlurRadius = 4.0;
-  double _letterSpacing = 0.0;
+  
+  // State variables
   double _fontSize = 1.0; // relative multiplier
   double _lineHeight = 1.2; // Text height multiplier
   double _textScale = 1.0; // Overall scale multiplier
+  bool _enableTextShadow = false;
+  Color _shadowColor = Colors.black;
+  double _shadowOffsetX = 2.0;
+  double _shadowOffsetY = 2.0;
+  double _shadowBlurRadius = 5.0;
+  bool _enableTextGlow = false;
+  Color _glowColor = Colors.white;
+  double _glowRadius = 10.0;
+
+  // Box styles for main text
+  bool _showMainBox = false;
+  Color _mainBoxColor = Colors.white;
+  double _mainBoxOpacity = 0.8;
+  double _mainBoxRadius = 8.0;
+  double _letterSpacing = 0.0;
 
   // Background Image & Adjustments
   File? _bgImage;
@@ -131,9 +161,6 @@ class _TextPostScreenState extends State<TextPostScreen> {
 
   int _selectedTabIndex = 0; // 0: Text, 1: Font, 2: Colors, 3: Effects, 4: Spacing, 5: Align, 6: Position, 7: Image, 8: Adjust, 9: Mask
   bool _isTabContentExpanded = false;
-  bool _isBulkMode = false;
-  List<String> _bulkTexts = [];
-  int _currentBulkIndex = 0;
 
   TextAlign _textAlign = TextAlign.center;
   Alignment _textPosition = Alignment.center;
@@ -144,7 +171,7 @@ class _TextPostScreenState extends State<TextPostScreen> {
   List<_OverlayImage> _imageOverlays = [];
   int? _selectedImageOverlayIndex;
   List<_TextOverlay> _textOverlays = [];
-  int? _selectedTextOverlayIndex;
+  int _selectedTextIndex = -1; // -1: Main Text, 0..N: Extra layers
 
   bool _isExporting = false;
 
@@ -185,29 +212,77 @@ class _TextPostScreenState extends State<TextPostScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        toolbarHeight: 40,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-        titleSpacing: 0,
-        title: const Text(
-          'Simple Text Post',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-        ),
-      ),
-      backgroundColor: Colors.grey[50],
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(child: _buildPreviewArea()),
-            _buildControlsSection(),
+    try {
+      // Safety check: ensure _selectedTextIndex is valid
+      if (_selectedTextIndex >= _textOverlays.length) {
+        debugPrint('[TextPostScreen] build() - FIXING INVALID INDEX: $_selectedTextIndex (max: ${_textOverlays.length - 1})');
+        _selectedTextIndex = -1;
+      }
+      
+      debugPrint('[TextPostScreen] build() - _selectedTextIndex: $_selectedTextIndex, overlays: ${_textOverlays.length}, images: ${_imageOverlays.length}, patches: ${_patches.length}');
+      return Scaffold(
+        appBar: AppBar(
+          toolbarHeight: 56,
+          backgroundColor: Colors.white,
+          elevation: 0.5,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black87, size: 20),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+          titleSpacing: 0,
+          title: const Text(
+            'Edit Post',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black87),
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.help_outline_rounded, color: Colors.grey, size: 22),
+              onPressed: () {},
+            ),
           ],
         ),
-      ),
-    );
+        backgroundColor: Colors.grey[50],
+        body: SafeArea(
+          child: Column(
+            children: [
+              Expanded(child: () {
+                debugPrint('[TextPostScreen] Calling _buildPreviewArea');
+                return _buildPreviewArea();
+              }()),
+              () {
+                debugPrint('[TextPostScreen] Calling _buildControlsSection');
+                return _buildControlsSection();
+              }(),
+            ],
+          ),
+        ),
+      );
+    } catch (e, stack) {
+      debugPrint('[TextPostScreen] CRITICAL ERROR IN build(): $e');
+      debugPrint(stack.toString());
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                const SizedBox(height: 16),
+                const Text('A rendering error occurred.', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Text(e.toString(), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: Colors.red)),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () => setState(() {}),
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   Widget _buildCanvasSection() {
@@ -248,6 +323,8 @@ class _TextPostScreenState extends State<TextPostScreen> {
   }
 
   Widget _buildPositionSection() {
+    final bool isMain = _selectedTextIndex == -1;
+    
     const presets = [
       {'label': 'Center', 'alignment': Alignment.center},
       {'label': 'Top', 'alignment': Alignment.topCenter},
@@ -262,13 +339,28 @@ class _TextPostScreenState extends State<TextPostScreen> {
         child: Row(
           children: presets.map((preset) {
             final Alignment target = preset['alignment'] as Alignment;
-            final bool isSelected = _textPosition == target;
+            bool isSelected;
+            if (isMain) {
+              isSelected = _textPosition == target;
+            } else {
+              final t = _textOverlays[_selectedTextIndex];
+              // Approx comparison for normalized vs Alignment
+              final double tx = (t.x * 2 - 1);
+              final double ty = (t.y * 2 - 1);
+              isSelected = (tx - target.x).abs() < 0.1 && (ty - target.y).abs() < 0.1;
+            }
+
             return Padding(
               padding: const EdgeInsets.only(right: 6),
               child: GestureDetector(
                 onTap: () {
                   setState(() {
-                    _textPosition = target;
+                    if (isMain) {
+                      _textPosition = target;
+                    } else {
+                      _textOverlays[_selectedTextIndex].x = (target.x + 1) / 2;
+                      _textOverlays[_selectedTextIndex].y = (target.y + 1) / 2;
+                    }
                   });
                 },
                 child: Container(
@@ -296,86 +388,82 @@ class _TextPostScreenState extends State<TextPostScreen> {
       );
     }
 
-    Widget buildArrowPad() {
-      const double step = 0.1;
 
-      void nudge(double dx, double dy) {
-        setState(() {
-          final double newX = (_textPosition.x + dx).clamp(-1.0, 1.0);
-          final double newY = (_textPosition.y + dy).clamp(-1.0, 1.0);
-          _textPosition = Alignment(newX, newY);
-        });
-      }
-
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          IconButton(
-            onPressed: () => nudge(0, -step),
-            icon: const Icon(Icons.keyboard_arrow_up),
-            iconSize: 22,
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton(
-                onPressed: () => nudge(-step, 0),
-                icon: const Icon(Icons.keyboard_arrow_left),
-                iconSize: 22,
-              ),
-              IconButton(
-                onPressed: () {
-                  setState(() {
-                    _textPosition = Alignment.center;
-                  });
-                },
-                icon: const Icon(Icons.adjust),
-                iconSize: 20,
-              ),
-              IconButton(
-                onPressed: () => nudge(step, 0),
-                icon: const Icon(Icons.keyboard_arrow_right),
-                iconSize: 22,
-              ),
-            ],
-          ),
-          IconButton(
-            onPressed: () => nudge(0, step),
-            icon: const Icon(Icons.keyboard_arrow_down),
-            iconSize: 22,
-          ),
-        ],
-      );
-    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Position',
+        Text(
+          'PRESETS',
           style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
+            fontSize: 10, 
+            fontWeight: FontWeight.w700, 
+            color: Colors.grey[600],
+            letterSpacing: 1.2,
           ),
         ),
-        const SizedBox(height: 8),
-        buildPresetChips(),
         const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Fine tune',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
-            ),
-            buildArrowPad(),
-          ],
+        buildPresetChips(),
+        const SizedBox(height: 24),
+        
+        _buildSimpleSlider(
+          label: 'Horizontal Position (X)',
+          value: isMain ? _textPosition.x : _textOverlays[_selectedTextIndex].x,
+          min: isMain ? -1.0 : 0.0,
+          max: 1.0,
+          step: 0.01,
+          onChanged: (v) => setState(() {
+            if (isMain) {
+              _textPosition = Alignment(v, _textPosition.y);
+            } else {
+              _textOverlays[_selectedTextIndex].x = v;
+            }
+          }),
+          onReset: () => setState(() {
+            if (isMain) {
+              _textPosition = Alignment(0.0, _textPosition.y);
+            } else {
+              _textOverlays[_selectedTextIndex].x = 0.5;
+            }
+          }),
+        ),
+        
+        const SizedBox(height: 16),
+        
+        _buildSimpleSlider(
+          label: 'Vertical Position (Y)',
+          value: isMain ? _textPosition.y : _textOverlays[_selectedTextIndex].y,
+          min: isMain ? -1.0 : 0.0,
+          max: 1.0,
+          step: 0.01,
+          onChanged: (v) => setState(() {
+            if (isMain) {
+              _textPosition = Alignment(_textPosition.x, v);
+            } else {
+              _textOverlays[_selectedTextIndex].y = v;
+            }
+          }),
+          onReset: () => setState(() {
+            if (isMain) {
+              _textPosition = Alignment(_textPosition.x, 0.0);
+            } else {
+              _textOverlays[_selectedTextIndex].y = 0.5;
+            }
+          }),
         ),
       ],
     );
   }
 
   Widget _buildAlignmentSection() {
+    final bool isMain = _selectedTextIndex == -1;
+    debugPrint('[TextPostScreen] _buildAlignmentSection() - isMain: $isMain, index: $_selectedTextIndex');
+    if (!isMain && (_selectedTextIndex < 0 || _selectedTextIndex >= _textOverlays.length)) {
+      return const Center(child: Text('Overlay selection error'));
+    }
+
+    final TextAlign currentAlign = isMain ? _textAlign : _textOverlays[_selectedTextIndex].textAlign;
+
     final options = [
       {
         'icon': Icons.format_align_left,
@@ -408,14 +496,15 @@ class _TextPostScreenState extends State<TextPostScreen> {
         Row(
           children: options.map((opt) {
             final TextAlign align = opt['align'] as TextAlign;
-            final bool isSelected = _textAlign == align;
+            final bool isSelected = currentAlign == align;
             return Expanded(
               child: Padding(
                 padding: const EdgeInsets.only(right: 6),
                 child: GestureDetector(
                   onTap: () {
                     setState(() {
-                      _textAlign = align;
+                      if (isMain) _textAlign = align;
+                      else _textOverlays[_selectedTextIndex].textAlign = align;
                     });
                   },
                   child: Container(
@@ -427,21 +516,20 @@ class _TextPostScreenState extends State<TextPostScreen> {
                         color: isSelected ? Colors.blueGrey : Colors.grey[300]!,
                       ),
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    child: Column(
                       children: [
                         Icon(
                           opt['icon'] as IconData,
-                          size: 16,
-                          color: isSelected ? Colors.blueGrey : Colors.grey[700],
+                          size: 18,
+                          color: isSelected ? Colors.blueGrey[800] : Colors.grey[600],
                         ),
-                        const SizedBox(width: 4),
+                        const SizedBox(height: 4),
                         Text(
                           opt['label'] as String,
                           style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: isSelected ? Colors.blueGrey : Colors.grey[800],
+                            fontSize: 10,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            color: isSelected ? Colors.blueGrey[800] : Colors.grey[600],
                           ),
                         ),
                       ],
@@ -545,36 +633,29 @@ class _TextPostScreenState extends State<TextPostScreen> {
   }
 
   Widget _buildPreviewSection({bool isExport = false}) {
-    String previewText = '';
-    if (_isBulkMode && _bulkTexts.isNotEmpty) {
-      previewText = _bulkTexts[_currentBulkIndex];
-    } else {
-      previewText = _textController.text.isEmpty ? 'Your text here' : _textController.text;
-    }
+    String previewText = _textController.text.isEmpty ? 'Your text here' : _textController.text;
 
     Widget content = LayoutBuilder(
       builder: (context, constraints) {
-        return GestureDetector(
-          onPanUpdate: (isExport || _selectedTabIndex == 7) ? null : (details) {
-            setState(() {
-              final RenderBox box = context.findRenderObject() as RenderBox;
-              final Offset localOffset = box.globalToLocal(details.globalPosition);
-              
-              // Convert local coordinates to Alignment values (-1.0 to 1.0)
-              double x = (localOffset.dx / constraints.maxWidth) * 2 - 1;
-              double y = (localOffset.dy / constraints.maxHeight) * 2 - 1;
-              
-              _textPosition = Alignment(
-                x.clamp(-1.0, 1.0),
-                y.clamp(-1.0, 1.0),
-              );
-            });
-          },
-          child: Container(
-            color: _backgroundColor,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
+        return Container(
+          color: _backgroundColor,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+                // Background Deselector
+                if (!isExport)
+                  Positioned.fill(
+                    child: GestureDetector(
+                      onTap: () => setState(() {
+                        _selectedTextIndex = -1; // Reset to main, but we can hide panel
+                        _selectedPatchIndex = null;
+                        _selectedImageOverlayIndex = null;
+                        _isTabContentExpanded = false;
+                      }),
+                      child: Container(color: Colors.transparent),
+                    ),
+                  ),
+
                 if (_bgImage != null)
                   isExport
                       ? Center(
@@ -594,7 +675,9 @@ class _TextPostScreenState extends State<TextPostScreen> {
                           maxScale: 5.0,
                           child: ColorFiltered(
                             colorFilter: ui.ColorFilter.matrix(_getColorMatrix(_brightness, _saturation, _hue)),
-                            child: Image.file(_bgImage!, fit: BoxFit.cover),
+                            child: _bgImage != null && _bgImage!.existsSync() 
+                                ? Image.file(_bgImage!, fit: BoxFit.cover)
+                                : Container(color: Colors.grey, child: const Center(child: Icon(Icons.image_not_supported))),
                           ),
                         ),
                 if (_maskType != 0) _buildMaskOverlay(),
@@ -606,37 +689,69 @@ class _TextPostScreenState extends State<TextPostScreen> {
 
                 Align(
                   alignment: _textPosition,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Transform.scale(
-                      scale: _textScale,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          previewText,
-                          textAlign: _textAlign,
-                          style: TextStyle(
-                            fontFamily: _selectedFont?.family,
-                            fontWeight: _selectedFont?.weight ?? FontWeight.w400,
-                            fontStyle: _selectedFont?.style ?? FontStyle.normal,
-                            color: _textColor,
-                            fontSize: 32 * _fontSize,
-                            height: _lineHeight,
-                            letterSpacing: _letterSpacing,
-                            shadows: [
-                              if (_enableTextShadow)
-                                Shadow(
-                                  color: _shadowColor.withOpacity(0.7),
-                                  offset: Offset(_shadowOffsetX, _shadowOffsetY),
-                                  blurRadius: _shadowBlurRadius,
-                                ),
-                              if (_enableTextGlow)
-                                Shadow(
-                                  color: _glowColor.withOpacity(0.9),
-                                  offset: Offset.zero,
-                                  blurRadius: _glowRadius,
-                                ),
-                            ],
+                  child: GestureDetector(
+                    onPanUpdate: isExport ? null : (details) {
+                      setState(() {
+                        _selectedTextIndex = -1;
+                        _selectedPatchIndex = null;
+                        _selectedImageOverlayIndex = null;
+                        if (_selectedTabIndex > 6 || !_isTabContentExpanded) {
+                          _selectedTabIndex = 0; // Switch to Text tab
+                          _isTabContentExpanded = true;
+                        }
+                        
+                        // Approximate movement for Alignment
+                        double dx = (details.delta.dx / constraints.maxWidth) * 2;
+                        double dy = (details.delta.dy / constraints.maxHeight) * 2;
+                        _textPosition = Alignment(
+                          (_textPosition.x + dx).clamp(-1.0, 1.0),
+                          (_textPosition.y + dy).clamp(-1.0, 1.0),
+                        );
+                      });
+                    },
+                    onTap: () => setState(() {
+                      _selectedTextIndex = -1;
+                      _selectedPatchIndex = null;
+                      _selectedImageOverlayIndex = null;
+                      _selectedTabIndex = 0;
+                      _isTabContentExpanded = true;
+                    }),
+                    child: _buildSelectionWrapper(
+                      isSelected: !isExport && _selectedTextIndex == -1 && _isTabContentExpanded,
+                      color: Colors.blueAccent,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: _showMainBox ? _mainBoxColor.withOpacity(_mainBoxOpacity) : null,
+                            borderRadius: BorderRadius.circular(_mainBoxRadius),
+                          ),
+                          child: Text(
+                            previewText,
+                            textAlign: _textAlign,
+                            style: TextStyle(
+                              fontFamily: _selectedFont?.family,
+                              fontWeight: _selectedFont?.weight ?? FontWeight.normal,
+                              fontStyle: _selectedFont?.style ?? FontStyle.normal,
+                              color: _textColor,
+                              fontSize: 24 * _fontSize * _textScale,
+                              height: _lineHeight,
+                              letterSpacing: _letterSpacing,
+                              shadows: [
+                                if (_enableTextShadow)
+                                  Shadow(
+                                    color: _shadowColor.withOpacity(0.7),
+                                    offset: Offset(_shadowOffsetX, _shadowOffsetY),
+                                    blurRadius: _shadowBlurRadius,
+                                  ),
+                                if (_enableTextGlow)
+                                  Shadow(
+                                    color: _glowColor.withOpacity(0.9),
+                                    offset: Offset.zero,
+                                    blurRadius: _glowRadius,
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -651,6 +766,7 @@ class _TextPostScreenState extends State<TextPostScreen> {
 
                 // Text Overlays
                 ..._textOverlays.asMap().entries.map((entry) {
+                  debugPrint('[TextPostScreen] Rendering Text Overlay #${entry.key}');
                   return _buildTextOverlayPreview(entry.value, entry.key, constraints);
                 }).toList(),
 
@@ -658,8 +774,7 @@ class _TextPostScreenState extends State<TextPostScreen> {
                 ..._imageOverlays.asMap().entries.map((entry) {
                   return _buildImageOverlayPreview(entry.value, entry.key, constraints);
                 }).toList(),
-              ],
-            ),
+            ],
           ),
         );
       },
@@ -678,40 +793,27 @@ class _TextPostScreenState extends State<TextPostScreen> {
   }
 
   Widget _buildPreviewArea() {
+    debugPrint('[TextPostScreen] _buildPreviewArea start');
     return Column(
       children: [
-        if (_isBulkMode && _bulkTexts.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                IconButton(
-                  onPressed: _currentBulkIndex > 0
-                      ? () => setState(() => _currentBulkIndex--)
-                      : null,
-                  icon: const Icon(Icons.chevron_left),
-                ),
-                Text(
-                  'Post ${_currentBulkIndex + 1} of ${_bulkTexts.length}',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                ),
-                IconButton(
-                  onPressed: _currentBulkIndex < _bulkTexts.length - 1
-                      ? () => setState(() => _currentBulkIndex++)
-                      : null,
-                  icon: const Icon(Icons.chevron_right),
-                ),
-              ],
-            ),
-          ),
         Expanded(
           child: Center(
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: _buildPreviewSection(),
-              ),
+            child: LayoutBuilder(
+              builder: (context, boxConstraints) {
+                // Ensure we have a finite height for the AspectRatio
+                return ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: boxConstraints.maxHeight,
+                    maxWidth: boxConstraints.maxWidth,
+                  ),
+                  child: SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: _buildPreviewSection(),
+                    ),
+                  ),
+                );
+              }
             ),
           ),
         ),
@@ -720,6 +822,7 @@ class _TextPostScreenState extends State<TextPostScreen> {
   }
 
   Widget _buildControlsSection() {
+    debugPrint('[TextPostScreen] _buildControlsSection start');
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -751,59 +854,126 @@ class _TextPostScreenState extends State<TextPostScreen> {
   }
 
   Widget _buildActiveTabContent() {
-    if (_selectedTabIndex == 0) return _buildTextSection();
-    if (_selectedTabIndex == 1) return _buildFontSection();
-    if (_selectedTabIndex == 2) return _buildColorsSection();
-    if (_selectedTabIndex == 3) return _buildEffectsSection();
-    if (_selectedTabIndex == 4) return _buildSpacingSection();
-    if (_selectedTabIndex == 5) return _buildAlignmentSection();
-    if (_selectedTabIndex == 6) return _buildPositionSection();
-    if (_selectedTabIndex == 7) return _buildImageSection();
-    if (_selectedTabIndex == 8) return _buildAdjustSection();
-    if (_selectedTabIndex == 9) return _buildMaskSection();
-    if (_selectedTabIndex == 10) return _buildOverlaysSection();
-    if (_selectedTabIndex == 11) return _buildShapesSection();
-    if (_selectedTabIndex == 12) return _buildTextOverlaysSection();
-    return _buildCanvasSection();
+    Widget content;
+    if (_selectedTabIndex == 0) content = _buildTextSection();
+    else if (_selectedTabIndex == 1) content = _buildFontSection();
+    else if (_selectedTabIndex == 2) content = _buildColorsSection();
+    else if (_selectedTabIndex == 3) content = _buildEffectsSection();
+    else if (_selectedTabIndex == 4) content = _buildSpacingSection();
+    else if (_selectedTabIndex == 5) content = _buildAlignmentSection();
+    else if (_selectedTabIndex == 6) content = _buildPositionSection();
+    else if (_selectedTabIndex == 7) content = _buildImageSection();
+    else if (_selectedTabIndex == 8) content = _buildAdjustSection();
+    else if (_selectedTabIndex == 9) content = _buildMaskSection();
+    else if (_selectedTabIndex == 10) content = _buildOverlaysSection();
+    else if (_selectedTabIndex == 11) content = _buildShapesSection();
+    else if (_selectedTabIndex == 12) content = _buildTextOverlaysSection();
+    else content = _buildCanvasSection();
+
+    // Interactive Layer Switcher for text-related tabs
+    if (_selectedTabIndex <= 6) {
+      final String layerName = _selectedTextIndex == -1 ? "MAIN POST" : "LAYER ${_selectedTextIndex + 1}";
+      return Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(bottom: BorderSide(color: Colors.grey[100]!, width: 1)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  onPressed: _prevLayer,
+                  icon: const Icon(Icons.chevron_left_rounded, size: 20),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  visualDensity: VisualDensity.compact,
+                  color: Colors.blueAccent,
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.layers_rounded, size: 12, color: Colors.blueAccent.withOpacity(0.7)),
+                    const SizedBox(width: 6),
+                    Text(
+                      layerName,
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.blueAccent.withOpacity(0.8),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ],
+                ),
+                IconButton(
+                  onPressed: _nextLayer,
+                  icon: const Icon(Icons.chevron_right_rounded, size: 20),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  visualDensity: VisualDensity.compact,
+                  color: Colors.blueAccent,
+                ),
+              ],
+            ),
+          ),
+          content,
+        ],
+      );
+    }
+
+    return content;
   }
 
   Widget _buildControlTabs() {
     final tabs = [
-      {'icon': Icons.text_fields, 'label': 'Text', 'color': Colors.teal},
-      {'icon': Icons.font_download_outlined, 'label': 'Font', 'color': Colors.green},
-      {'icon': Icons.format_color_text, 'label': 'Colors', 'color': Colors.deepOrange},
-      {'icon': Icons.auto_awesome, 'label': 'Effects', 'color': Colors.purple},
-      {'icon': Icons.format_size, 'label': 'Spacing', 'color': Colors.indigo},
-      {'icon': Icons.format_align_center, 'label': 'Align', 'color': Colors.blueGrey},
-      {'icon': Icons.open_with, 'label': 'Position', 'color': Colors.brown},
-      {'icon': Icons.image, 'label': 'Image', 'color': Colors.blue},
-      {'icon': Icons.tune, 'label': 'Adjust', 'color': Colors.orange},
-      {'icon': Icons.gradient, 'label': 'Mask', 'color': Colors.cyan},
-      {'icon': Icons.photo_library, 'label': 'Overlays', 'color': Colors.deepPurple},
-      {'icon': Icons.layers, 'label': 'Shapes', 'color': Colors.pink},
-      {'icon': Icons.add_comment, 'label': 'Extra Text', 'color': Colors.blueAccent},
-      {'icon': Icons.aspect_ratio, 'label': 'Canvas', 'color': Colors.blueGrey},
+      {'icon': Icons.text_fields_rounded, 'label': 'Text', 'color': Colors.blue},
+      {'icon': Icons.font_download_rounded, 'label': 'Font', 'color': Colors.indigo},
+      {'icon': Icons.palette_rounded, 'label': 'Colors', 'color': Colors.deepOrange},
+      {'icon': Icons.auto_awesome_rounded, 'label': 'Effects', 'color': Colors.purple},
+      {'icon': Icons.format_size_rounded, 'label': 'Spacing', 'color': Colors.teal},
+      {'icon': Icons.format_align_center_rounded, 'label': 'Align', 'color': Colors.blueGrey},
+      {'icon': Icons.open_with_rounded, 'label': 'Position', 'color': Colors.brown},
+      {'icon': Icons.image_rounded, 'label': 'Image', 'color': Colors.blue},
+      {'icon': Icons.tune_rounded, 'label': 'Adjust', 'color': Colors.orange},
+      {'icon': Icons.gradient_rounded, 'label': 'Mask', 'color': Colors.cyan},
+      {'icon': Icons.photo_library_rounded, 'label': 'Overlays', 'color': Colors.deepPurple},
+      {'icon': Icons.layers_rounded, 'label': 'Shapes', 'color': Colors.pink},
+      {'icon': Icons.add_comment_rounded, 'label': 'Layer +', 'color': Colors.blueAccent},
+      {'icon': Icons.aspect_ratio_rounded, 'label': 'Canvas', 'color': Colors.blueGrey},
     ];
 
     return Container(
-      height: 70,
+      height: 65,
       padding: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Colors.grey[200]!, width: 1)),
+      ),
       child: Row(
         children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 8, right: 4),
-            child: ElevatedButton(
-              onPressed: _savePost,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.black87,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                elevation: 0,
+          const SizedBox(width: 8),
+          // Circular Export Button
+          Material(
+            color: Colors.blueAccent,
+            borderRadius: BorderRadius.circular(12),
+            elevation: 0,
+            child: InkWell(
+              onTap: _savePost,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
+                child: const Icon(Icons.download_rounded, color: Colors.white, size: 20),
               ),
-              child: const Icon(Icons.download, size: 20),
             ),
           ),
+          const SizedBox(width: 8),
+          VerticalDivider(width: 1, indent: 14, endIndent: 14, color: Colors.grey[200]),
+          const SizedBox(width: 4),
           Expanded(
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
@@ -814,6 +984,7 @@ class _TextPostScreenState extends State<TextPostScreen> {
                 final isSelected = _selectedTabIndex == index;
                 final tab = tabs[index];
                 final Color baseColor = tab['color'] as Color;
+                
                 return GestureDetector(
                   onTap: () {
                     setState(() {
@@ -825,12 +996,12 @@ class _TextPostScreenState extends State<TextPostScreen> {
                       }
                     });
                   },
-                  child: Container(
-                    width: 70,
-                    margin: const EdgeInsets.symmetric(vertical: 4),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 56,
                     decoration: BoxDecoration(
                       color: isSelected && _isTabContentExpanded
-                          ? baseColor.withOpacity(0.12)
+                          ? baseColor.withOpacity(0.08)
                           : Colors.transparent,
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -839,20 +1010,22 @@ class _TextPostScreenState extends State<TextPostScreen> {
                       children: [
                         Icon(
                           tab['icon'] as IconData,
-                          size: 22,
-                          color: isSelected && _isTabContentExpanded ? baseColor : Colors.grey[600],
+                          size: 18,
+                          color: isSelected && _isTabContentExpanded
+                              ? baseColor
+                              : Colors.grey[400],
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 2),
                         Text(
                           tab['label'] as String,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: isSelected && _isTabContentExpanded
-                                ? FontWeight.bold
-                                : FontWeight.normal,
-                            color: isSelected && _isTabContentExpanded ? baseColor : Colors.grey[700],
+                            fontSize: 9,
+                            fontWeight: isSelected && _isTabContentExpanded 
+                                ? FontWeight.w700 
+                                : FontWeight.w500,
+                            color: isSelected && _isTabContentExpanded
+                                ? baseColor
+                                : Colors.grey[500],
                           ),
                         ),
                       ],
@@ -868,193 +1041,138 @@ class _TextPostScreenState extends State<TextPostScreen> {
   }
 
   Widget _buildTextSection() {
+    debugPrint('[TextPostScreen] _buildTextSection start');
+    final bool isMain = _selectedTextIndex == -1;
+    
+    // Safety check for index
+    if (!isMain && (_selectedTextIndex < 0 || _selectedTextIndex >= _textOverlays.length)) {
+      return const Center(child: Text('Please select a valid layer'));
+    }
+
+    final TextEditingController effectiveController;
+    if (isMain) {
+      effectiveController = _textController;
+    } else {
+      final overlay = _textOverlays[_selectedTextIndex];
+      effectiveController = TextEditingController(text: overlay.text);
+      // Only set selection if length is non-negative (it always is, but safe)
+      if (overlay.text.isNotEmpty) {
+        effectiveController.selection = TextSelection.fromPosition(
+          TextPosition(offset: overlay.text.length),
+        );
+      }
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Text Content',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54),
+            Text(
+              'CONTENT',
+              style: TextStyle(
+                fontSize: 11, 
+                fontWeight: FontWeight.w700, 
+                color: Colors.grey[600],
+                letterSpacing: 1.2,
+              ),
             ),
             Row(
               children: [
-                const Text('Bulk', style: TextStyle(fontSize: 12)),
-                Switch(
-                  value: _isBulkMode,
-                  onChanged: (val) {
+                // My Quotes Button
+                GestureDetector(
+                  onTap: _importFromMyQuotes,
+                  child: Row(
+                    children: [
+                      Icon(Icons.format_quote_rounded, size: 14, color: Colors.blueGrey[600]),
+                      const SizedBox(width: 4),
+                      Text(
+                        'MY QUOTES',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.blueGrey[700],
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                // Add Layer Button
+                GestureDetector(
+                  onTap: () {
                     setState(() {
-                      _isBulkMode = val;
-                      if (!val) {
-                        _bulkTexts.clear();
-                        _currentBulkIndex = 0;
-                      }
+                      _textOverlays.add(_TextOverlay(
+                        text: 'New Text',
+                        font: _selectedFont,
+                        color: _textColor,
+                      ));
+                      _selectedTextIndex = _textOverlays.length - 1;
                     });
                   },
+                  child: Row(
+                    children: [
+                      Icon(Icons.add_circle_outline_rounded, size: 14, color: Colors.blueAccent),
+                      const SizedBox(width: 4),
+                      Text(
+                        'ADD LAYER',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.blueAccent,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
           ],
         ),
         const SizedBox(height: 8),
-        if (!_isBulkMode) ...[
-          TextField(
-            controller: _textController,
-            maxLines: 3,
-            style: const TextStyle(fontSize: 14),
-            decoration: const InputDecoration(
-              hintText: 'Enter your text...',
-              border: OutlineInputBorder(),
-              contentPadding: EdgeInsets.all(10),
-              isDense: true,
+        TextField(
+          controller: effectiveController,
+          maxLines: 5, // Increased for better visibility
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w400, color: Colors.black87),
+          decoration: InputDecoration(
+            hintText: isMain ? 'Type your message here...' : 'Edit overlay text...',
+            hintStyle: TextStyle(color: Colors.grey[400], fontSize: 15),
+            filled: true,
+            fillColor: Colors.grey[50],
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[200]!, width: 1),
             ),
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _importFromMyQuotes,
-              icon: const Icon(Icons.format_quote, size: 18),
-              label: const Text('Import from My Quotes', style: TextStyle(fontSize: 12)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.teal[50],
-                foregroundColor: Colors.teal[800],
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(vertical: 10),
-              ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[200]!, width: 1),
             ),
-          ),
-        ] else ...[
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _importCsv,
-                  icon: const Icon(Icons.file_present, size: 18),
-                  label: const Text('CSV', style: TextStyle(fontSize: 11)),
-                  style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 8)),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _pasteBulkText,
-                  icon: const Icon(Icons.paste, size: 18),
-                  label: const Text('Paste', style: TextStyle(fontSize: 11)),
-                  style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 8)),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _importFromMyQuotes,
-                  icon: const Icon(Icons.format_quote, size: 18),
-                  label: const Text('Quotes', style: TextStyle(fontSize: 11)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.teal[50],
-                    foregroundColor: Colors.teal[800],
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (_bulkTexts.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '${_bulkTexts.length} items loaded',
-                  style: const TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.bold),
-                ),
-                TextButton(
-                  onPressed: () => setState(() {
-                    _bulkTexts.clear();
-                    _currentBulkIndex = 0;
-                  }),
-                  child: const Text('Clear All', style: TextStyle(color: Colors.red, fontSize: 11)),
-                ),
-              ],
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Colors.blueAccent, width: 1.5),
             ),
-          ],
-        ],
-      ],
-    );
-  }
-
-  Future<void> _importCsv() async {
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['csv', 'txt'],
-      );
-
-      if (result != null) {
-        final file = File(result.files.single.path!);
-        final input = await file.readAsString();
-        List<List<dynamic>> rows = const CsvToListConverter().convert(input);
-
-        List<String> loadedTexts = [];
-        for (var row in rows) {
-          if (row.isNotEmpty) {
-            loadedTexts.add(row.first.toString());
-          }
-        }
-
-        if (loadedTexts.isNotEmpty) {
-          setState(() {
-            _bulkTexts = loadedTexts;
-            _currentBulkIndex = 0;
-          });
-          AnalyticsService().logEvent(
-            name: 'bulk_import_csv',
-            parameters: {'count': loadedTexts.length}
-          );
-        }
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error importing file: $e')),
-      );
-    }
-  }
-
-  void _pasteBulkText() {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Paste Multiple Lines'),
-        content: TextField(
-          controller: controller,
-          maxLines: 10,
-          decoration: const InputDecoration(
-            hintText: 'Paste your lines here. Each line will become a separate post.',
-            border: OutlineInputBorder(),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              final lines = controller.text.split('\n').where((l) => l.trim().isNotEmpty).toList();
-              if (lines.isNotEmpty) {
-                setState(() {
-                  _bulkTexts = lines;
-                  _currentBulkIndex = 0;
-                });
+          onChanged: (v) {
+            setState(() {
+              if (isMain) {
+                // _textController handles its own state, but we notify listeners
+              } else if (_selectedTextIndex >= 0 && _selectedTextIndex < _textOverlays.length) {
+                _textOverlays[_selectedTextIndex].text = v;
               }
-              Navigator.pop(context);
-            },
-            child: const Text('Load'),
-          ),
-        ],
-      ),
+            });
+          },
+        ),
+        const SizedBox(height: 12),
+      ],
+
     );
   }
+
+
 
   Widget _buildFontSection() {
     return Column(
@@ -1072,7 +1190,9 @@ class _TextPostScreenState extends State<TextPostScreen> {
             itemCount: getAllFonts().length,
             itemBuilder: (context, index) {
               final font = getAllFonts()[index];
-              final isSelected = _selectedFont == font;
+              final isSelected = _selectedTextIndex == -1 
+                  ? _selectedFont == font 
+                  : (_selectedTextIndex < _textOverlays.length && _textOverlays[_selectedTextIndex].font?.family == font.family);
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: ChoiceChip(
@@ -1090,7 +1210,11 @@ class _TextPostScreenState extends State<TextPostScreen> {
                   backgroundColor: Colors.grey[100],
                   onSelected: (_) {
                     setState(() {
-                      _selectedFont = font;
+                      if (_selectedTextIndex == -1) {
+                        _selectedFont = font;
+                      } else {
+                        _textOverlays[_selectedTextIndex].font = font;
+                      }
                     });
                   },
                 ),
@@ -1103,6 +1227,16 @@ class _TextPostScreenState extends State<TextPostScreen> {
   }
 
   Widget _buildColorsSection() {
+    final bool isMain = _selectedTextIndex == -1;
+    
+    // Safety check for index
+    if (!isMain && (_selectedTextIndex < 0 || _selectedTextIndex >= _textOverlays.length)) {
+      return const Center(child: Text('Please select a valid layer'));
+    }
+
+    final Color activeTextColor = isMain ? _textColor : _textOverlays[_selectedTextIndex].color;
+    final Color activeBgColor = isMain ? _backgroundColor : Colors.transparent; // Extra layers don't have bg color yet
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -1121,17 +1255,23 @@ class _TextPostScreenState extends State<TextPostScreen> {
         children: [
           _buildColorPickerRow(
             label: 'Text Color',
-            currentColor: _textColor,
-            onColorSelected: (color) => setState(() => _textColor = color),
-            onPickCustom: () => _showColorPicker('text'),
+            currentColor: activeTextColor,
+            onColorSelected: (color) => setState(() {
+              if (isMain) _textColor = color;
+              else _textOverlays[_selectedTextIndex].color = color;
+            }),
+            onPickCustom: () => _showColorPicker('text', textIndex: _selectedTextIndex),
             allowTransparent: false,
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           _buildColorPickerRow(
-            label: 'Background Color',
-            currentColor: _backgroundColor,
-            onColorSelected: (color) => setState(() => _backgroundColor = color),
-            onPickCustom: () => _showColorPicker('background'),
+            label: isMain ? 'Canvas Background' : 'Box Color',
+            currentColor: isMain ? _backgroundColor : _textOverlays[_selectedTextIndex].boxColor,
+            onColorSelected: (color) => setState(() {
+              if (isMain) _backgroundColor = color;
+              else _textOverlays[_selectedTextIndex].boxColor = color;
+            }),
+            onPickCustom: () => _showColorPicker(isMain ? 'background' : 'box', textIndex: _selectedTextIndex),
             allowTransparent: true,
           ),
         ],
@@ -1265,21 +1405,39 @@ class _TextPostScreenState extends State<TextPostScreen> {
   }
 
   Widget _buildEffectsSection() {
+    final bool isMain = _selectedTextIndex == -1;
+    
+    // Safety check for index
+    if (!isMain && (_selectedTextIndex < 0 || _selectedTextIndex >= _textOverlays.length)) {
+      return const Center(child: Text('Please select a valid layer'));
+    }
+
+    final bool showShadow = isMain ? _enableTextShadow : _textOverlays[_selectedTextIndex].showShadow;
+    final Color shadowColor = isMain ? _shadowColor : _textOverlays[_selectedTextIndex].shadowColor;
+    final double shadowX = isMain ? _shadowOffsetX : _textOverlays[_selectedTextIndex].shadowOffsetX;
+    final double shadowY = isMain ? _shadowOffsetY : _textOverlays[_selectedTextIndex].shadowOffsetY;
+    final double shadowBlur = isMain ? _shadowBlurRadius : _textOverlays[_selectedTextIndex].shadowBlur;
+
+    final bool showGlow = isMain ? _enableTextGlow : _textOverlays[_selectedTextIndex].showGlow;
+    final Color glowColor = isMain ? _glowColor : _textOverlays[_selectedTextIndex].glowColor;
+    final double glowRadius = isMain ? _glowRadius : _textOverlays[_selectedTextIndex].glowRadius;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SwitchListTile(
           title: const Text('Text Shadow', style: TextStyle(fontWeight: FontWeight.w500)),
-          value: _enableTextShadow,
+          value: showShadow,
           onChanged: (value) {
             setState(() {
-              _enableTextShadow = value;
+              if (isMain) _enableTextShadow = value;
+              else _textOverlays[_selectedTextIndex].showShadow = value;
             });
           },
           contentPadding: EdgeInsets.zero,
           dense: true,
         ),
-        if (_enableTextShadow) ...[
+        if (showShadow) ...[
           const SizedBox(height: 4),
           Row(
             children: [
@@ -1291,7 +1449,7 @@ class _TextPostScreenState extends State<TextPostScreen> {
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    color: _shadowColor,
+                    color: shadowColor,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: Colors.grey[300]!),
                   ),
@@ -1302,76 +1460,140 @@ class _TextPostScreenState extends State<TextPostScreen> {
           const SizedBox(height: 8),
           _buildSimpleSlider(
             label: 'Offset X',
-            value: _shadowOffsetX,
+            value: shadowX,
             min: -20,
             max: 20,
-            onChanged: (v) => setState(() => _shadowOffsetX = v),
-            onReset: () => setState(() => _shadowOffsetX = 2.0),
+            onChanged: (v) => setState(() {
+              if (isMain) _shadowOffsetX = v;
+              else _textOverlays[_selectedTextIndex].shadowOffsetX = v;
+            }),
+            onReset: () => setState(() {
+              if (isMain) _shadowOffsetX = 2.0;
+              else _textOverlays[_selectedTextIndex].shadowOffsetX = 2.0;
+            }),
             step: 1.0,
           ),
           _buildSimpleSlider(
             label: 'Offset Y',
-            value: _shadowOffsetY,
+            value: shadowY,
             min: -20,
             max: 20,
-            onChanged: (v) => setState(() => _shadowOffsetY = v),
-            onReset: () => setState(() => _shadowOffsetY = 2.0),
+            onChanged: (v) => setState(() {
+              if (isMain) _shadowOffsetY = v;
+              else _textOverlays[_selectedTextIndex].shadowOffsetY = v;
+            }),
+            onReset: () => setState(() {
+              if (isMain) _shadowOffsetY = 2.0;
+              else _textOverlays[_selectedTextIndex].shadowOffsetY = 2.0;
+            }),
             step: 1.0,
           ),
           _buildSimpleSlider(
             label: 'Blur',
-            value: _shadowBlurRadius,
+            value: shadowBlur,
             min: 0,
             max: 20,
-            onChanged: (v) => setState(() => _shadowBlurRadius = v),
-            onReset: () => setState(() => _shadowBlurRadius = 5.0),
+            onChanged: (v) => setState(() {
+              if (isMain) _shadowBlurRadius = v;
+              else _textOverlays[_selectedTextIndex].shadowBlur = v;
+            }),
+            onReset: () => setState(() {
+              if (isMain) _shadowBlurRadius = 5.0;
+              else _textOverlays[_selectedTextIndex].shadowBlur = 4.0;
+            }),
             step: 1.0,
           ),
           const SizedBox(height: 10),
         ],
         SwitchListTile(
           title: const Text('Text Glow', style: TextStyle(fontWeight: FontWeight.w500)),
-          value: _enableTextGlow,
+          value: showGlow,
           onChanged: (value) {
             setState(() {
-              _enableTextGlow = value;
+              if (isMain) _enableTextGlow = value;
+              else _textOverlays[_selectedTextIndex].showGlow = value;
             });
           },
           contentPadding: EdgeInsets.zero,
           dense: true,
         ),
-        if (_enableTextGlow) ...[
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              const Text('Glow Color:', style: TextStyle(fontWeight: FontWeight.w500)),
-              const SizedBox(width: 12),
-              GestureDetector(
-                onTap: () => _showColorPicker('glow'),
-                child: Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: _glowColor,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey[300]!),
-                  ),
-                ),
-              ),
-            ],
+        if (showGlow) ...[
+          _buildSimpleSlider(
+            label: 'Glow Size',
+            value: glowRadius,
+            min: 0,
+            max: 50,
+            onChanged: (v) => setState(() {
+              if (isMain) _glowRadius = v;
+              else _textOverlays[_selectedTextIndex].glowRadius = v;
+            }),
+            onReset: () => setState(() {
+              if (isMain) _glowRadius = 10.0;
+              else _textOverlays[_selectedTextIndex].glowRadius = 10.0;
+            }),
+            step: 1.0,
           ),
+        ],
+        const Divider(height: 32),
+        _buildBoxStyleSection(),
+      ],
+    );
+  }
+
+  Widget _buildBoxStyleSection() {
+    final bool isMain = _selectedTextIndex == -1;
+    final bool showBox = isMain ? _showMainBox : _textOverlays[_selectedTextIndex].showBox;
+    final double boxOpacity = isMain ? _mainBoxOpacity : _textOverlays[_selectedTextIndex].boxOpacity;
+    final double boxRadius = isMain ? _mainBoxRadius : _textOverlays[_selectedTextIndex].boxRadius;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.check_box_outline_blank, size: 18, color: Colors.blueGrey),
+            const SizedBox(width: 8),
+            const Text('Text Box Style', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            const Spacer(),
+            Switch(
+              value: showBox,
+              onChanged: (val) => setState(() {
+                if (isMain) _showMainBox = val;
+                else _textOverlays[_selectedTextIndex].showBox = val;
+              }),
+            ),
+          ],
+        ),
+        if (showBox) ...[
           const SizedBox(height: 8),
           _buildSimpleSlider(
-            label: 'Glow Radius',
-            value: _glowRadius,
-            min: 5.0,
-            max: 30.0,
-            onChanged: (value) {
-              setState(() {
-                _glowRadius = value;
-              });
-            },
-            onReset: () => setState(() => _glowRadius = 15.0),
+            label: 'Box Opacity',
+            value: boxOpacity,
+            min: 0.0,
+            max: 1.0,
+            onChanged: (v) => setState(() {
+              if (isMain) _mainBoxOpacity = v;
+              else _textOverlays[_selectedTextIndex].boxOpacity = v;
+            }),
+            onReset: () => setState(() {
+              if (isMain) _mainBoxOpacity = 0.8;
+              else _textOverlays[_selectedTextIndex].boxOpacity = 0.8;
+            }),
+            step: 0.05,
+          ),
+          _buildSimpleSlider(
+            label: 'Corner Radius',
+            value: boxRadius,
+            min: 0.0,
+            max: 50.0,
+            onChanged: (v) => setState(() {
+              if (isMain) _mainBoxRadius = v;
+              else _textOverlays[_selectedTextIndex].boxRadius = v;
+            }),
+            onReset: () => setState(() {
+              if (isMain) _mainBoxRadius = 8.0;
+              else _textOverlays[_selectedTextIndex].boxRadius = 8.0;
+            }),
             step: 1.0,
           ),
         ],
@@ -1380,6 +1602,17 @@ class _TextPostScreenState extends State<TextPostScreen> {
   }
 
   Widget _buildSpacingSection() {
+    final bool isMain = _selectedTextIndex == -1;
+    debugPrint('[TextPostScreen] _buildSpacingSection() - isMain: $isMain, index: $_selectedTextIndex');
+    if (!isMain && (_selectedTextIndex < 0 || _selectedTextIndex >= _textOverlays.length)) {
+      return const Center(child: Text('Overlay selection error'));
+    }
+
+    final double lSpacing = isMain ? _letterSpacing : _textOverlays[_selectedTextIndex].letterSpacing;
+    final double lHeight = isMain ? _lineHeight : _textOverlays[_selectedTextIndex].lineHeight;
+    final double fSize = isMain ? _fontSize : _textOverlays[_selectedTextIndex].fontSize / 32.0; // Normalize
+    final double tScale = isMain ? _textScale : _textOverlays[_selectedTextIndex].scale;
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -1413,42 +1646,66 @@ class _TextPostScreenState extends State<TextPostScreen> {
           const SizedBox(height: 10),
           _buildSimpleSlider(
             label: 'Letter Spacing',
-            value: _letterSpacing,
+            value: lSpacing,
             min: -2.0,
             max: 10.0,
-            onChanged: (v) => setState(() => _letterSpacing = v),
-            onReset: () => setState(() => _letterSpacing = 0.0),
+            onChanged: (v) => setState(() {
+              if (isMain) _letterSpacing = v;
+              else _textOverlays[_selectedTextIndex].letterSpacing = v;
+            }),
+            onReset: () => setState(() {
+              if (isMain) _letterSpacing = 0.0;
+              else _textOverlays[_selectedTextIndex].letterSpacing = 0.0;
+            }),
             step: 0.5,
           ),
           const SizedBox(height: 4),
           _buildSimpleSlider(
             label: 'Line Height',
-            value: _lineHeight,
+            value: lHeight,
             min: 0.8,
             max: 2.0,
-            onChanged: (v) => setState(() => _lineHeight = v),
-            onReset: () => setState(() => _lineHeight = 1.2),
+            onChanged: (v) => setState(() {
+              if (isMain) _lineHeight = v;
+              else _textOverlays[_selectedTextIndex].lineHeight = v;
+            }),
+            onReset: () => setState(() {
+              if (isMain) _lineHeight = 1.2;
+              else _textOverlays[_selectedTextIndex].lineHeight = 1.2;
+            }),
             step: 0.05,
           ),
           const SizedBox(height: 4),
           _buildSimpleSlider(
             label: 'Font Size',
-            value: _fontSize,
-            min: 0.5,
-            max: 2.0,
-            onChanged: (v) => setState(() => _fontSize = v),
-            onReset: () => setState(() => _fontSize = 1.0),
-            step: 0.1,
+            value: isMain ? fSize : _textOverlays[_selectedTextIndex].fontSize,
+            min: isMain ? 0.5 : 10.0,
+            max: isMain ? 2.0 : 200.0,
+            onChanged: (v) => setState(() {
+              if (isMain) _fontSize = v;
+              else _textOverlays[_selectedTextIndex].fontSize = v;
+            }),
+            onReset: () => setState(() {
+              if (isMain) _fontSize = 1.0;
+              else _textOverlays[_selectedTextIndex].fontSize = 24.0;
+            }),
+            step: isMain ? 0.1 : 1.0,
           ),
           const SizedBox(height: 4),
           _buildSimpleSlider(
             label: 'Text Scale',
-            value: _textScale,
+            value: tScale,
             min: 0.2,
             max: 4.0,
-            onChanged: (v) => setState(() => _textScale = v),
-            onReset: () => setState(() => _textScale = 1.0),
-            step: 0.05,
+            onChanged: (v) => setState(() {
+              if (isMain) _textScale = v;
+              else _textOverlays[_selectedTextIndex].scale = v;
+            }),
+            onReset: () => setState(() {
+              if (isMain) _textScale = 1.0;
+              else _textOverlays[_selectedTextIndex].scale = 1.0;
+            }),
+            step: 0.1,
           ),
         ],
       ),
@@ -1456,14 +1713,13 @@ class _TextPostScreenState extends State<TextPostScreen> {
   }
 
   Widget _buildSaveButton() {
-    final bool hasContent =
-        (_isBulkMode && _bulkTexts.isNotEmpty) || (!_isBulkMode && (_textController.text.trim().isNotEmpty || _bgImage != null));
+    final bool hasContent = _textController.text.trim().isNotEmpty || _bgImage != null;
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: hasContent ? (_isBulkMode ? _processBulkPosts : _savePost) : null,
+        onPressed: hasContent ? _savePost : null,
         icon: const Icon(Icons.save),
-        label: Text(_isBulkMode ? 'Generate ${_bulkTexts.length} Posts' : 'Save Post'),
+        label: const Text('Save Post'),
         style: ElevatedButton.styleFrom(
           padding: const EdgeInsets.symmetric(vertical: 12),
         ),
@@ -1541,6 +1797,38 @@ class _TextPostScreenState extends State<TextPostScreen> {
         _bgImage = File(image.path);
       });
     }
+  }
+
+  void _nextLayer() {
+    setState(() {
+      if (_selectedTextIndex == -1) {
+        if (_textOverlays.isNotEmpty) {
+          _selectedTextIndex = 0;
+        }
+      } else if (_selectedTextIndex < _textOverlays.length - 1) {
+        _selectedTextIndex++;
+      } else {
+        _selectedTextIndex = -1;
+      }
+      _selectedPatchIndex = null;
+      _selectedImageOverlayIndex = null;
+    });
+  }
+
+  void _prevLayer() {
+    setState(() {
+      if (_selectedTextIndex == -1) {
+        if (_textOverlays.isNotEmpty) {
+          _selectedTextIndex = _textOverlays.length - 1;
+        }
+      } else if (_selectedTextIndex > 0) {
+        _selectedTextIndex--;
+      } else {
+        _selectedTextIndex = -1;
+      }
+      _selectedPatchIndex = null;
+      _selectedImageOverlayIndex = null;
+    });
   }
 
   Future<void> _importFromMyQuotes() async {
@@ -1623,7 +1911,7 @@ class _TextPostScreenState extends State<TextPostScreen> {
       children: [
         Row(
           children: [
-            Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
+            Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
             if (onReset != null) ...[
               const SizedBox(width: 4),
               InkWell(
@@ -1636,26 +1924,37 @@ class _TextPostScreenState extends State<TextPostScreen> {
               ),
             ],
             const Spacer(),
-            Text(value.toStringAsFixed(2), style: const TextStyle(fontSize: 10, color: Colors.grey)),
+            Text(value.toStringAsFixed(max <= 2 ? 2 : 1),
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.indigo)),
           ],
         ),
         Row(
           children: [
-            _buildStepButton(Icons.chevron_left, () {
+            _buildStepButton(Icons.remove, () {
               final newValue = (value - step).clamp(min, max);
               onChanged(newValue);
             }),
             Expanded(
               child: SliderTheme(
                 data: SliderTheme.of(context).copyWith(
-                  trackHeight: 2,
+                  trackHeight: 3,
                   thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                  activeTrackColor: Colors.indigo[400],
+                  inactiveTrackColor: Colors.indigo[50],
+                  thumbColor: Colors.indigo[600],
+                  overlayColor: Colors.indigo.withOpacity(0.1),
                 ),
-                child: Slider(value: value, min: min, max: max, onChanged: onChanged),
+                child: Slider(
+                    value: value,
+                    min: min,
+                    max: max,
+                    onChanged: (v) {
+                      onChanged(v);
+                    }),
               ),
             ),
-            _buildStepButton(Icons.chevron_right, () {
+            _buildStepButton(Icons.add, () {
               final newValue = (value + step).clamp(min, max);
               onChanged(newValue);
             }),
@@ -1666,17 +1965,26 @@ class _TextPostScreenState extends State<TextPostScreen> {
   }
 
   Widget _buildStepButton(IconData icon, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(4),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
-        child: Icon(icon, size: 16, color: Colors.grey[600]),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          padding: const EdgeInsets.all(4),
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          decoration: BoxDecoration(
+            color: Colors.indigo.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Icon(icon, size: 16, color: Colors.indigo[700]),
+        ),
       ),
     );
   }
 
   Widget _buildPatchPreview(_OverlayPatch p, int idx, BoxConstraints constraints) {
+    final isSelected = !_isExporting && _selectedPatchIndex == idx;
     return Positioned(
       left: p.x * constraints.maxWidth,
       top: p.y * constraints.maxHeight,
@@ -1688,20 +1996,23 @@ class _TextPostScreenState extends State<TextPostScreen> {
             p.x = (p.x + d.delta.dx / constraints.maxWidth).clamp(0.0, 1.0 - p.width);
             p.y = (p.y + d.delta.dy / constraints.maxHeight).clamp(0.0, 1.0 - p.height);
             _selectedPatchIndex = idx;
-            _selectedTabIndex = 11;
+            _selectedTabIndex = 11; // Shapes tab
+            _isTabContentExpanded = true;
           });
         },
         onTap: () => setState(() {
           _selectedPatchIndex = idx;
           _selectedTabIndex = 11;
+          _isTabContentExpanded = true;
         }),
-        child: Container(
-          decoration: BoxDecoration(
-            color: p.color.withOpacity(p.opacity),
-            borderRadius: BorderRadius.circular(p.radius * (constraints.maxWidth / 1000)),
-            border: !_isExporting && _selectedPatchIndex == idx && _selectedTabIndex == 11
-                ? Border.all(color: Colors.white, width: 2)
-                : null,
+        child: _buildSelectionWrapper(
+          isSelected: isSelected,
+          color: Colors.blueAccent,
+          child: Container(
+            decoration: BoxDecoration(
+              color: p.color.withOpacity(p.opacity),
+              borderRadius: BorderRadius.circular(p.radius * (constraints.maxWidth / 1000)),
+            ),
           ),
         ),
       ),
@@ -1709,7 +2020,7 @@ class _TextPostScreenState extends State<TextPostScreen> {
   }
 
   Widget _buildImageOverlayPreview(_OverlayImage img, int idx, BoxConstraints constraints) {
-    final isSelected = !_isExporting && _selectedImageOverlayIndex == idx && _selectedTabIndex == 10;
+    final isSelected = !_isExporting && _selectedImageOverlayIndex == idx;
     final file = File(img.path);
     if (!file.existsSync()) return const SizedBox.shrink();
 
@@ -1722,7 +2033,8 @@ class _TextPostScreenState extends State<TextPostScreen> {
         child: GestureDetector(
           onPanStart: (_) => setState(() {
             _selectedImageOverlayIndex = idx;
-            _selectedTabIndex = 10;
+            _selectedTabIndex = 7; // Image tab
+            _isTabContentExpanded = true;
           }),
           onPanUpdate: (d) => setState(() {
             img.x = (img.x + d.delta.dx / constraints.maxWidth).clamp(0.0, 1.0);
@@ -1730,22 +2042,22 @@ class _TextPostScreenState extends State<TextPostScreen> {
           }),
           onTap: () => setState(() {
             _selectedImageOverlayIndex = idx;
-            _selectedTabIndex = 10;
+            _selectedTabIndex = 7;
+            _isTabContentExpanded = true;
           }),
-          child: Transform.rotate(
-            angle: img.rotation * (math.pi / 180),
-            child: Opacity(
-              opacity: img.opacity,
-              child: Container(
-                decoration: isSelected
-                    ? BoxDecoration(
-                        border: Border.all(color: Colors.deepPurple, width: 2),
-                        borderRadius: BorderRadius.circular(4))
-                    : null,
-                child: Image.file(
-                  file,
-                  width: overlayW,
-                  fit: BoxFit.contain,
+          child: _buildSelectionWrapper(
+            isSelected: isSelected,
+            color: Colors.blueAccent,
+            child: Transform.rotate(
+              angle: img.rotation * (math.pi / 180),
+              child: Opacity(
+                opacity: img.opacity,
+                child: Container(
+                  child: Image.file(
+                    file,
+                    width: overlayW,
+                    fit: BoxFit.contain,
+                  ),
                 ),
               ),
             ),
@@ -1755,8 +2067,47 @@ class _TextPostScreenState extends State<TextPostScreen> {
     );
   }
 
+  Widget _buildSelectionWrapper({
+    required Widget child,
+    required bool isSelected,
+    required Color color,
+  }) {
+    if (!isSelected) return child;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: color.withOpacity(0.8), width: 1.5),
+          ),
+          child: child,
+        ),
+        // Corner Handles
+        Positioned(top: -4, left: -4, child: _buildHandle(color)),
+        Positioned(top: -4, right: -4, child: _buildHandle(color)),
+        Positioned(bottom: -4, left: -4, child: _buildHandle(color)),
+        Positioned(bottom: -4, right: -4, child: _buildHandle(color)),
+      ],
+    );
+  }
+
+  Widget _buildHandle(Color color) {
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: color, width: 1.5),
+      ),
+    );
+  }
+
   Widget _buildTextOverlayPreview(_TextOverlay t, int idx, BoxConstraints constraints) {
-    final isSelected = !_isExporting && _selectedTextOverlayIndex == idx && _selectedTabIndex == 12;
+    final isSelected = !_isExporting && _selectedTextIndex == idx;
+    final Color activeColor = Colors.blueAccent;
+
     return Positioned(
       left: t.x * constraints.maxWidth,
       top: t.y * constraints.maxHeight,
@@ -1764,42 +2115,54 @@ class _TextPostScreenState extends State<TextPostScreen> {
         translation: const Offset(-0.5, -0.5),
         child: GestureDetector(
           onPanStart: (_) => setState(() {
-            _selectedTextOverlayIndex = idx;
-            _selectedTabIndex = 12;
+            _selectedTextIndex = idx;
+            _selectedTabIndex = 0; // Text tab
+            _isTabContentExpanded = true;
           }),
           onPanUpdate: (d) => setState(() {
             t.x = (t.x + d.delta.dx / constraints.maxWidth).clamp(0.0, 1.0);
             t.y = (t.y + d.delta.dy / constraints.maxHeight).clamp(0.0, 1.0);
           }),
           onTap: () => setState(() {
-            _selectedTextOverlayIndex = idx;
-            _selectedTabIndex = 12;
+            _selectedTextIndex = idx;
+            _selectedTabIndex = 0;
+            _isTabContentExpanded = true;
           }),
-          child: Container(
-            padding: const EdgeInsets.all(4),
-            decoration: isSelected
-                ? BoxDecoration(
-                    border: Border.all(color: Colors.blueAccent, width: 2),
-                    borderRadius: BorderRadius.circular(4))
-                : null,
-            child: Text(
-              t.text,
-              textAlign: t.textAlign,
-              style: TextStyle(
-                fontFamily: t.font?.family,
-                fontWeight: t.font?.weight ?? FontWeight.normal,
-                fontStyle: t.font?.style ?? FontStyle.normal,
-                color: t.color,
-                fontSize: t.fontSize * t.scale,
-                shadows: t.showShadow
-                    ? [
-                        Shadow(
-                          color: t.shadowColor.withOpacity(0.7),
-                          offset: Offset(t.shadowOffsetX, t.shadowOffsetY),
-                          blurRadius: t.shadowBlur,
-                        )
-                      ]
-                    : null,
+          child: _buildSelectionWrapper(
+            isSelected: isSelected,
+            color: activeColor,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: t.showBox ? t.boxColor.withOpacity(t.boxOpacity) : null,
+                borderRadius: BorderRadius.circular(t.boxRadius),
+              ),
+              child: Text(
+                t.text,
+                textAlign: t.textAlign,
+                style: TextStyle(
+                  fontFamily: t.font?.family,
+                  fontWeight: t.font?.weight ?? FontWeight.normal,
+                  fontStyle: t.font?.style ?? FontStyle.normal,
+                  color: t.color,
+                  fontSize: t.fontSize * t.scale,
+                  letterSpacing: t.letterSpacing,
+                  height: t.lineHeight,
+                  shadows: [
+                    if (t.showShadow)
+                      Shadow(
+                        color: t.shadowColor.withOpacity(0.7),
+                        offset: Offset(t.shadowOffsetX, t.shadowOffsetY),
+                        blurRadius: t.shadowBlur,
+                      ),
+                    if (t.showGlow)
+                      Shadow(
+                        color: t.glowColor.withOpacity(0.9),
+                        offset: Offset.zero,
+                        blurRadius: t.glowRadius,
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -2138,157 +2501,168 @@ class _TextPostScreenState extends State<TextPostScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('Extra Text Layers',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-            ElevatedButton.icon(
-              onPressed: () {
-                setState(() {
-                  _textOverlays.add(_TextOverlay(
-                    text: 'New Text',
-                    font: _selectedFont,
-                    color: _textColor,
-                  ));
-                  _selectedTextOverlayIndex = _textOverlays.length - 1;
-                });
-              },
-              icon: const Icon(Icons.add_comment, size: 16),
-              label: const Text('Add Text', style: TextStyle(fontSize: 11)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueAccent,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            Text(
+              'LAYERS',
+              style: TextStyle(
+                fontSize: 11, 
+                fontWeight: FontWeight.w700, 
+                color: Colors.grey[600],
+                letterSpacing: 1.2,
               ),
             ),
+            // Button moved to Text tab
           ],
         ),
-        const SizedBox(height: 12),
-        if (_textOverlays.isEmpty)
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.all(20),
-              child: Text(
-                "No extra text layers added.\nUse these for subtitles, handles, or extra info.",
-                style: TextStyle(color: Colors.grey, fontSize: 11),
-                textAlign: TextAlign.center,
+        const SizedBox(height: 8),
+        Container(
+          height: 140, // Slightly taller for better cards
+          child: ListView(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            children: [
+              _buildLayerItem(
+                title: 'Main Text',
+                isSelected: _selectedTextIndex == -1,
+                onTap: () => setState(() => _selectedTextIndex = -1),
+                isMain: true,
               ),
-            ),
+              ..._textOverlays.asMap().entries.map((entry) {
+                return _buildLayerItem(
+                  title: entry.value.text.isEmpty ? 'Empty Layer' : entry.value.text,
+                  index: entry.key,
+                  isSelected: _selectedTextIndex == entry.key,
+                  onTap: () => setState(() => _selectedTextIndex = entry.key),
+                  onDelete: () => setState(() {
+                    _textOverlays.removeAt(entry.key);
+                    _selectedTextIndex = -1;
+                  }),
+                  onMoveUp: entry.key > 0 ? () => setState(() {
+                    final t = _textOverlays.removeAt(entry.key);
+                    _textOverlays.insert(entry.key - 1, t);
+                    _selectedTextIndex = entry.key - 1;
+                  }) : null,
+                  onMoveDown: entry.key < _textOverlays.length - 1 ? () => setState(() {
+                    final t = _textOverlays.removeAt(entry.key);
+                    _textOverlays.insert(entry.key + 1, t);
+                    _selectedTextIndex = entry.key + 1;
+                  }) : null,
+                );
+              }).toList(),
+            ],
           ),
-        if (_selectedTextOverlayIndex != null &&
-            _selectedTextOverlayIndex! < _textOverlays.length) ...[
-          _buildActiveTextOverlayControls(
-              _textOverlays[_selectedTextOverlayIndex!], _selectedTextOverlayIndex!),
-        ] else if (_textOverlays.isNotEmpty)
-          const Center(
-            child: Text(
-              "Select extra text on preview to edit",
-              style: TextStyle(color: Colors.grey, fontSize: 11),
-            ),
-          ),
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          "Select a layer above or tap on preview to edit its properties.",
+          style: TextStyle(color: Colors.grey, fontSize: 11),
+          textAlign: TextAlign.center,
+        ),
       ],
     );
   }
 
-  Widget _buildActiveTextOverlayControls(_TextOverlay t, int index) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text("Layer #${index + 1}",
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-            const Spacer(),
-            IconButton(
-              onPressed: () => setState(() {
-                _textOverlays.removeAt(index);
-                _selectedTextOverlayIndex = null;
-              }),
-              icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
+  Widget _buildLayerItem({
+    required String title,
+    required bool isSelected,
+    required VoidCallback onTap,
+    VoidCallback? onDelete,
+    VoidCallback? onMoveUp,
+    VoidCallback? onMoveDown,
+    bool isMain = false,
+    int? index,
+  }) {
+    final Color activeColor = isMain ? Colors.teal : Colors.indigo;
+    
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: isSelected ? activeColor.withOpacity(0.08) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected ? activeColor.withOpacity(0.5) : Colors.grey[200]!,
+                width: isSelected ? 1.5 : 1,
+              ),
             ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          onChanged: (v) => setState(() => t.text = v),
-          controller: TextEditingController(text: t.text)..selection = TextSelection.collapsed(offset: t.text.length),
-          decoration: InputDecoration(
-            hintText: 'Enter text...',
-            isDense: true,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-          ),
-          style: const TextStyle(fontSize: 13),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            const Text('Color:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () {
-                Color selectedColor = t.color;
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Text Color'),
-                    content: SingleChildScrollView(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          AdvancedColorPicker(
-                            initialColor: t.color,
-                            onColorChanged: (color) => selectedColor = color,
-                          ),
-                          const SizedBox(height: 20),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: () {
-                                setState(() => t.color = selectedColor);
-                                Navigator.pop(context);
-                              },
-                              child: const Text('SELECT'),
-                            ),
-                          ),
-                        ],
+            child: Row(
+              children: [
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: isSelected ? activeColor : Colors.grey[100],
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      isMain ? 'M' : '${(index ?? 0) + 1}',
+                      style: TextStyle(
+                        fontSize: 10, 
+                        fontWeight: FontWeight.bold, 
+                        color: isSelected ? Colors.white : Colors.grey[600],
                       ),
                     ),
                   ),
-                );
-              },
-              child: Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: t.color,
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: Colors.grey.shade300),
                 ),
-              ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isMain ? 'Main Post Text' : 'Text Layer',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: isSelected ? activeColor : Colors.grey[500],
+                        ),
+                      ),
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                          color: isSelected ? Colors.black87 : Colors.grey[700],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!isMain) ...[
+                  if (onMoveUp != null || onMoveDown != null)
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (onMoveUp != null)
+                          GestureDetector(
+                            onTap: onMoveUp,
+                            child: Icon(Icons.keyboard_arrow_up_rounded, size: 18, color: Colors.grey[400]),
+                          ),
+                        if (onMoveDown != null)
+                          GestureDetector(
+                            onTap: onMoveDown,
+                            child: Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Colors.grey[400]),
+                          ),
+                      ],
+                    ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: onDelete,
+                    child: Icon(Icons.delete_outline_rounded, size: 20, color: Colors.red[300]),
+                  ),
+                ],
+              ],
             ),
-          ],
+          ),
         ),
-        const SizedBox(height: 8),
-        _buildSimpleSlider(
-          label: 'Font Size',
-          value: t.fontSize,
-          min: 10.0,
-          max: 100.0,
-          onChanged: (v) => setState(() => t.fontSize = v),
-          onReset: () => setState(() => t.fontSize = 24.0),
-          step: 1.0,
-        ),
-        _buildSimpleSlider(
-          label: 'Scale',
-          value: t.scale,
-          min: 0.5,
-          max: 3.0,
-          onChanged: (v) => setState(() => t.scale = v),
-          onReset: () => setState(() => t.scale = 1.0),
-          step: 0.1,
-        ),
-      ],
+      ),
     );
   }
 
@@ -2381,13 +2755,16 @@ class _TextPostScreenState extends State<TextPostScreen> {
     );
   }
 
-  void _showColorPicker(String type) {
+  void _showColorPicker(String type, {int? textIndex}) {
     Color currentColor;
     String title;
 
+    final targetIndex = textIndex ?? _selectedTextIndex;
+    final bool isMain = targetIndex == -1;
+
     switch (type) {
       case 'text':
-        currentColor = _textColor;
+        currentColor = isMain ? _textColor : _textOverlays[targetIndex].color;
         title = 'Text Color';
         break;
       case 'background':
@@ -2395,16 +2772,20 @@ class _TextPostScreenState extends State<TextPostScreen> {
         title = 'Background Color';
         break;
       case 'shadow':
-        currentColor = _shadowColor;
+        currentColor = isMain ? _shadowColor : _textOverlays[targetIndex].shadowColor;
         title = 'Shadow Color';
         break;
       case 'glow':
-        currentColor = _glowColor;
+        currentColor = isMain ? _glowColor : _textOverlays[targetIndex].glowColor;
         title = 'Glow Color';
         break;
       case 'mask':
         currentColor = _maskColor;
         title = 'Mask Color';
+        break;
+      case 'box':
+        currentColor = isMain ? _mainBoxColor : _textOverlays[targetIndex].boxColor;
+        title = 'Box Color';
         break;
       default:
         currentColor = Colors.white;
@@ -2445,19 +2826,26 @@ class _TextPostScreenState extends State<TextPostScreen> {
                     setState(() {
                       switch (type) {
                         case 'text':
-                          _textColor = selectedColor;
+                          if (isMain) _textColor = selectedColor;
+                          else _textOverlays[targetIndex].color = selectedColor;
                           break;
                         case 'background':
                           _backgroundColor = selectedColor;
                           break;
                         case 'shadow':
-                          _shadowColor = selectedColor;
+                          if (isMain) _shadowColor = selectedColor;
+                          else _textOverlays[targetIndex].shadowColor = selectedColor;
                           break;
                         case 'glow':
-                          _glowColor = selectedColor;
+                          if (isMain) _glowColor = selectedColor;
+                          else _textOverlays[targetIndex].glowColor = selectedColor;
                           break;
                         case 'mask':
                           _maskColor = selectedColor;
+                          break;
+                        case 'box':
+                          if (isMain) _mainBoxColor = selectedColor;
+                          else _textOverlays[targetIndex].boxColor = selectedColor;
                           break;
                       }
                     });
@@ -2479,106 +2867,8 @@ class _TextPostScreenState extends State<TextPostScreen> {
     );
   }
 
-  Future<void> _processBulkPosts() async {
-    if (_bulkTexts.isEmpty) return;
-
-    int completed = 0;
-    int failed = 0;
-    List<String> savedPaths = [];
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Bulk Processing'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              LinearProgressIndicator(value: completed / _bulkTexts.length),
-              const SizedBox(height: 16),
-              Text('Generating post ${completed + 1} of ${_bulkTexts.length}...'),
-              if (failed > 0) Text('$failed failed', style: const TextStyle(color: Colors.red, fontSize: 12)),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    try {
-      final double aspect = _currentAspectRatio;
-      const int baseWidth = 1080;
-      final int exportWidth;
-      final int exportHeight;
-
-      if (aspect >= 1.0) {
-        exportWidth = baseWidth;
-        exportHeight = (baseWidth / aspect).round();
-      } else {
-        exportHeight = baseWidth;
-        exportWidth = (baseWidth * aspect).round();
-      }
-
-      for (int i = 0; i < _bulkTexts.length; i++) {
-        setState(() {
-          _currentBulkIndex = i;
-        });
-
-        try {
-          // We must wait for the frame to render the new text before capturing
-          await Future.delayed(const Duration(milliseconds: 200));
-          await WidgetsBinding.instance.endOfFrame;
-
-          final String? savedPath = await ImageGenerator.savePostToGallery(
-            text: '', // Text is already in the widget
-            templateKey: _previewKey,
-            outputWidth: exportWidth,
-            outputHeight: exportHeight,
-          );
-
-          if (savedPath != null) {
-            savedPaths.add(savedPath);
-            completed++;
-          } else {
-            failed++;
-          }
-        } catch (e) {
-          debugPrint('Bulk item $i failed: $e');
-          failed++;
-        }
-      }
-
-      Navigator.pop(context); // Close progress dialog
-
-      _showBulkCompletionDialog(savedPaths, failed);
-    } catch (e) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Bulk error: $e')));
-    }
-  }
-
-  void _showBulkCompletionDialog(List<String> paths, int failed) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Bulk Processing Done'),
-        content: Text('Successfully generated ${paths.length} posts.\n' + (failed > 0 ? '$failed failed.' : '')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
-          if (paths.isNotEmpty)
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                OpenFile.open(paths.last);
-              },
-              child: const Text('Open Last'),
-            ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _savePost() async {
+    debugPrint('[TextPostScreen] Starting _savePost()');
     setState(() {
       _isExporting = true;
       _isTabContentExpanded = false;

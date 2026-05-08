@@ -898,7 +898,18 @@ class MainActivity : FlutterActivity() {
                                     "videoY" to videoY,
                                     "watermarkScale" to ((call.argument<Number>("watermarkScale"))?.toFloat() ?: 1.0f),
                                     "textOverlays" to (call.argument<List<Map<String, Any?>>>("textOverlays") ?: emptyList()),
-                                    "imageOverlays" to (call.argument<List<Map<String, Any?>>>("imageOverlays") ?: emptyList())
+                                    "imageOverlays" to (call.argument<List<Map<String, Any?>>>("imageOverlays") ?: emptyList()),
+                                    // Video shadow parameters
+                                    "showVideoShadow" to (call.argument<Boolean>("showVideoShadow") ?: false),
+                                    "videoShadowColor" to (call.argument<String>("videoShadowColor") ?: "#000000"),
+                                    "videoShadowBlur" to ((call.argument<Number>("videoShadowBlur"))?.toFloat() ?: 10f),
+                                    "videoShadowSpread" to ((call.argument<Number>("videoShadowSpread"))?.toFloat() ?: 0f),
+                                    "videoShadowOffsetX" to ((call.argument<Number>("videoShadowOffsetX"))?.toFloat() ?: 0f),
+                                    "videoShadowOffsetY" to ((call.argument<Number>("videoShadowOffsetY"))?.toFloat() ?: 0f),
+                                    "videoRadius" to ((call.argument<Number>("videoRadius"))?.toFloat() ?: 0f),
+                                    "videoBorderWidth" to ((call.argument<Number>("videoBorderWidth"))?.toFloat() ?: 0f),
+                                    "videoBorderColor" to (call.argument<String>("videoBorderColor") ?: "#000000"),
+                                    "videoScale" to ((call.argument<Number>("videoScale"))?.toFloat() ?: 1.0f)
                                 )
                                 val outputFile = java.io.File(outputPath)
                                 val callback = object : OpenGLWatermarkProcessor.ProgressCallback {

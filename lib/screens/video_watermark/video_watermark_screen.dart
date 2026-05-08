@@ -251,6 +251,18 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
     double _iconShadowOffsetX = 1.5;
     double _iconShadowOffsetY = 1.5;
 
+    // Video Shadow Settings
+    bool _showVideoShadow = false;
+    String _videoShadowColor = "#000000";
+    double _videoShadowBlur = 10.0;
+    double _videoShadowSpread = 0.0;
+    double _videoShadowOffsetX = 0.0;
+    double _videoShadowOffsetY = 0.0;
+    double _videoRadius = 0.0;
+    double _videoBorderWidth = 0.0;
+    String _videoBorderColor = "#000000";
+    double _videoScale = 1.0;
+
   int _selectedTabIndex = 1;
   int _selectedStyleSubTab = 0; // 0: Username, 1: Handle, 2: Icon
   bool _isTabContentExpanded = true;
@@ -289,6 +301,9 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
       _boxColor = target.boxColor;
       _boxOpacity = target.boxOpacity;
       _boxRadius = target.boxRadius;
+      _videoRadius = target.videoRadius;
+      _videoBorderWidth = target.videoBorderWidth;
+      _videoBorderColor = target.videoBorderColor;
       _watermarkX = target.watermarkX;
       _watermarkY = target.watermarkY;
       _fontSize = target.fontSize;
@@ -358,7 +373,10 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
         _bgBrightness = target.bgBrightness;
         _bgSaturation = target.bgSaturation;
         _bgBlur = target.bgBlur;
-        _bgBlur = target.bgBlur;
+        _videoRadius = target.videoRadius;
+        _videoBorderWidth = target.videoBorderWidth;
+        _videoBorderColor = target.videoBorderColor;
+        _videoScale = target.videoScale;
       } catch (_) {
         // Defaults for old presets
         _storyRingWidth = 5.0;
@@ -372,7 +390,10 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
         _bgBrightness = 1.0;
         _bgSaturation = 1.0;
         _bgBlur = 0.0;
-        _bgBlur = 0.0;
+        _videoRadius = 0.0;
+        _videoBorderWidth = 0.0;
+        _videoBorderColor = "#000000";
+        _videoScale = 1.0;
       }
     });
   }
@@ -449,6 +470,10 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
       bgBrightness: _bgBrightness,
       bgSaturation: _bgSaturation,
       bgBlur: _bgBlur,
+      videoRadius: _videoRadius,
+      videoBorderWidth: _videoBorderWidth,
+      videoBorderColor: _videoBorderColor,
+      videoScale: _videoScale,
     );
     await WatermarkPresetService.savePreset(preset);
     if (mounted) setState(() {});
@@ -500,6 +525,10 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
     preset.usernameSize = _usernameSize;
     preset.handleSize = _handleSize;
     preset.bgBlur = _bgBlur;
+    preset.videoRadius = _videoRadius;
+    preset.videoBorderWidth = _videoBorderWidth;
+    preset.videoBorderColor = _videoBorderColor;
+    preset.videoScale = _videoScale;
 
     await WatermarkPresetService.savePreset(preset);
     if (mounted) {
@@ -735,6 +764,10 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
       bgBrightness: _bgBrightness,
       bgSaturation: _bgSaturation,
       bgBlur: _bgBlur,
+      videoRadius: _videoRadius,
+      videoBorderWidth: _videoBorderWidth,
+      videoBorderColor: _videoBorderColor,
+      videoScale: _videoScale,
     );
     await WatermarkPresetService.savePreset(preset);
     AnalyticsService().logSaveAction(feature: 'video_watermark', type: 'preset');
@@ -819,6 +852,16 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
         'patches': _patches.map((p) => p.toMap((_fullScreen ? 1080 : _videoWidth).toDouble(), (_fullScreen ? 1920 : _videoHeight).toDouble())).toList(),
         'textOverlays': resolvedTextOverlays,
         'imageOverlays': _imageOverlays.map((o) => o.toMap((_fullScreen ? 1080 : _videoWidth).toDouble(), (_fullScreen ? 1920 : _videoHeight).toDouble())).toList(),
+        'showVideoShadow': _showVideoShadow,
+        'videoShadowColor': _videoShadowColor,
+        'videoShadowBlur': _videoShadowBlur,
+        'videoShadowSpread': _videoShadowSpread,
+        'videoShadowOffsetX': _videoShadowOffsetX,
+        'videoShadowOffsetY': _videoShadowOffsetY,
+        'videoRadius': _videoRadius,
+        'videoBorderWidth': _videoBorderWidth,
+        'videoBorderColor': _videoBorderColor,
+        'videoScale': _videoScale,
       };
 
       final result = await platform.invokeMethod<String>('addWatermarkToVideo', params);
@@ -1317,9 +1360,32 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
 
                           Align(
                             alignment: Alignment(0, (_videoY - 0.5) * 2),
-                            child: AspectRatio(
-                              aspectRatio: _videoAspectRatio,
-                              child: VideoPlayer(_videoController!),
+                            child: Transform.scale(
+                              scale: _videoScale,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(_videoRadius),
+                                  border: _videoBorderWidth > 0 ? Border.all(
+                                    color: _parseColor(_videoBorderColor),
+                                    width: _videoBorderWidth,
+                                  ) : null,
+                                  boxShadow: _showVideoShadow ? [
+                                    BoxShadow(
+                                      color: _parseColor(_videoShadowColor),
+                                      blurRadius: _videoShadowBlur,
+                                      offset: Offset(_videoShadowOffsetX, _videoShadowOffsetY),
+                                      spreadRadius: _videoShadowSpread,
+                                    )
+                                  ] : null,
+                                ) ,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(_videoRadius),
+                                  child: AspectRatio(
+                                    aspectRatio: _videoAspectRatio,
+                                    child: VideoPlayer(_videoController!),
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
 
@@ -2616,7 +2682,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Opacity: ${(_boxOpacity * 100).toInt()}%'),
-                    Slider(value: _boxOpacity, min: 0, max: 1, onChanged: (v) => setState(() => _boxOpacity = v)),
+                    _buildSliderWithButtons(value: _boxOpacity, min: 0, max: 1, onChanged: (v) => setState(() => _boxOpacity = v)),
                   ],
                 ),
               ),
@@ -2626,7 +2692,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Corner Radius: ${_boxRadius.toInt()}'),
-                    Slider(value: _boxRadius, min: 0, max: 100, onChanged: (v) => setState(() => _boxRadius = v)),
+                    _buildSliderWithButtons(value: _boxRadius, min: 0, max: 100, onChanged: (v) => setState(() => _boxRadius = v)),
                   ],
                 ),
               ),
@@ -2740,12 +2806,12 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
         const Text('Manual Sizing', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
         const SizedBox(height: 16),
         Text('Icon Size: ${_iconSize.toInt()}'),
-        Slider(value: _iconSize, min: 40, max: 400, onChanged: (v) => setState(() => _iconSize = v)),
+        _buildSliderWithButtons(value: _iconSize, min: 40, max: 400, onChanged: (v) => setState(() => _iconSize = v)),
         _buildControlSlider(label: 'Username Size', value: _usernameSize, min: 20, max: 200, onChanged: (v) => setState(() => _usernameSize = v)),
         _buildControlSlider(label: 'Handle Size', value: _handleSize, min: 20, max: 200, onChanged: (v) => setState(() => _handleSize = v)),
         const SizedBox(height: 8),
         Text('Master Scale: ${_watermarkScale.toStringAsFixed(2)}'),
-        Slider(value: _watermarkScale, min: 0.5, max: 2.5, onChanged: (v) => setState(() => _watermarkScale = v)),
+        _buildSliderWithButtons(value: _watermarkScale, min: 0.5, max: 2.5, onChanged: (v) => setState(() => _watermarkScale = v)),
         const SizedBox(height: 16),
         const Text('Manual Coordinates (Fine-tune)', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
@@ -2808,6 +2874,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
             _buildSubTabButton(0, 'Username', Icons.person_outline),
             _buildSubTabButton(1, 'Handle', Icons.alternate_email),
             _buildSubTabButton(2, 'Icon', Icons.image_outlined),
+            _buildSubTabButton(3, 'Video', Icons.videocam_outlined),
           ],
         ),
         const SizedBox(height: 20),
@@ -2883,6 +2950,60 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
                 ),
               ],
             ),
+
+            // --- Video Style ---
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Video Canvas Options', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                const SizedBox(height: 16),
+                _buildShadowControlSection(
+                  title: 'Video Drop Shadow',
+                  showShadow: _showVideoShadow,
+                  onToggleShadow: (v) => setState(() => _showVideoShadow = v),
+                  shadowColor: _videoShadowColor,
+                  onColorChanged: (c) => setState(() => _videoShadowColor = c),
+                  blur: _videoShadowBlur,
+                  onBlurChanged: (v) => setState(() => _videoShadowBlur = v),
+                  offsetX: _videoShadowOffsetX,
+                  onOffsetXChanged: (v) => setState(() => _videoShadowOffsetX = v),
+                  offsetY: _videoShadowOffsetY,
+                  onOffsetYChanged: (v) => setState(() => _videoShadowOffsetY = v),
+                  spread: _videoShadowSpread,
+                  onSpreadChanged: (v) => setState(() => _videoShadowSpread = v),
+                ),
+                const SizedBox(height: 16),
+                _buildControlSlider(
+                  label: 'Video Scale',
+                  value: _videoScale,
+                  min: 0.1,
+                  max: 3.0,
+                  onChanged: (v) => setState(() => _videoScale = v),
+                ),
+                const SizedBox(height: 16),
+                _buildControlSlider(
+                  label: 'Corner Radius',
+                  value: _videoRadius,
+                  min: 0.0,
+                  max: 200.0,
+                  onChanged: (v) => setState(() => _videoRadius = v),
+                ),
+                const SizedBox(height: 16),
+                _buildControlSlider(
+                  label: 'Border Width',
+                  value: _videoBorderWidth,
+                  min: 0.0,
+                  max: 50.0,
+                  onChanged: (v) => setState(() => _videoBorderWidth = v),
+                ),
+                if (_videoBorderWidth > 0) ...[
+                  const SizedBox(height: 12),
+                  const Text('Border Color', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 8),
+                  _buildColorPicker(_videoBorderColor, (c) => setState(() => _videoBorderColor = c)),
+                ],
+              ],
+            ),
           ],
         ),
       ],
@@ -2935,6 +3056,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
     required ValueChanged<double> onOffsetXChanged,
     required double offsetY,
     required ValueChanged<double> onOffsetYChanged,
+    double? spread,
+    ValueChanged<double>? onSpreadChanged,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2953,23 +3076,33 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
           _buildColorPicker(shadowColor, onColorChanged),
           const SizedBox(height: 16),
           Text('Blur Radius: ${blur.toInt()}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-          Slider(value: blur, min: 0, max: 20, onChanged: onBlurChanged),
+          _buildSliderWithButtons(value: blur, min: 0, max: 20, onChanged: onBlurChanged),
           const SizedBox(height: 8),
-          const SizedBox(height: 12),
           Row(
             children: [
-              const SizedBox(width: 4, child: Text('X', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold))),
-              Expanded(child: Slider(value: offsetX, min: -15, max: 15, onChanged: onOffsetXChanged)),
-              Text(offsetX.toStringAsFixed(1), style: const TextStyle(fontSize: 10, color: Colors.grey)),
+              Expanded(
+                child: Row(
+                  children: [
+                    const Text('X', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    Expanded(child: _buildSliderWithButtons(value: offsetX, min: -20, max: 20, onChanged: onOffsetXChanged)),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Row(
+                  children: [
+                    const Text('Y', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    Expanded(child: _buildSliderWithButtons(value: offsetY, min: -20, max: 20, onChanged: onOffsetYChanged)),
+                  ],
+                ),
+              ),
             ],
           ),
-          Row(
-            children: [
-              const SizedBox(width: 4, child: Text('Y', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold))),
-              Expanded(child: Slider(value: offsetY, min: -15, max: 15, onChanged: onOffsetYChanged)),
-              Text(offsetY.toStringAsFixed(1), style: const TextStyle(fontSize: 10, color: Colors.grey)),
-            ],
-          ),
+          if (spread != null && onSpreadChanged != null) ...[
+            const SizedBox(height: 8),
+            Text('Spread Radius: ${spread.toInt()}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            _buildSliderWithButtons(value: spread, min: -20, max: 20, onChanged: onSpreadChanged),
+          ],
         ],
       ],
     );
@@ -3145,6 +3278,46 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
               onChanged: (v) => setState(() => _bgBlur = v),
             ),
           ],
+        ],
+        const Divider(height: 32),
+        const Text('Video Placement', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        const SizedBox(height: 8),
+        _buildControlSlider(
+          label: 'Vertical Alignment (Y)',
+          value: _videoY,
+          min: 0.0,
+          max: 1.0,
+          onChanged: (v) => setState(() => _videoY = v),
+        ),
+        const SizedBox(height: 16),
+        _buildControlSlider(
+          label: 'Video Scale',
+          value: _videoScale,
+          min: 0.1,
+          max: 3.0,
+          onChanged: (v) => setState(() => _videoScale = v),
+        ),
+        const SizedBox(height: 8),
+        _buildControlSlider(
+          label: 'Corner Radius',
+          value: _videoRadius,
+          min: 0.0,
+          max: 200.0,
+          onChanged: (v) => setState(() => _videoRadius = v),
+        ),
+        const SizedBox(height: 16),
+        _buildControlSlider(
+          label: 'Border Width',
+          value: _videoBorderWidth,
+          min: 0.0,
+          max: 50.0,
+          onChanged: (v) => setState(() => _videoBorderWidth = v),
+        ),
+        if (_videoBorderWidth > 0) ...[
+          const SizedBox(height: 12),
+          const Text('Border Color', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 8),
+          _buildColorPicker(_videoBorderColor, (c) => setState(() => _videoBorderColor = c)),
         ],
         const Divider(height: 32),
       ],
@@ -3332,7 +3505,14 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
     );
   }
 
-  Widget _buildControlSlider({required String label, required double value, required double min, required double max, required ValueChanged<double> onChanged}) {
+  Widget _buildControlSlider({
+    required String label,
+    required double value,
+    required double min,
+    required double max,
+    required ValueChanged<double> onChanged,
+    double? step,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -3340,17 +3520,81 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
-            Text(value.toStringAsFixed(max <= 2 ? 2 : 1), style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+            Text(value.toStringAsFixed(max <= 2 ? 2 : 1),
+                style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
           ],
         ),
-        Slider(
+        _buildSliderWithButtons(
           value: value,
           min: min,
           max: max,
           onChanged: onChanged,
-          activeColor: AppColors.primary,
+          step: step,
         ),
       ],
+    );
+  }
+
+  Widget _buildSliderWithButtons({
+    required double value,
+    required double min,
+    required double max,
+    required ValueChanged<double> onChanged,
+    double? step,
+    Color activeColor = AppColors.primary,
+  }) {
+    // Determine a sensible increment if not provided
+    final double range = max - min;
+    final double increment = step ?? (range <= 2 ? 0.05 : (range <= 10 ? 0.5 : (range / 20).roundToDouble().clamp(1.0, 10.0)));
+    
+    return Row(
+      children: [
+        _buildPreciseBtn(
+          icon: Icons.remove,
+          onTap: () => onChanged((value - increment).clamp(min, max)),
+        ),
+        Expanded(
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 4,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+              activeTrackColor: activeColor,
+              inactiveTrackColor: activeColor.withOpacity(0.1),
+              thumbColor: activeColor,
+              overlayColor: activeColor.withOpacity(0.12),
+            ),
+            child: Slider(
+              value: value,
+              min: min,
+              max: max,
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+        _buildPreciseBtn(
+          icon: Icons.add,
+          onTap: () => onChanged((value + increment).clamp(min, max)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPreciseBtn({required IconData icon, required VoidCallback onTap}) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 16, color: AppColors.primary),
+        ),
+      ),
     );
   }
 
