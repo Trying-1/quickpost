@@ -67,7 +67,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
 
         float roundedRect(vec2 p, vec2 b, float r) {
             vec2 d = abs(p - b) - (b - r);
-            return length(max(d, 0.0)) - r;
+            return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - r;
         }
 
         void main() {
@@ -76,8 +76,8 @@ class OpenGLWatermarkProcessor(private val context: Context) {
             vec2 p = vTexCoord * uSize;
             float d = roundedRect(p, uSize * 0.5, uRadius);
             
-            // Main clip mask
-            float mask = 1.0 - smoothstep(-1.0, 0.0, d);
+            // Main clip mask: 1.0 inside (d < 0), 0.0 outside (d > 0)
+            float mask = 1.0 - smoothstep(0.0, 1.0, d);
             
             if (uBorderWidth > 0.0) {
                 // Border mask: 1.0 when -uBorderWidth < d < 0
@@ -213,7 +213,10 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         val textAlign: String,
         val maxWidth: Float,
         val anchor: String,
-        val scale: Float
+        val scale: Float,
+        val lineHeight: Float,
+        val letterSpacing: Float,
+        val wordSpacing: Float
     )
 
     data class ImageOverlay(
@@ -338,7 +341,10 @@ class OpenGLWatermarkProcessor(private val context: Context) {
                 textAlign = t["textAlign"] as? String ?: "center",
                 maxWidth = (t["maxWidth"] as? Number)?.toFloat() ?: 800f,
                 anchor = t["anchor"] as? String ?: "center",
-                scale = (t["scale"] as? Number)?.toFloat() ?: 1.0f
+                scale = (t["scale"] as? Number)?.toFloat() ?: 1.0f,
+                lineHeight = (t["lineHeight"] as? Number)?.toFloat() ?: 1.2f,
+                letterSpacing = (t["letterSpacing"] as? Number)?.toFloat() ?: 0.0f,
+                wordSpacing = (t["wordSpacing"] as? Number)?.toFloat() ?: 0.0f
             )
         }
 
@@ -382,7 +388,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         callback.onStep("Initializing graphics engine...")
         Log.d(TAG, "Phase 3: GPU Initialization")
         initEGL(encoderSurface)
-        initGL()
+        initGL(outWidth, outHeight)
         val muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
         val bufferInfo = MediaCodec.BufferInfo()
         val encoderBufferInfo = MediaCodec.BufferInfo()
@@ -640,7 +646,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
 
                         // 4. Draw Video Frame (OES)
                         GLES20.glEnable(GLES20.GL_BLEND)
-                        GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
+                        GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA)
                         
                         // Calculate effective dimensions for the shader's corner radius math
                         val aspectIn = inputWidth.toFloat() / inputHeight.toFloat()
@@ -1247,6 +1253,11 @@ class OpenGLWatermarkProcessor(private val context: Context) {
                 textPaint.typeface = Typeface.DEFAULT
             }
             
+            textPaint.letterSpacing = t.letterSpacing
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                textPaint.wordSpacing = t.wordSpacing
+            }
+            
             val alignment = when (t.textAlign.lowercase()) {
                 "left" -> Layout.Alignment.ALIGN_NORMAL
                 "right" -> Layout.Alignment.ALIGN_OPPOSITE
@@ -1255,7 +1266,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
 
             val builder = StaticLayout.Builder.obtain(t.text, 0, t.text.length, textPaint, t.maxWidth.toInt())
                 .setAlignment(alignment)
-                .setLineSpacing(0f, 1f)
+                .setLineSpacing(0f, t.lineHeight)
                 .setIncludePad(false)
             
             val staticLayout = builder.build()
@@ -1353,12 +1364,12 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         return tex[0]
     }
 
-    private fun initGL() {
+    private fun initGL(w: Int, h: Int) {
         programOES = createProgram(VERTEX_SHADER, FRAGMENT_SHADER_OES)
         program2D = createProgram(VERTEX_SHADER, FRAGMENT_SHADER_2D)
         programBlurH = createProgram(VERTEX_SHADER, FRAGMENT_SHADER_BLUR_H)
         programBlurV = createProgram(VERTEX_SHADER, FRAGMENT_SHADER_BLUR_V)
-        createFBOs(1080, 1920)
+        createFBOs(w, h)
     }
 
     private fun createProgram(vs: String, fs: String): Int {

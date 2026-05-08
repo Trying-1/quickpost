@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:convert';
+import 'dart:async';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../config/app_theme.dart';
 import 'package:open_file/open_file.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:csv/csv.dart';
@@ -15,6 +19,8 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 import '../quotes/my_quotes_screen.dart';
 import '../../models/quote_item.dart';
+import '../../services/my_quotes_service.dart';
+import 'package:uuid/uuid.dart';
 
 class _OverlayPatch {
   double x; // Normalized
@@ -36,6 +42,32 @@ class _OverlayPatch {
     this.radius = 8.0,
     this.isTop = false,
   });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'x': x,
+      'y': y,
+      'width': width,
+      'height': height,
+      'color': color.value,
+      'opacity': opacity,
+      'radius': radius,
+      'isTop': isTop,
+    };
+  }
+
+  factory _OverlayPatch.fromMap(Map<String, dynamic> map) {
+    return _OverlayPatch(
+      x: map['x']?.toDouble() ?? 0.5,
+      y: map['y']?.toDouble() ?? 0.5,
+      width: map['width']?.toDouble() ?? 0.2,
+      height: map['height']?.toDouble() ?? 0.2,
+      color: Color(map['color'] ?? Colors.black.value),
+      opacity: map['opacity']?.toDouble() ?? 0.5,
+      radius: map['radius']?.toDouble() ?? 8.0,
+      isTop: map['isTop'] ?? false,
+    );
+  }
 }
 
 class _OverlayImage {
@@ -54,6 +86,28 @@ class _OverlayImage {
     this.opacity = 1.0,
     this.rotation = 0.0,
   });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'path': path,
+      'x': x,
+      'y': y,
+      'scale': scale,
+      'opacity': opacity,
+      'rotation': rotation,
+    };
+  }
+
+  factory _OverlayImage.fromMap(Map<String, dynamic> map) {
+    return _OverlayImage(
+      path: map['path'] ?? '',
+      x: map['x']?.toDouble() ?? 0.5,
+      y: map['y']?.toDouble() ?? 0.5,
+      scale: map['scale']?.toDouble() ?? 0.2,
+      opacity: map['opacity']?.toDouble() ?? 1.0,
+      rotation: map['rotation']?.toDouble() ?? 0.0,
+    );
+  }
 }
 
 class _TextOverlay {
@@ -89,18 +143,18 @@ class _TextOverlay {
     this.x = 0.5,
     this.y = 0.5,
     this.fontSize = 24.0,
-    this.color = Colors.black,
+    this.color = Colors.white,
     this.font,
-    this.showShadow = false,
+    this.showShadow = true,
     this.shadowColor = Colors.black,
-    this.shadowBlur = 4.0,
-    this.shadowOffsetX = 2.0,
-    this.shadowOffsetY = 2.0,
+    this.shadowBlur = 0.0,
+    this.shadowOffsetX = 1.0,
+    this.shadowOffsetY = 1.0,
     this.textAlign = TextAlign.center,
     this.scale = 1.0,
     this.letterSpacing = 0.0,
-    this.lineHeight = 1.2,
-    this.showGlow = false,
+    this.lineHeight = 1.0,
+    this.showGlow = true,
     this.glowColor = Colors.white,
     this.glowRadius = 10.0,
     this.showBox = false,
@@ -108,6 +162,60 @@ class _TextOverlay {
     this.boxOpacity = 0.8,
     this.boxRadius = 8.0,
   });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'text': text,
+      'x': x,
+      'y': y,
+      'fontSize': fontSize,
+      'color': color.value,
+      'font': font?.toMap(),
+      'showShadow': showShadow,
+      'shadowColor': shadowColor.value,
+      'shadowBlur': shadowBlur,
+      'shadowOffsetX': shadowOffsetX,
+      'shadowOffsetY': shadowOffsetY,
+      'textAlign': textAlign.index,
+      'scale': scale,
+      'letterSpacing': letterSpacing,
+      'lineHeight': lineHeight,
+      'showGlow': showGlow,
+      'glowColor': glowColor.value,
+      'glowRadius': glowRadius,
+      'showBox': showBox,
+      'boxColor': boxColor.value,
+      'boxOpacity': boxOpacity,
+      'boxRadius': boxRadius,
+    };
+  }
+
+  factory _TextOverlay.fromMap(Map<String, dynamic> map) {
+    return _TextOverlay(
+      text: map['text'] ?? '',
+      x: map['x']?.toDouble() ?? 0.5,
+      y: map['y']?.toDouble() ?? 0.5,
+      fontSize: map['fontSize']?.toDouble() ?? 24.0,
+      color: Color(map['color'] ?? Colors.white.value),
+      font: map['font'] != null ? FontInfo.fromMap(Map<String, dynamic>.from(map['font'])) : null,
+      showShadow: map['showShadow'] ?? true,
+      shadowColor: Color(map['shadowColor'] ?? Colors.black.value),
+      shadowBlur: map['shadowBlur']?.toDouble() ?? 0.0,
+      shadowOffsetX: map['shadowOffsetX']?.toDouble() ?? 1.0,
+      shadowOffsetY: map['shadowOffsetY']?.toDouble() ?? 1.0,
+      textAlign: map['textAlign'] != null ? TextAlign.values[map['textAlign']] : TextAlign.center,
+      scale: map['scale']?.toDouble() ?? 1.0,
+      letterSpacing: map['letterSpacing']?.toDouble() ?? 0.0,
+      lineHeight: map['lineHeight']?.toDouble() ?? 1.0,
+      showGlow: map['showGlow'] ?? true,
+      glowColor: Color(map['glowColor'] ?? Colors.white.value),
+      glowRadius: map['glowRadius']?.toDouble() ?? 10.0,
+      showBox: map['showBox'] ?? false,
+      boxColor: Color(map['boxColor'] ?? Colors.white.value),
+      boxOpacity: map['boxOpacity']?.toDouble() ?? 0.8,
+      boxRadius: map['boxRadius']?.toDouble() ?? 8.0,
+    );
+  }
 }
 
 class TextPostScreen extends StatefulWidget {
@@ -117,24 +225,27 @@ class TextPostScreen extends StatefulWidget {
   State<TextPostScreen> createState() => _TextPostScreenState();
 }
 
-class _TextPostScreenState extends State<TextPostScreen> {
+class _TextPostScreenState extends State<TextPostScreen> with WidgetsBindingObserver {
   final TextEditingController _textController = TextEditingController();
   final GlobalKey _previewKey = GlobalKey();
 
+  Timer? _saveDebounce;
+  bool _isRestoring = false;
+
   FontInfo? _selectedFont;
-  Color _textColor = Colors.black87;
+  Color _textColor = Colors.white;
   Color _backgroundColor = Colors.white;
   
   // State variables
-  double _fontSize = 1.0; // relative multiplier
-  double _lineHeight = 1.2; // Text height multiplier
+  double _fontSize = 0.5; // relative multiplier
+  double _lineHeight = 1.0; // Text height multiplier
   double _textScale = 1.0; // Overall scale multiplier
-  bool _enableTextShadow = false;
+  bool _enableTextShadow = true;
   Color _shadowColor = Colors.black;
-  double _shadowOffsetX = 2.0;
-  double _shadowOffsetY = 2.0;
-  double _shadowBlurRadius = 5.0;
-  bool _enableTextGlow = false;
+  double _shadowOffsetX = 1.0;
+  double _shadowOffsetY = 1.0;
+  double _shadowBlurRadius = 0.0;
+  bool _enableTextGlow = true;
   Color _glowColor = Colors.white;
   double _glowRadius = 10.0;
 
@@ -147,7 +258,7 @@ class _TextPostScreenState extends State<TextPostScreen> {
 
   // Background Image & Adjustments
   File? _bgImage;
-  double _brightness = 1.0; // 0.0 to 2.0 (multiplicative/gain)
+  double _brightness = 0.5; // 0.0 to 2.0 (multiplicative/gain)
   double _saturation = 1.0; // 0.0 to 2.0
   double _hue = 0.0;        // -3.14 to 3.14
   final TransformationController _transformationController = TransformationController();
@@ -155,7 +266,7 @@ class _TextPostScreenState extends State<TextPostScreen> {
   // Mask Settings
   Color _maskColor = Colors.black;
   double _maskOpacity = 0.5;
-  int _maskType = 0; // 0: None, 1: Bottom, 2: Top, 3: Full, 4: Left, 5: Right
+  int _maskType = 1; // 0: None, 1: Bottom, 2: Top, 3: Full, 4: Left, 5: Right
   double _maskStart = 0.0;
   double _maskEnd = 1.0;
 
@@ -197,17 +308,221 @@ class _TextPostScreenState extends State<TextPostScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedFont = FontInfo(family: 'Metrophobic', displayName: 'Metrophobic');
+    WidgetsBinding.instance.addObserver(this);
+    _selectedFont = const FontInfo(family: 'KleeOne', displayName: 'Klee One SemiBold', weight: FontWeight.w600, assetPath: 'assets/fonts/KleeOne-SemiBold.ttf');
     _textController.addListener(() {
+      if (!_isRestoring) _scheduleSave();
       setState(() {});
     });
     AnalyticsService().setCurrentScreen(screenName: 'Text Post');
+    _loadState();
+  }
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    if (mounted && !_isRestoring) {
+      _scheduleSave();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _saveDebounce?.cancel();
+    _saveStateSync(); // Final save attempt on exit
     _textController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _saveStateSync();
+    }
+  }
+
+  void _scheduleSave() {
+    if (_saveDebounce?.isActive ?? false) _saveDebounce!.cancel();
+    _saveDebounce = Timer(const Duration(milliseconds: 500), () {
+      _saveStateSync();
+    });
+  }
+
+  Future<void> _saveStateSync() async {
+    if (_isRestoring) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      final stateMap = {
+        'text': _textController.text,
+        'selectedFont': _selectedFont?.toMap(),
+        'textColor': _textColor.value,
+        'backgroundColor': _backgroundColor.value,
+        'fontSize': _fontSize,
+        'lineHeight': _lineHeight,
+        'textScale': _textScale,
+        'enableTextShadow': _enableTextShadow,
+        'shadowColor': _shadowColor.value,
+        'shadowOffsetX': _shadowOffsetX,
+        'shadowOffsetY': _shadowOffsetY,
+        'shadowBlurRadius': _shadowBlurRadius,
+        'enableTextGlow': _enableTextGlow,
+        'glowColor': _glowColor.value,
+        'glowRadius': _glowRadius,
+        'showMainBox': _showMainBox,
+        'mainBoxColor': _mainBoxColor.value,
+        'mainBoxOpacity': _mainBoxOpacity,
+        'mainBoxRadius': _mainBoxRadius,
+        'letterSpacing': _letterSpacing,
+        'bgImagePath': _bgImage?.path,
+        'brightness': _brightness,
+        'saturation': _saturation,
+        'hue': _hue,
+        'maskColor': _maskColor.value,
+        'maskOpacity': _maskOpacity,
+        'maskType': _maskType,
+        'maskStart': _maskStart,
+        'maskEnd': _maskEnd,
+        'textAlign': _textAlign.index,
+        'textPositionX': _textPosition.x,
+        'textPositionY': _textPosition.y,
+        'selectedAspectIndex': _selectedAspectIndex,
+        'patches': _patches.map((p) => p.toMap()).toList(),
+        'imageOverlays': _imageOverlays.map((i) => i.toMap()).toList(),
+        'textOverlays': _textOverlays.map((t) => t.toMap()).toList(),
+      };
+      
+      await prefs.setString('text_post_draft_state', jsonEncode(stateMap));
+      debugPrint('[TextPostScreen] State saved successfully');
+    } catch (e) {
+      debugPrint('[TextPostScreen] Error saving state: $e');
+    }
+  }
+
+  Future<void> _loadState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stateString = prefs.getString('text_post_draft_state');
+      if (stateString != null && stateString.isNotEmpty) {
+        final stateMap = jsonDecode(stateString) as Map<String, dynamic>;
+        
+        setState(() {
+          _isRestoring = true;
+          
+          if (stateMap['text'] != null) {
+            _textController.text = stateMap['text'];
+          }
+          if (stateMap['selectedFont'] != null) {
+            _selectedFont = FontInfo.fromMap(Map<String, dynamic>.from(stateMap['selectedFont']));
+          }
+          if (stateMap['textColor'] != null) _textColor = Color(stateMap['textColor']);
+          if (stateMap['backgroundColor'] != null) _backgroundColor = Color(stateMap['backgroundColor']);
+          
+          _fontSize = stateMap['fontSize']?.toDouble() ?? 0.5;
+          _lineHeight = stateMap['lineHeight']?.toDouble() ?? 1.0;
+          _textScale = stateMap['textScale']?.toDouble() ?? 1.0;
+          _enableTextShadow = stateMap['enableTextShadow'] ?? true;
+          if (stateMap['shadowColor'] != null) _shadowColor = Color(stateMap['shadowColor']);
+          _shadowOffsetX = stateMap['shadowOffsetX']?.toDouble() ?? 1.0;
+          _shadowOffsetY = stateMap['shadowOffsetY']?.toDouble() ?? 1.0;
+          _shadowBlurRadius = stateMap['shadowBlurRadius']?.toDouble() ?? 0.0;
+          _enableTextGlow = stateMap['enableTextGlow'] ?? true;
+          if (stateMap['glowColor'] != null) _glowColor = Color(stateMap['glowColor']);
+          _glowRadius = stateMap['glowRadius']?.toDouble() ?? 10.0;
+          
+          _showMainBox = stateMap['showMainBox'] ?? false;
+          if (stateMap['mainBoxColor'] != null) _mainBoxColor = Color(stateMap['mainBoxColor']);
+          _mainBoxOpacity = stateMap['mainBoxOpacity']?.toDouble() ?? 0.8;
+          _mainBoxRadius = stateMap['mainBoxRadius']?.toDouble() ?? 8.0;
+          _letterSpacing = stateMap['letterSpacing']?.toDouble() ?? 0.0;
+          
+          if (stateMap['bgImagePath'] != null && stateMap['bgImagePath'].toString().isNotEmpty) {
+            final f = File(stateMap['bgImagePath']);
+            if (f.existsSync()) _bgImage = f;
+          }
+          
+          _brightness = stateMap['brightness']?.toDouble() ?? 0.5;
+          _saturation = stateMap['saturation']?.toDouble() ?? 1.0;
+          _hue = stateMap['hue']?.toDouble() ?? 0.0;
+          
+          if (stateMap['maskColor'] != null) _maskColor = Color(stateMap['maskColor']);
+          _maskOpacity = stateMap['maskOpacity']?.toDouble() ?? 0.5;
+          _maskType = stateMap['maskType'] ?? 1;
+          _maskStart = stateMap['maskStart']?.toDouble() ?? 0.0;
+          _maskEnd = stateMap['maskEnd']?.toDouble() ?? 1.0;
+          
+          if (stateMap['textAlign'] != null) _textAlign = TextAlign.values[stateMap['textAlign']];
+          _textPosition = Alignment(stateMap['textPositionX']?.toDouble() ?? 0.0, stateMap['textPositionY']?.toDouble() ?? 0.0);
+          _selectedAspectIndex = stateMap['selectedAspectIndex'] ?? 0;
+          
+          if (stateMap['patches'] != null) {
+            _patches = (stateMap['patches'] as List).map((p) => _OverlayPatch.fromMap(Map<String, dynamic>.from(p))).toList();
+          }
+          if (stateMap['imageOverlays'] != null) {
+            _imageOverlays = (stateMap['imageOverlays'] as List).map((i) => _OverlayImage.fromMap(Map<String, dynamic>.from(i))).toList();
+          }
+          if (stateMap['textOverlays'] != null) {
+            _textOverlays = (stateMap['textOverlays'] as List).map((t) => _TextOverlay.fromMap(Map<String, dynamic>.from(t))).toList();
+          }
+          
+          _isRestoring = false;
+        });
+        debugPrint('[TextPostScreen] State restored successfully');
+      }
+    } catch (e) {
+      debugPrint('[TextPostScreen] Error loading state: $e');
+      setState(() => _isRestoring = false);
+    }
+  }
+
+  void _resetState() {
+    setState(() {
+      _textController.clear();
+      _selectedFont = const FontInfo(family: 'KleeOne', displayName: 'Klee One SemiBold', weight: FontWeight.w600, assetPath: 'assets/fonts/KleeOne-SemiBold.ttf');
+      _textColor = Colors.white;
+      _backgroundColor = Colors.white;
+      _fontSize = 0.5;
+      _lineHeight = 1.0;
+      _textScale = 1.0;
+      _enableTextShadow = true;
+      _shadowColor = Colors.black;
+      _shadowOffsetX = 1.0;
+      _shadowOffsetY = 1.0;
+      _shadowBlurRadius = 0.0;
+      _enableTextGlow = true;
+      _glowColor = Colors.white;
+      _glowRadius = 10.0;
+      _showMainBox = false;
+      _mainBoxColor = Colors.white;
+      _mainBoxOpacity = 0.8;
+      _mainBoxRadius = 8.0;
+      _letterSpacing = 0.0;
+      
+      _bgImage = null;
+      _brightness = 0.5;
+      _saturation = 1.0;
+      _hue = 0.0;
+      _maskColor = Colors.black;
+      _maskOpacity = 0.5;
+      _maskType = 1;
+      _maskStart = 0.0;
+      _maskEnd = 1.0;
+      
+      _textAlign = TextAlign.center;
+      _textPosition = Alignment.center;
+      _selectedAspectIndex = 0;
+      
+      _patches.clear();
+      _imageOverlays.clear();
+      _textOverlays.clear();
+      _selectedTextIndex = -1;
+    });
+    
+    // Clear the SharedPreferences draft immediately
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.remove('text_post_draft_state');
+    });
   }
 
   @override
@@ -235,6 +550,11 @@ class _TextPostScreenState extends State<TextPostScreen> {
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black87),
           ),
           actions: [
+            TextButton.icon(
+              onPressed: _resetState,
+              icon: const Icon(Icons.refresh_rounded, size: 18, color: AppColors.primary),
+              label: const Text('Reset', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+            ),
             IconButton(
               icon: const Icon(Icons.help_outline_rounded, color: Colors.grey, size: 22),
               onPressed: () {},
@@ -695,11 +1015,6 @@ class _TextPostScreenState extends State<TextPostScreen> {
                         _selectedTextIndex = -1;
                         _selectedPatchIndex = null;
                         _selectedImageOverlayIndex = null;
-                        if (_selectedTabIndex > 6 || !_isTabContentExpanded) {
-                          _selectedTabIndex = 0; // Switch to Text tab
-                          _isTabContentExpanded = true;
-                        }
-                        
                         // Approximate movement for Alignment
                         double dx = (details.delta.dx / constraints.maxWidth) * 2;
                         double dy = (details.delta.dy / constraints.maxHeight) * 2;
@@ -1099,6 +1414,26 @@ class _TextPostScreenState extends State<TextPostScreen> {
                     ],
                   ),
                 ),
+                const SizedBox(width: 12),
+                // Save to My Quotes Button
+                GestureDetector(
+                  onTap: () => _saveToMyQuotes(effectiveController.text),
+                  child: Row(
+                    children: [
+                      Icon(Icons.bookmark_add_outlined, size: 14, color: Colors.green[600]),
+                      const SizedBox(width: 4),
+                      Text(
+                        'ADD QUOTE',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.green[700],
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(width: 16),
                 // Add Layer Button
                 GestureDetector(
@@ -1155,6 +1490,17 @@ class _TextPostScreenState extends State<TextPostScreen> {
               borderSide: const BorderSide(color: Colors.blueAccent, width: 1.5),
             ),
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            suffixIcon: IconButton(
+              icon: const Icon(Icons.cancel, size: 20, color: Colors.grey),
+              onPressed: () {
+                effectiveController.clear();
+                setState(() {
+                  if (!isMain && _selectedTextIndex >= 0 && _selectedTextIndex < _textOverlays.length) {
+                    _textOverlays[_selectedTextIndex].text = '';
+                  }
+                });
+              },
+            ),
           ),
           onChanged: (v) {
             setState(() {
@@ -1518,6 +1864,26 @@ class _TextPostScreenState extends State<TextPostScreen> {
           dense: true,
         ),
         if (showGlow) ...[
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const Text('Glow Color:', style: TextStyle(fontWeight: FontWeight.w500)),
+              const SizedBox(width: 12),
+              GestureDetector(
+                onTap: () => _showColorPicker('glow'),
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: glowColor,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey[300]!),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           _buildSimpleSlider(
             label: 'Glow Size',
             value: glowRadius,
@@ -1686,7 +2052,7 @@ class _TextPostScreenState extends State<TextPostScreen> {
               else _textOverlays[_selectedTextIndex].fontSize = v;
             }),
             onReset: () => setState(() {
-              if (isMain) _fontSize = 1.0;
+              if (isMain) _fontSize = 0.5;
               else _textOverlays[_selectedTextIndex].fontSize = 24.0;
             }),
             step: isMain ? 0.1 : 1.0,
@@ -1832,7 +2198,7 @@ class _TextPostScreenState extends State<TextPostScreen> {
   }
 
   Future<void> _importFromMyQuotes() async {
-    final dynamic selected = await Navigator.push(
+    final selected = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => const MyQuotesScreen(selectMode: true),
@@ -1841,8 +2207,38 @@ class _TextPostScreenState extends State<TextPostScreen> {
 
     if (selected != null && selected is QuoteItem) {
       setState(() {
-        _textController.text = selected.text;
+        if (_selectedTextIndex == -1) {
+          _textController.text = selected.text;
+        } else if (_selectedTextIndex >= 0 && _selectedTextIndex < _textOverlays.length) {
+          _textOverlays[_selectedTextIndex].text = selected.text;
+        }
       });
+    }
+  }
+
+  Future<void> _saveToMyQuotes(String text) async {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+
+    await MyQuotesService.init();
+    final newItem = QuoteItem(
+      id: const Uuid().v4(),
+      text: trimmed,
+      author: '',
+      category: 'Saved',
+      createdAt: DateTime.now(),
+    );
+    await MyQuotesService.saveQuote(newItem);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Saved to My Quotes!', style: TextStyle(fontWeight: FontWeight.bold)),
+          duration: Duration(seconds: 2),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -2116,8 +2512,6 @@ class _TextPostScreenState extends State<TextPostScreen> {
         child: GestureDetector(
           onPanStart: (_) => setState(() {
             _selectedTextIndex = idx;
-            _selectedTabIndex = 0; // Text tab
-            _isTabContentExpanded = true;
           }),
           onPanUpdate: (d) => setState(() {
             t.x = (t.x + d.delta.dx / constraints.maxWidth).clamp(0.0, 1.0);

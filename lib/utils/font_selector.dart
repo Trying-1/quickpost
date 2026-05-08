@@ -25,6 +25,30 @@ class FontInfo {
     this.assetPath,
   });
 
+  Map<String, dynamic> toMap() {
+    return {
+      'family': family,
+      'displayName': displayName,
+      'weight': weight?.value,
+      'style': style?.index,
+      'isCustom': isCustom,
+      'filePath': filePath,
+      'assetPath': assetPath,
+    };
+  }
+
+  factory FontInfo.fromMap(Map<String, dynamic> map) {
+    return FontInfo(
+      family: map['family'] as String? ?? 'Roboto',
+      displayName: map['displayName'] as String? ?? 'Roboto',
+      weight: map['weight'] != null ? FontWeight.values.firstWhere((e) => e.value == map['weight'], orElse: () => FontWeight.normal) : null,
+      style: map['style'] != null ? FontStyle.values[map['style'] as int] : null,
+      isCustom: map['isCustom'] as bool? ?? false,
+      filePath: map['filePath'] as String?,
+      assetPath: map['assetPath'] as String?,
+    );
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

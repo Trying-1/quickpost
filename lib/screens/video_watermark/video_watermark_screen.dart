@@ -106,12 +106,15 @@ class _TextOverlay {
   TextAlign textAlign;
   String anchor;
   double scale;
+  double lineHeight;
+  double letterSpacing;
+  double wordSpacing;
 
   _TextOverlay({
     required this.text,
     this.x = 0.5,
-    this.y = 0.5,
-    this.fontSize = 50.0,
+    this.y = 0.25,
+    this.fontSize = 30.0,
     this.color = "#000000",
     this.font,
     this.showShadow = false,
@@ -122,6 +125,9 @@ class _TextOverlay {
     this.textAlign = TextAlign.center,
     this.anchor = "center",
     this.scale = 1.0,
+    this.lineHeight = 1.2,
+    this.letterSpacing = 0.0,
+    this.wordSpacing = 0.0,
   });
 
   Map<String, dynamic> toMap(double videoWidth, double videoHeight, String resolvedFontPath) {
@@ -141,6 +147,9 @@ class _TextOverlay {
       'maxWidth': videoWidth * 0.8 * scale,
       'anchor': anchor,
       'scale': scale,
+      'lineHeight': lineHeight,
+      'letterSpacing': letterSpacing,
+      'wordSpacing': wordSpacing,
     };
   }
 }
@@ -288,8 +297,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
   void _loadPreset([WatermarkPreset? preset]) {
     final target = preset ?? WatermarkPresetService.getLatestPreset();
     if (target == null) {
-      _selectedUsernameFont = FontInfo(family: 'Metrophobic', displayName: 'Metrophobic');
-      _selectedHandleFont = FontInfo(family: 'Metrophobic', displayName: 'Metrophobic');
+      _selectedUsernameFont = const FontInfo(family: 'KleeOne', displayName: 'Klee One SemiBold', weight: FontWeight.w600, assetPath: 'assets/fonts/KleeOne-SemiBold.ttf');
+      _selectedHandleFont = const FontInfo(family: 'KleeOne', displayName: 'Klee One SemiBold', weight: FontWeight.w600, assetPath: 'assets/fonts/KleeOne-SemiBold.ttf');
       return;
     }
     
@@ -438,8 +447,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
       accentColor: _accentColor,
       username: _username,
       handle: _handle,
-      fontFamily: _selectedUsernameFont?.family ?? 'Metrophobic',
-      handleFontFamily: _selectedHandleFont?.family ?? _selectedUsernameFont?.family ?? 'Metrophobic',
+      fontFamily: _selectedUsernameFont?.family ?? 'KleeOne',
+      handleFontFamily: _selectedHandleFont?.family ?? _selectedUsernameFont?.family ?? 'KleeOne',
       profileImagePath: _profileImage?.path,
       showStoryRing: _showStoryRing,
       isVerified: _isVerified,
@@ -495,8 +504,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
     preset.accentColor = _accentColor;
     preset.username = _username;
     preset.handle = _handle;
-    preset.fontFamily = _selectedUsernameFont?.family ?? 'Metrophobic';
-    preset.handleFontFamily = _selectedHandleFont?.family ?? _selectedUsernameFont?.family ?? 'Metrophobic';
+    preset.fontFamily = _selectedUsernameFont?.family ?? 'KleeOne';
+    preset.handleFontFamily = _selectedHandleFont?.family ?? _selectedUsernameFont?.family ?? 'KleeOne';
     preset.profileImagePath = _profileImage?.path;
     preset.showStoryRing = _showStoryRing;
     preset.isVerified = _isVerified;
@@ -736,8 +745,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
       accentColor: _accentColor,
       username: _username,
       handle: _handle,
-      fontFamily: _selectedUsernameFont?.family ?? 'Metrophobic',
-      handleFontFamily: _selectedHandleFont?.family ?? _selectedUsernameFont?.family ?? 'Metrophobic',
+      fontFamily: _selectedUsernameFont?.family ?? 'KleeOne',
+      handleFontFamily: _selectedHandleFont?.family ?? _selectedUsernameFont?.family ?? 'KleeOne',
       profileImagePath: _profileImage?.path,
       showStoryRing: _showStoryRing,
       isVerified: _isVerified,
@@ -2171,6 +2180,9 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
                 fontFamily: t.font?.family,
                 fontWeight: t.font?.weight,
                 fontStyle: t.font?.style,
+                height: t.lineHeight,
+                letterSpacing: t.letterSpacing,
+                wordSpacing: t.wordSpacing,
                 shadows: t.showShadow ? [Shadow(
                   color: _parseColor(t.shadowColor), 
                   blurRadius: t.shadowBlur, 
@@ -2197,7 +2209,9 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
                  setState(() {
                    _textOverlays.add(_TextOverlay(
                      text: "New Text",
-                     font: FontInfo(family: 'Metrophobic', displayName: 'Metrophobic'),
+                     y: 0.25,
+                     fontSize: 30.0,
+                     font: const FontInfo(family: 'KleeOne', displayName: 'Klee One SemiBold', weight: FontWeight.w600, assetPath: 'assets/fonts/KleeOne-SemiBold.ttf'),
                    ));
                    _selectedTextOverlayIndex = _textOverlays.length - 1;
                  });
@@ -2251,6 +2265,9 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
                const SizedBox(height: 16),
                 _buildControlSlider(label: "Font Size", value: t.fontSize, min: 10, max: 200, onChanged: (v) => setState(() => t.fontSize = v)),
                 _buildControlSlider(label: "Scale", value: t.scale, min: 0.1, max: 5.0, onChanged: (v) => setState(() => t.scale = v)),
+                _buildControlSlider(label: "Line Spacing", value: t.lineHeight, min: 0.5, max: 3.0, onChanged: (v) => setState(() => t.lineHeight = v)),
+                _buildControlSlider(label: "Letter Spacing", value: t.letterSpacing, min: -5.0, max: 20.0, onChanged: (v) => setState(() => t.letterSpacing = v)),
+                _buildControlSlider(label: "Word Spacing", value: t.wordSpacing, min: -10.0, max: 50.0, onChanged: (v) => setState(() => t.wordSpacing = v)),
                const SizedBox(height: 8),
                const Text("Text Color", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                const SizedBox(height: 8),
