@@ -14,14 +14,15 @@ import '../../services/ad_service.dart';
 
 class VideoTextOverlayScreen extends StatefulWidget {
   final List<String>? sharedVideoPaths;
+  final bool isActive;
 
-  const VideoTextOverlayScreen({Key? key, this.sharedVideoPaths}) : super(key: key);
+  const VideoTextOverlayScreen({Key? key, this.sharedVideoPaths, this.isActive = true}) : super(key: key);
 
   @override
   State<VideoTextOverlayScreen> createState() => _VideoTextOverlayScreenState();
 }
 
-class _VideoTextOverlayScreenState extends State<VideoTextOverlayScreen> {
+class _VideoTextOverlayScreenState extends State<VideoTextOverlayScreen> with WidgetsBindingObserver {
   File? _selectedAudio;
   String? _audioDuration;
   bool _isPlayingAudio = false;
@@ -114,6 +115,7 @@ class _VideoTextOverlayScreenState extends State<VideoTextOverlayScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _selectedFont = FontInfo(family: 'Metrophobic', displayName: 'Metrophobic');
     _textController.text = _textContent;
     _setupMethodCallHandler();
@@ -140,6 +142,23 @@ class _VideoTextOverlayScreenState extends State<VideoTextOverlayScreen> {
     if (widget.sharedVideoPaths != oldWidget.sharedVideoPaths) {
       debugPrint('[VideoTextOverlay] sharedVideoPaths updated in didUpdateWidget');
       _handleSharedVideos();
+    }
+    if (!widget.isActive && oldWidget.isActive) {
+      _pauseVideo();
+    }
+  }
+
+  void _pauseVideo() {
+    if (mounted && _videoController != null && _videoController!.value.isPlaying) {
+      _videoController!.pause();
+      setState(() {});
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _pauseVideo();
     }
   }
 
@@ -283,6 +302,7 @@ class _VideoTextOverlayScreenState extends State<VideoTextOverlayScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _progressTimer?.cancel();
     _textController.dispose();
     _videoController?.dispose();

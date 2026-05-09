@@ -20,8 +20,9 @@ import '../../services/ad_service.dart';
 
 class VideoWatermarkScreen extends StatefulWidget {
   final List<String>? sharedVideoPaths;
+  final bool isActive;
 
-  const VideoWatermarkScreen({Key? key, this.sharedVideoPaths}) : super(key: key);
+  const VideoWatermarkScreen({Key? key, this.sharedVideoPaths, this.isActive = true}) : super(key: key);
 
   @override
   State<VideoWatermarkScreen> createState() => _VideoWatermarkScreenState();
@@ -154,7 +155,7 @@ class _TextOverlay {
   }
 }
 
-class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
+class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with WidgetsBindingObserver {
   static const platform = MethodChannel('com.quickpost.app/processor');
 
   File? _selectedVideo;
@@ -271,6 +272,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
     double _videoBorderWidth = 0.0;
     String _videoBorderColor = "#000000";
     double _videoScale = 1.0;
+    bool _showControls = true;
 
   int _selectedTabIndex = 1;
   int _selectedStyleSubTab = 0; // 0: Username, 1: Handle, 2: Icon
@@ -648,11 +650,29 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
         });
       }
     }
+    if (!widget.isActive && oldWidget.isActive) {
+      _pauseVideo();
+    }
+  }
+
+  void _pauseVideo() {
+    if (mounted && _videoController != null && _videoController!.value.isPlaying) {
+      _videoController!.pause();
+      setState(() {});
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _pauseVideo();
+    }
   }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _avgRatio = VideoPerfService.getAvgRatio();
     _loadPreset();
     _setupMethodCallHandler();
@@ -710,6 +730,14 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
         });
       }
     } catch (_) {}
+  }
+
+  void _togglePlayPause() {
+    if (_videoController != null) {
+      setState(() {
+        _videoController!.value.isPlaying ? _videoController!.pause() : _videoController!.play();
+      });
+    }
   }
 
   Future<void> _pickVideo() async {
@@ -1326,6 +1354,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   return GestureDetector(
+                    onTap: () => setState(() => _showControls = !_showControls),
                     onPanUpdate: (d) => setState(() {
                       _watermarkX = (d.localPosition.dx / constraints.maxWidth).clamp(0.0, 1.0);
                       _watermarkY = (d.localPosition.dy / constraints.maxHeight).clamp(0.0, 1.0);
@@ -1391,7 +1420,41 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
                                   borderRadius: BorderRadius.circular(_videoRadius),
                                   child: AspectRatio(
                                     aspectRatio: _videoAspectRatio,
-                                    child: VideoPlayer(_videoController!),
+                                    child: Stack(
+                                      children: [
+                                        VideoPlayer(_videoController!),
+                                        if (_showControls) ...[
+                                          Center(
+                                            child: IconButton(
+                                              iconSize: 64,
+                                              icon: Icon(
+                                                _videoController!.value.isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
+                                                color: Colors.white70,
+                                              ),
+                                              onPressed: _togglePlayPause,
+                                            ),
+                                          ),
+                                          Positioned(
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0,
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                              color: Colors.black26,
+                                              child: VideoProgressIndicator(
+                                                _videoController!,
+                                                allowScrubbing: true,
+                                                colors: const VideoProgressColors(
+                                                  playedColor: Colors.blueAccent,
+                                                  bufferedColor: Colors.white24,
+                                                  backgroundColor: Colors.white10,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -3757,6 +3820,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _uiUpdateTimer?.cancel();
     _videoController?.dispose();
     super.dispose();
   }

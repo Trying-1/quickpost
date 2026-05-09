@@ -28,12 +28,13 @@ class VideoCropEditor extends StatefulWidget {
   void flipHorizontal(GlobalKey<VideoCropEditorState> key) => key.currentState?.flipHorizontal();
   void fitToFrame(GlobalKey<VideoCropEditorState> key) => key.currentState?.fitToFrame();
   void resetPosition(GlobalKey<VideoCropEditorState> key) => key.currentState?.resetPosition();
+  void pauseVideo(GlobalKey<VideoCropEditorState> key) => key.currentState?.pauseVideo();
 
   @override
   VideoCropEditorState createState() => VideoCropEditorState();
 }
 
-class VideoCropEditorState extends State<VideoCropEditor> {
+class VideoCropEditorState extends State<VideoCropEditor> with WidgetsBindingObserver {
   late VideoPlayerController _controller;
   bool _isInitialized = false;
   bool _showControls = true;
@@ -66,6 +67,7 @@ class VideoCropEditorState extends State<VideoCropEditor> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _controller = VideoPlayerController.file(widget.videoFile)
       ..setLooping(true)
       ..setVolume(widget.isMuted ? 0 : 1)
@@ -329,8 +331,26 @@ class VideoCropEditorState extends State<VideoCropEditor> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      if (mounted && _controller.value.isPlaying) {
+        _controller.pause();
+        setState(() {});
+      }
+    }
+  }
+
+  void pauseVideo() {
+    if (mounted && _controller.value.isPlaying) {
+      _controller.pause();
+      setState(() {});
+    }
   }
 
   void rotateVideo() {

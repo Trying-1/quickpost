@@ -15,14 +15,15 @@ import '../../utils/font_selector.dart';
 
 class TextBoxOverlayScreen extends StatefulWidget {
   final List<String>? sharedImagePaths;
+  final bool isActive;
 
-  const TextBoxOverlayScreen({Key? key, this.sharedImagePaths}) : super(key: key);
+  const TextBoxOverlayScreen({Key? key, this.sharedImagePaths, this.isActive = true}) : super(key: key);
 
   @override
   State<TextBoxOverlayScreen> createState() => _TextBoxOverlayScreenState();
 }
 
-class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> {
+class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with WidgetsBindingObserver {
   File? _selectedAudio;
   String? _audioDuration;
   bool _isPlayingAudio = false;
@@ -96,6 +97,7 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _selectedFont = FontInfo(family: 'Metrophobic', displayName: 'Metrophobic');
     _textController.text = _textContent;
     _boxHeight = _calculateDynamicBoxHeight(text: _textContent);
@@ -152,6 +154,23 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> {
     super.didUpdateWidget(oldWidget);
     if (widget.sharedImagePaths != oldWidget.sharedImagePaths) {
       _handleSharedImages();
+    }
+    if (!widget.isActive && oldWidget.isActive) {
+      _pauseVideo();
+    }
+  }
+
+  void _pauseVideo() {
+    if (mounted && _videoController != null && _videoController!.value.isPlaying) {
+      _videoController!.pause();
+      setState(() {});
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _pauseVideo();
     }
   }
 
@@ -223,6 +242,7 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> {
   
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _progressTimer?.cancel();
     _textController.dispose();
     _textColorController.dispose();

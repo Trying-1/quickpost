@@ -17,8 +17,9 @@ import '../../services/ad_service.dart';
 
 class VideoCropperScreen extends StatefulWidget {
   final List<String>? sharedVideoPaths;
+  final bool isActive;
 
-  const VideoCropperScreen({super.key, this.sharedVideoPaths});
+  const VideoCropperScreen({super.key, this.sharedVideoPaths, this.isActive = true});
 
   @override
   State<VideoCropperScreen> createState() => _VideoCropperScreenState();
@@ -164,6 +165,9 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
     super.didUpdateWidget(oldWidget);
     if (widget.sharedVideoPaths != oldWidget.sharedVideoPaths) {
       _loadInitialVideos();
+    }
+    if (!widget.isActive && oldWidget.isActive) {
+      _editorKey.currentState?.pauseVideo();
     }
   }
 

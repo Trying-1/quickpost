@@ -11,17 +11,19 @@ import '../../services/analytics_service.dart';
 
 class AudioLibraryScreenWithFolders extends StatefulWidget {
   final Function(AudioFile)? onAudioSelected;
+  final bool isActive;
 
   const AudioLibraryScreenWithFolders({
     Key? key,
     this.onAudioSelected,
+    this.isActive = true,
   }) : super(key: key);
 
   @override
   State<AudioLibraryScreenWithFolders> createState() => _AudioLibraryScreenWithFoldersState();
 }
 
-class _AudioLibraryScreenWithFoldersState extends State<AudioLibraryScreenWithFolders> {
+class _AudioLibraryScreenWithFoldersState extends State<AudioLibraryScreenWithFolders> with WidgetsBindingObserver {
   List<AudioFolder> _folders = [];
   List<AudioFile> _audioFiles = [];
   String? _selectedFolderId;
@@ -34,14 +36,31 @@ class _AudioLibraryScreenWithFoldersState extends State<AudioLibraryScreenWithFo
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadData();
     AnalyticsService().setCurrentScreen(screenName: 'Audio Library');
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _previewController?.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant AudioLibraryScreenWithFolders oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.isActive && oldWidget.isActive) {
+      _stopAudio();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _stopAudio();
+    }
   }
 
   Future<void> _loadData() async {
