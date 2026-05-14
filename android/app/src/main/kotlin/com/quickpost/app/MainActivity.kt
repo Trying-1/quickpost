@@ -35,11 +35,9 @@ class MainActivity : FlutterActivity() {
     private var sharedPurpose: String? = null
     private var shareIntentProcessed = false
     private var currentWatermarkProcessor: OpenGLWatermarkProcessor? = null
-    private var currentOpenGLWatermarkProcessor: OpenGLWatermarkExportProcessor? = null
     private var currentVideoCropper: OpenGLVideoCropper? = null
     
     private var previewMethodChannel: MethodChannel? = null
-    private var watermarkPreviewProcessor: OpenGLWatermarkPreviewProcessor? = null
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
@@ -125,36 +123,6 @@ class MainActivity : FlutterActivity() {
         CollageRenderingBridge.register(flutterEngine.dartExecutor.binaryMessenger, this)
         
         previewMethodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.quickpost.app/preview")
-        previewMethodChannel?.setMethodCallHandler { call, result ->
-            when (call.method) {
-                "initPreview" -> {
-                    val videoPath = call.argument<String>("videoPath")
-                    if (videoPath != null) {
-                        val textureEntry = flutterEngine.renderer.createSurfaceTexture()
-                        watermarkPreviewProcessor = OpenGLWatermarkPreviewProcessor(this@MainActivity, textureEntry)
-                        watermarkPreviewProcessor?.start(videoPath)
-                        result.success(textureEntry.id())
-                    } else {
-                        result.error("INVALID_ARGUMENT", "Video path required", null)
-                    }
-                }
-                "updatePreviewParams" -> {
-                    val params = call.arguments as? Map<String, Any?> ?: call.argument<Map<String, Any?>>("params")
-                    if (params != null) {
-                        watermarkPreviewProcessor?.updateParams(params)
-                        result.success(true)
-                    } else {
-                        result.error("INVALID_ARGUMENT", "Params required", null)
-                    }
-                }
-                "disposePreview" -> {
-                    watermarkPreviewProcessor?.release()
-                    watermarkPreviewProcessor = null
-                    result.success(true)
-                }
-                else -> result.notImplemented()
-            }
-        }
 
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         methodChannel?.setMethodCallHandler { call, result ->
@@ -976,51 +944,9 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
-                "addOpenGLWatermarkToVideo" -> {
-                    val inputPath = call.argument<String>("inputPath")
-                    val outputPath = call.argument<String>("outputPath")
-                    val params = call.argument<Map<String, Any?>>("params") ?: emptyMap()
-
-                    if (inputPath == null || outputPath == null) {
-                        result.error("INVALID_ARGUMENTS", "Missing input or output path", null)
-                    } else {
-                        Thread {
-                            try {
-                                val processor = OpenGLWatermarkExportProcessor(this)
-                                currentOpenGLWatermarkProcessor = processor // Re-use same cancel handle
-                                val outputFile = java.io.File(outputPath)
-                                val callback = object : OpenGLWatermarkExportProcessor.ProgressCallback {
-                                    override fun onProgress(p: Double) {
-                                        runOnUiThread { methodChannel?.invokeMethod("onProgress", p) }
-                                    }
-                                    override fun onStep(s: String) {
-                                        runOnUiThread { methodChannel?.invokeMethod("onStep", s) }
-                                    }
-                                }
-                                try {
-                                    processor.processVideoWithWatermark(inputPath, outputFile, params, callback)
-                                    runOnUiThread {
-                                        if (outputFile.exists() && outputFile.length() > 0) {
-                                            scanMediaFile(outputFile.absolutePath)
-                                            result.success(outputFile.absolutePath)
-                                        } else {
-                                            result.error("PROCESSING_FAILED", "Output file is empty or missing.", null)
-                                        }
-                                    }
-                                } finally {
-                                    currentOpenGLWatermarkProcessor = null
-                                }
-                            } catch (e: Exception) {
-                                currentOpenGLWatermarkProcessor = null
-                                runOnUiThread { result.error("PROCESSING_FAILED", e.message, null) }
-                            }
-                        }.start()
-                    }
-                }
 
                 "cancelWatermarkToVideo" -> {
                     currentWatermarkProcessor?.cancel()
-                    currentOpenGLWatermarkProcessor?.cancel()
                     result.success(true)
                 }
                 "getSharedImages" -> {

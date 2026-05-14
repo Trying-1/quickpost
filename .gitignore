@@ -194,3 +194,5 @@ htmlcov/
 
 # Custom diagnostics files
 windsurf-diagnostics.txt
+ripplelogic_reference.dart
+error.txt

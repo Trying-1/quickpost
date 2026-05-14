@@ -2,7 +2,7 @@ name: quickpost
 description: Create stunning social posts, crop images in bulk, and make videos easily.
 publish_to: 'none'
 
-version: 1.0.14+19
+version: 1.0.15+20
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

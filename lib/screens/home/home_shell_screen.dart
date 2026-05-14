@@ -14,7 +14,6 @@ import '../quotes/my_quotes_screen.dart';
 import '../video_watermark/video_watermark_screen.dart';
 import '../../config/app_theme.dart';
 import '../../services/analytics_service.dart';
-import '../opengl_watermark/opengl_watermark_screen.dart';
 class HomeShellScreen extends StatefulWidget {
   final List<String>? sharedImagePaths;
   final String? sharedPurpose;
@@ -188,7 +187,6 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
             AudioLibraryScreenWithFolders(isActive: _currentBottomNavIndex == 9),
             AriseAutomationScreen(sharedPaths: _currentBottomNavIndex == 10 ? _currentPaths : null, sharedPurpose: _currentPurpose),
             const ProfileScreen(),
-            OpenglWatermarkScreen(sharedVideoPaths: _currentBottomNavIndex == 12 ? _currentPaths : null, isActive: _currentBottomNavIndex == 12),
           ],
         ),
         bottomNavigationBar: Column(
@@ -222,7 +220,6 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
             _buildNavItem(9, Icons.library_music, 'My Audios'),
             _buildNavItem(10, Icons.auto_awesome, 'Automation'),
             _buildNavItem(11, Icons.person, 'Profile'),
-            _buildNavItem(12, Icons.layers, 'GL Watermark'),
                   ],
                 ),
               ),
@@ -266,7 +263,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         final screenNames = [
           'Video Cropper', 'Watermark', 'Captions', 'Video Text', 
           'Post Maker', 'My Quotes', 'Image Cropper', 'Image to Video', 
-          'Text Box', 'My Audios', 'Automation', 'Profile', 'GL Watermark'
+          'Text Box', 'My Audios', 'Automation', 'Profile'
         ];
         if (index < screenNames.length) {
           AnalyticsService().setCurrentScreen(screenName: screenNames[index]);
