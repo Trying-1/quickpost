@@ -7,7 +7,7 @@ import 'dart:io';
 /// Uses official Google Test IDs in Debug mode and Production IDs in Release mode.
 class AdConfig {
   // Global switch to enable/disable all ads in the app
-  static const bool adsEnabled = false;
+  static const bool adsEnabled = true;
 
   // --- Production Ad Unit IDs ---
   // Managed in AdMob Console: https://apps.admob.com/
@@ -42,7 +42,7 @@ class AdConfig {
   static bool get shouldShowInterstitialAfterExport => adsEnabled;
 
   /// Cooldown duration between interstitial ads to prevent annoying users
-  static const Duration interstitialCooldown = Duration(minutes: 1);
+  static const Duration interstitialCooldown = Duration.zero;
 
   /// Helper to check if ads should be shown at all
   static bool get areAdsEnabled => adsEnabled && (Platform.isAndroid || Platform.isIOS);

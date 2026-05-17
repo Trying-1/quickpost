@@ -17,6 +17,7 @@ import '../../services/analytics_service.dart';
 class HomeShellScreen extends StatefulWidget {
   final List<String>? sharedImagePaths;
   final String? sharedPurpose;
+  final int initialIndex;
 
   static final GlobalKey<_HomeShellScreenState> shellKey = GlobalKey<_HomeShellScreenState>();
 
@@ -35,6 +36,7 @@ class HomeShellScreen extends StatefulWidget {
     Key? key,
     this.sharedImagePaths,
     this.sharedPurpose,
+    this.initialIndex = 0,
   }) : super(key: key ?? shellKey);
 
   @override
@@ -51,6 +53,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
   @override
   void initState() {
     super.initState();
+    _currentBottomNavIndex = widget.initialIndex;
     _currentPaths = widget.sharedImagePaths;
     _currentPurpose = widget.sharedPurpose;
     if (_currentPaths != null && _currentPaths!.isNotEmpty) {

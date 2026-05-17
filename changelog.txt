@@ -1,0 +1,10 @@
+==========git-branch-version16--app-version-1.0.16+21=============
+[are ads working, as I don't see any ads revenue, ca-app-pub-5829296907403264/4919134858 use this app open ads, show this on every open understood]
+[show interstitial ads after every save. like after the save is pressed. ]
+[improve the onboarding with professional design and content, or propose a better idea for onboarding ]
+[make interactive onboarding with quetionaires. ]
+[lets add a home screen after onboarding. ]
+[no we see the home screen as separate screen not as an editor screen accessible brom the bottom navbar, we can enter the editor screen from the home screen, like editing mode. something like this undestood]
+[issue after onboarding flow personlaizing workspace screen, its king of get stucks witn no escape or progress]
+[add a new tutorial screen accessible from home screen]
+[we will add youtube ulr there]

@@ -13,6 +13,16 @@ class AdService {
   bool _isAppOpenAdLoading = false;
   DateTime? _appOpenLoadTime;
   DateTime? _lastInterstitialShownTime;
+  
+  // Track if any ad is currently showing to prevent overlaps/multiple ads showing
+  bool isShowingAd = false;
+  
+  // Flag to automatically show the App Open ad on cold start once it's loaded
+  bool _showAdOnLoad = false;
+  final DateTime _appStartupTime = DateTime.now();
+  
+  // Cooldown tracker to prevent displaying another ad too soon after dismissal
+  DateTime? _lastAdDismissedTime;
 
   String get _interstitialAdUnitId => AdConfig.interstitialAdUnitId;
   String get _appOpenAdUnitId => AdConfig.appOpenAdUnitId;
@@ -45,14 +55,21 @@ class AdService {
           debugPrint('InterstitialAd loaded successfully');
           
           _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
+            onAdShowedFullScreenContent: (ad) {
+              isShowingAd = true;
+            },
             onAdDismissedFullScreenContent: (ad) {
               debugPrint('InterstitialAd dismissed');
+              isShowingAd = false;
+              _lastAdDismissedTime = DateTime.now();
               ad.dispose();
               _interstitialAd = null;
               loadInterstitialAd();
             },
             onAdFailedToShowFullScreenContent: (ad, error) {
               debugPrint('InterstitialAd failed to show: $error');
+              isShowingAd = false;
+              _lastAdDismissedTime = DateTime.now();
               ad.dispose();
               _interstitialAd = null;
               loadInterstitialAd();
@@ -70,6 +87,10 @@ class AdService {
 
   void showInterstitialAd() {
     if (!AdConfig.adsEnabled) return;
+    if (isShowingAd) {
+      debugPrint('InterstitialAd skipped: Another ad is currently showing.');
+      return;
+    }
 
     if (_lastInterstitialShownTime != null) {
       final difference = DateTime.now().difference(_lastInterstitialShownTime!);
@@ -105,10 +126,23 @@ class AdService {
           _isAppOpenAdLoading = false;
           _appOpenLoadTime = DateTime.now();
           debugPrint('AppOpenAd loaded successfully');
+          
+          // On cold startup, show as soon as loaded (if requested & startup window is still fresh)
+          if (_showAdOnLoad) {
+            _showAdOnLoad = false;
+            final timeSinceStartup = DateTime.now().difference(_appStartupTime).inSeconds;
+            if (timeSinceStartup < 7) {
+              debugPrint('Showing AppOpenAd on cold launch ($timeSinceStartup seconds since startup)...');
+              showAppOpenAdIfAvailable();
+            } else {
+              debugPrint('AppOpenAd loaded, but cold launch window expired ($timeSinceStartup seconds since startup).');
+            }
+          }
         },
         onAdFailedToLoad: (error) {
           _isAppOpenAdLoading = false;
           _appOpenAd = null;
+          _showAdOnLoad = false;
           debugPrint('AppOpenAd failed to load: $error');
         },
       ),
@@ -124,21 +158,43 @@ class AdService {
 
   void showAppOpenAdIfAvailable() {
     if (!AdConfig.adsEnabled) return;
+    if (isShowingAd) {
+      debugPrint('AppOpenAd skipped: Another ad is currently showing.');
+      return;
+    }
+    
+    // Cooldown check: prevent immediately showing an App Open ad right after dismissing one
+    if (_lastAdDismissedTime != null) {
+      final timeSinceDismissal = DateTime.now().difference(_lastAdDismissedTime!);
+      if (timeSinceDismissal < const Duration(seconds: 4)) {
+        debugPrint('AppOpenAd skipped: Too close to previous ad dismissal (${timeSinceDismissal.inSeconds}s)');
+        return;
+      }
+    }
+
     if (!_isAppOpenAdAvailable) {
-      debugPrint('AppOpenAd not available (null or expired)');
+      debugPrint('AppOpenAd not available (null or expired). Requesting show on load.');
+      _showAdOnLoad = true;
       loadAppOpenAd();
       return;
     }
 
     debugPrint('Showing AppOpenAd...');
     _appOpenAd!.fullScreenContentCallback = FullScreenContentCallback(
+      onAdShowedFullScreenContent: (ad) {
+        isShowingAd = true;
+      },
       onAdDismissedFullScreenContent: (ad) {
         debugPrint('AppOpenAd dismissed');
+        isShowingAd = false;
+        _lastAdDismissedTime = DateTime.now();
         _appOpenAd = null;
         loadAppOpenAd();
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
         debugPrint('AppOpenAd failed to show: $error');
+        isShowingAd = false;
+        _lastAdDismissedTime = DateTime.now();
         _appOpenAd = null;
         loadAppOpenAd();
       },

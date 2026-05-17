@@ -1,6 +1,6 @@
 class AppConfig {
   /// Toggle to enable or disable overall app advertisements
-  static const bool adsEnabled = false;
+  static const bool adsEnabled = true;
 
   /// Global switch to enable premium features or bypass paywalls for development
   static const bool premiumFeaturesEnabled = true;

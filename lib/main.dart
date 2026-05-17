@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'screens/home/home_screen.dart';
 import 'screens/home/home_shell_screen.dart';
 import 'screens/onboarding/onboarding_flow_screen.dart';
 import 'services/audio_library_service.dart';
@@ -48,16 +49,16 @@ void main() async {
   
   // Initialize Audio Library Service
   await AudioLibraryService.init();
-
+ 
   // Initialize Watermark Preset
   await WatermarkPresetService.init();
-
+ 
   // Initialize Video Perf Service
   await VideoPerfService.init();
-
+ 
   // Initialize Custom Font Manager (register user-uploaded fonts)
   await CustomFontManager().init();
-
+ 
   
   // Initialize App Review Service
   await AppReviewService().initialize();
@@ -91,20 +92,20 @@ void main() async {
   };
   runApp(const MyApp());
 }
-
+ 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
-
+ 
   @override
   State<MyApp> createState() => _MyAppState();
 }
-
+ 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   String? _sharedPurpose;
   List<String>? _sharedImagePaths;
   bool _forceSkipOnboarding = false;
   Future<bool>? _onboardingCompletedFuture;
-
+ 
   @override
   void initState() {
     super.initState();
@@ -116,26 +117,26 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       AdService().showAppOpenAdIfAvailable();
     });
   }
-
+ 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
-
+ 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       AdService().showAppOpenAdIfAvailable();
     }
   }
-
+ 
   void _markOnboardingDoneAndShowHome() {
     setState(() {
       _onboardingCompletedFuture = Future.value(true);
     });
   }
-
+ 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -157,7 +158,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           builder: (context, snapshot) {
             final completed = snapshot.data ?? false;
             final showOnboarding = !completed && !_forceSkipOnboarding;
-
+ 
             if (showOnboarding) {
               return OnboardingFlowScreen(
                 onFinished: () {
@@ -165,11 +166,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 },
               );
             }
-
-            return HomeShellScreen(
-              sharedImagePaths: _sharedImagePaths,
-              sharedPurpose: _sharedPurpose,
-            );
+ 
+            if (_sharedImagePaths != null && _sharedImagePaths!.isNotEmpty) {
+              return HomeShellScreen(
+                sharedImagePaths: _sharedImagePaths,
+                sharedPurpose: _sharedPurpose,
+              );
+            }
+ 
+            return const HomeScreen();
           },
         ),
       ),
