@@ -4,6 +4,8 @@ import '../../services/onboarding_service.dart';
 import '../../services/analytics_service.dart';
 import 'home_shell_screen.dart';
 import '../tutorials/tutorials_screen.dart';
+import '../subscription/subscription_screen.dart';
+import '../../services/subscription_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -85,6 +87,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 // ─── Visual Grid Categories ───
                 _buildSectionHeader('🎥 Video Processing Studio'),
                 const SizedBox(height: 12),
+                
+                // Featured Main Feature: Full Screen Brand Watermarker Card
+                _buildWatermarkerHeroCard(context, primary),
+                const SizedBox(height: 16),
+                
+                // Remaining Grid categories
                 _buildToolsGrid([
                   _ToolCardData(
                     title: 'Video Cropper',
@@ -92,13 +100,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: Icons.video_library_rounded,
                     tabIndex: 0,
                     color: Colors.teal,
-                  ),
-                  _ToolCardData(
-                    title: 'Watermarker',
-                    subtitle: 'Embed logo branding',
-                    icon: Icons.branding_watermark_rounded,
-                    tabIndex: 1,
-                    color: Colors.blueAccent,
                   ),
                   _ToolCardData(
                     title: 'Video Text Overlay',
@@ -221,37 +222,89 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
-        GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => HomeShellScreen(
-                  initialIndex: 11, // profile tab index
+        Row(
+          children: [
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const SubscriptionScreen()),
+                ).then((_) => setState(() {}));
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                margin: const EdgeInsets.only(right: 12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: SubscriptionService.isProActive
+                        ? [Colors.teal, Colors.tealAccent.shade400]
+                        : [Colors.amber, Colors.orangeAccent],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: (SubscriptionService.isProActive ? Colors.teal : Colors.amber).withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      SubscriptionService.isProActive ? Icons.workspace_premium_rounded : Icons.workspace_premium_rounded,
+                      color: Colors.black,
+                      size: 14,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      SubscriptionService.isProActive ? 'PRO ACTIVE 💎' : 'GO PRO 👑',
+                      style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontWeight: FontWeight.w900,
+                        fontSize: 10,
+                        color: Colors.black,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            );
-          },
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [primary, primary.withOpacity(0.7)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: primary.withOpacity(0.2),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
             ),
-            child: const Icon(Icons.person_rounded, color: Colors.white, size: 22),
-          ),
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => HomeShellScreen(
+                      initialIndex: 11, // profile tab index
+                    ),
+                  ),
+                );
+              },
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [primary, primary.withOpacity(0.7)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: primary.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.person_rounded, color: Colors.white, size: 22),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -598,6 +651,155 @@ class _HomeScreenState extends State<HomeScreen> {
                 shape: BoxShape.circle,
               ),
               child: Icon(Icons.arrow_forward_rounded, color: primary, size: 20),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWatermarkerHeroCard(BuildContext context, Color primary) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => HomeShellScreen(
+              initialIndex: 1, // Watermarker Tab
+            ),
+          ),
+        );
+      },
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [primary, primary.withRed(15).withBlue(50)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: primary.withOpacity(0.22),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          children: [
+            // Abstract background decorative glowing circle
+            Positioned(
+              right: -50,
+              top: -50,
+              child: Container(
+                width: 180,
+                height: 180,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.1),
+                ),
+              ),
+            ),
+            
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Badge tag
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.amber,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text(
+                      '🔥 MOST IMPORTANT WORKFLOW',
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        color: Colors.black,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 8.5,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  
+                  // Main Titles
+                  const Text(
+                    'Advanced Brand Watermarker',
+                    style: TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Protect and verify your creative content in batch. Overlay transparent user logo images, secure translucent captions text, and custom watermark presets instantly.',
+                    style: TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 12,
+                      color: Colors.white70,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  // Launcher Action Call to Action
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.06),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.branding_watermark_rounded, color: primary, size: 16),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Launch Watermarker Studio 🚀',
+                              style: TextStyle(
+                                fontFamily: 'Poppins',
+                                color: primary,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      
+                      // Small visual cue representation
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),

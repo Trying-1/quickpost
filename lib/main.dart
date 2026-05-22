@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/home/home_shell_screen.dart';
 import 'screens/onboarding/onboarding_flow_screen.dart';
+import 'services/subscription_service.dart';
 import 'services/audio_library_service.dart';
 import 'services/watermark_preset_service.dart';
 import 'services/app_update_service.dart';
@@ -55,6 +56,9 @@ void main() async {
  
   // Initialize Video Perf Service
   await VideoPerfService.init();
+ 
+  // Initialize Subscription Service
+  await SubscriptionService.init();
  
   // Initialize Custom Font Manager (register user-uploaded fonts)
   await CustomFontManager().init();
@@ -126,7 +130,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
  
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
+    if (state == AppLifecycleState.paused) {
+      AdService().setLastPausedTime(DateTime.now());
+    } else if (state == AppLifecycleState.resumed) {
       AdService().showAppOpenAdIfAvailable();
     }
   }

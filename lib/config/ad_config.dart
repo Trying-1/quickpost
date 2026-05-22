@@ -7,7 +7,7 @@ import 'dart:io';
 /// Uses official Google Test IDs in Debug mode and Production IDs in Release mode.
 class AdConfig {
   // Global switch to enable/disable all ads in the app
-  static const bool adsEnabled = true;
+  static const bool adsEnabled = false;
 
   // --- Production Ad Unit IDs ---
   // Managed in AdMob Console: https://apps.admob.com/

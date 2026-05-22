@@ -8,3 +8,10 @@
 [issue after onboarding flow personlaizing workspace screen, its king of get stucks witn no escape or progress]
 [add a new tutorial screen accessible from home screen]
 [we will add youtube ulr there]
+
+==========git-branch-version17--app-version-1.0.17+22=============
+[okay lets add google play billing, subscription features, pro version, plans, subscription screen and all like professional and industry statndard apps, understood]
+[secure, restore purchase features, high security, so that user don't just bypass]
+[use light theme for subscription screen]
+[and there bug in the app open ads, its showing everywhere aside from the app opening.  check on it, its like spamingn app open ads]
+[the main and important feature of the app is watermarking so highlight is with full screen card in the homescreen understood. ]

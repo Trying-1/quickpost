@@ -1,6 +1,7 @@
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:flutter/foundation.dart';
 import '../config/ad_config.dart';
+import 'subscription_service.dart';
 
 class AdService {
   static final AdService _instance = AdService._internal();
@@ -23,13 +24,18 @@ class AdService {
   
   // Cooldown tracker to prevent displaying another ad too soon after dismissal
   DateTime? _lastAdDismissedTime;
+  DateTime? _lastPausedTime;
+
+  void setLastPausedTime(DateTime time) {
+    _lastPausedTime = time;
+  }
 
   String get _interstitialAdUnitId => AdConfig.interstitialAdUnitId;
   String get _appOpenAdUnitId => AdConfig.appOpenAdUnitId;
 
   Future<void> initialize() async {
-    if (!AdConfig.adsEnabled) {
-      debugPrint('AdService: Ads are globally disabled in AdConfig.');
+    if (!AdConfig.adsEnabled || SubscriptionService.isProActive) {
+      debugPrint('AdService: Ads are globally disabled or Pro subscription is active.');
       return;
     }
     debugPrint('Initializing MobileAds...');
@@ -40,7 +46,7 @@ class AdService {
 
   // Interstitial Ad
   void loadInterstitialAd() {
-    if (!AdConfig.adsEnabled) return;
+    if (!AdConfig.adsEnabled || SubscriptionService.isProActive) return;
     if (_isInterstitialAdLoading || _interstitialAd != null) return;
     _isInterstitialAdLoading = true;
     debugPrint('Loading InterstitialAd: $_interstitialAdUnitId');
@@ -86,7 +92,7 @@ class AdService {
   }
 
   void showInterstitialAd() {
-    if (!AdConfig.adsEnabled) return;
+    if (!AdConfig.adsEnabled || SubscriptionService.isProActive) return;
     if (isShowingAd) {
       debugPrint('InterstitialAd skipped: Another ad is currently showing.');
       return;
@@ -112,7 +118,7 @@ class AdService {
 
   // App Open Ad
   void loadAppOpenAd() {
-    if (!AdConfig.adsEnabled) return;
+    if (!AdConfig.adsEnabled || SubscriptionService.isProActive) return;
     if (_isAppOpenAdLoading || _appOpenAd != null) return;
     _isAppOpenAdLoading = true;
     debugPrint('Loading AppOpenAd: $_appOpenAdUnitId');
@@ -157,7 +163,7 @@ class AdService {
   }
 
   void showAppOpenAdIfAvailable() {
-    if (!AdConfig.adsEnabled) return;
+    if (!AdConfig.adsEnabled || SubscriptionService.isProActive) return;
     if (isShowingAd) {
       debugPrint('AppOpenAd skipped: Another ad is currently showing.');
       return;
@@ -166,8 +172,19 @@ class AdService {
     // Cooldown check: prevent immediately showing an App Open ad right after dismissing one
     if (_lastAdDismissedTime != null) {
       final timeSinceDismissal = DateTime.now().difference(_lastAdDismissedTime!);
-      if (timeSinceDismissal < const Duration(seconds: 4)) {
+      if (timeSinceDismissal < const Duration(seconds: 15)) {
         debugPrint('AppOpenAd skipped: Too close to previous ad dismissal (${timeSinceDismissal.inSeconds}s)');
+        return;
+      }
+    }
+
+    // App Pause Duration Check: Only show App Open if the app was actually in the background for a substantial time (e.g. at least 10 seconds)
+    // This perfectly prevents showing App Open ads when returning from choosing videos/images or simple overlay permissions dialogs!
+    if (_lastPausedTime != null) {
+      final timePaused = DateTime.now().difference(_lastPausedTime!);
+      _lastPausedTime = null; // Clear to prevent double triggering
+      if (timePaused < const Duration(seconds: 10)) {
+        debugPrint('AppOpenAd skipped: App was only minimized/paused for ${timePaused.inSeconds}s (likely returning from file picker, camera, or short interrupt)');
         return;
       }
     }

@@ -5,6 +5,7 @@ import 'dart:async';
 import '../../services/onboarding_service.dart';
 import '../../services/analytics_service.dart';
 import '../../config/app_theme.dart';
+import '../subscription/subscription_screen.dart';
 
 class OnboardingFlowScreen extends StatefulWidget {
   final VoidCallback? onFinished;
@@ -82,7 +83,7 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> with Ticker
     super.dispose();
   }
 
-  bool get _isLast => _index == 6; // 0: Welcome, 1: Goal, 2: Platform, 3: Exp, 4: Style, 5: Personalizing, 6: Final Ready
+  bool get _isLast => _index == 7; // 0: Welcome, 1: Goal, 2: Platform, 3: Exp, 4: Style, 5: Personalizing, 6: Paywall, 7: Final Ready
 
   Future<void> _finish() async {
     await OnboardingService.setCompleted(true);
@@ -91,7 +92,7 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> with Ticker
   }
 
   void _nextPage() {
-    if (_index < 6) {
+    if (_index < 7) {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 350),
         curve: Curves.fastOutSlowIn,
@@ -250,12 +251,16 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> with Ticker
                 _buildExperienceQuestionSlide(primary),
                 _buildStyleQuestionSlide(primary),
                 _buildPersonalizationLoadingSlide(primary),
+                SubscriptionScreen(
+                  skippable: true,
+                  onClose: _nextPage,
+                ),
                 _buildFinalDashboardSlide(primary),
               ],
             ),
             
             // Bottom Glassmorphic Navigation Panel
-            if (_index != 5) // Hide during active engine personalization loading slide
+            if (_index != 5 && _index != 6) // Hide during personalization loading & paywall slides
               Align(
                 alignment: Alignment.bottomCenter,
                 child: SafeArea(
