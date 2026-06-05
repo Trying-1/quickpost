@@ -12,8 +12,10 @@ import '../arise_automation/arise_automation_screen.dart';
 import '../caption_store/caption_store_screen.dart';
 import '../quotes/my_quotes_screen.dart';
 import '../video_watermark/video_watermark_screen.dart';
+import '../cover_image/cover_image_screen.dart';
 import '../../config/app_theme.dart';
 import '../../services/analytics_service.dart';
+import 'home_screen.dart';
 class HomeShellScreen extends StatefulWidget {
   final List<String>? sharedImagePaths;
   final String? sharedPurpose;
@@ -113,32 +115,32 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     setState(() {
       switch (purpose) {
         case 'video_cropper':
-          _currentBottomNavIndex = 0;
-          break;
-        case 'watermark':
           _currentBottomNavIndex = 1;
           break;
-        case 'captions':
+        case 'watermark':
           _currentBottomNavIndex = 2;
           break;
-        case 'video_text':
+        case 'captions':
           _currentBottomNavIndex = 3;
           break;
-        case 'single_image_post':
+        case 'video_text':
           _currentBottomNavIndex = 4;
           break;
+        case 'single_image_post':
+          _currentBottomNavIndex = 5;
+          break;
         case 'cropper':
-          _currentBottomNavIndex = 6; 
+          _currentBottomNavIndex = 7; 
           break;
         case 'video_fade_in':
         case 'video_zoom_in':
-          _currentBottomNavIndex = 7;
-          break;
-        case 'text_box':
           _currentBottomNavIndex = 8;
           break;
+        case 'text_box':
+          _currentBottomNavIndex = 9;
+          break;
         case 'automation':
-          _currentBottomNavIndex = 10;
+          _currentBottomNavIndex = 11;
           break;
         default:
           _currentBottomNavIndex = 0;
@@ -178,17 +180,19 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           key: _stackKey,
           index: _currentBottomNavIndex,
           children: [
-            VideoCropperScreen(sharedVideoPaths: _currentBottomNavIndex == 0 ? _currentPaths : null, isActive: _currentBottomNavIndex == 0),
-            VideoWatermarkScreen(sharedVideoPaths: _currentBottomNavIndex == 1 ? _currentPaths : null, isActive: _currentBottomNavIndex == 1),
+            const HomeScreen(),
+            VideoCropperScreen(sharedVideoPaths: _currentBottomNavIndex == 1 ? _currentPaths : null, isActive: _currentBottomNavIndex == 1),
+            VideoWatermarkScreen(sharedVideoPaths: _currentBottomNavIndex == 2 ? _currentPaths : null, isActive: _currentBottomNavIndex == 2),
             const CaptionStoreScreen(),
-            VideoTextOverlayScreen(sharedVideoPaths: _currentBottomNavIndex == 3 ? _currentPaths : null, isActive: _currentBottomNavIndex == 3),
+            VideoTextOverlayScreen(sharedVideoPaths: _currentBottomNavIndex == 4 ? _currentPaths : null, isActive: _currentBottomNavIndex == 4),
             _buildPostMakerTab(),
             const MyQuotesScreen(),
-            ImageCropperScreen(sharedImagePaths: _currentBottomNavIndex == 6 ? _currentPaths : null),
-            VideoCreatorScreen(sharedImagePaths: _currentBottomNavIndex == 7 ? _currentPaths : null, sharedPurpose: _currentPurpose),
-            TextBoxOverlayScreen(sharedImagePaths: _currentBottomNavIndex == 8 ? _currentPaths : null, isActive: _currentBottomNavIndex == 8),
-            AudioLibraryScreenWithFolders(isActive: _currentBottomNavIndex == 9),
-            AriseAutomationScreen(sharedPaths: _currentBottomNavIndex == 10 ? _currentPaths : null, sharedPurpose: _currentPurpose),
+            ImageCropperScreen(sharedImagePaths: _currentBottomNavIndex == 7 ? _currentPaths : null),
+            VideoCreatorScreen(sharedImagePaths: _currentBottomNavIndex == 8 ? _currentPaths : null, sharedPurpose: _currentPurpose),
+            TextBoxOverlayScreen(sharedImagePaths: _currentBottomNavIndex == 9 ? _currentPaths : null, isActive: _currentBottomNavIndex == 9),
+            AudioLibraryScreenWithFolders(isActive: _currentBottomNavIndex == 10),
+            AriseAutomationScreen(sharedPaths: _currentBottomNavIndex == 11 ? _currentPaths : null, sharedPurpose: _currentPurpose),
+            const CoverImageScreen(),
             const ProfileScreen(),
           ],
         ),
@@ -211,18 +215,20 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
-            _buildNavItem(0, Icons.video_library, 'Video Cropper'),
-            _buildNavItem(1, Icons.branding_watermark, 'Watermark'),
-            _buildNavItem(2, Icons.closed_caption, 'Captions'),
-            _buildNavItem(3, Icons.movie_filter, 'Video Text'),
-            _buildNavItem(4, Icons.create, 'Post Maker'),
-            _buildNavItem(5, Icons.format_quote, 'My Quotes'),
-            _buildNavItem(6, Icons.crop, 'Image Cropper'),
-            _buildNavItem(7, Icons.video_call, 'Image to Video'),
-            _buildNavItem(8, Icons.text_fields, 'Text Box'),
-            _buildNavItem(9, Icons.library_music, 'My Audios'),
-            _buildNavItem(10, Icons.auto_awesome, 'Automation'),
-            _buildNavItem(11, Icons.person, 'Profile'),
+            _buildNavItem(0, Icons.dashboard, 'Dashboard'),
+            _buildNavItem(1, Icons.video_library, 'Video Cropper'),
+            _buildNavItem(2, Icons.branding_watermark, 'Watermark'),
+            _buildNavItem(3, Icons.closed_caption, 'Captions'),
+            _buildNavItem(4, Icons.movie_filter, 'Video Text'),
+            _buildNavItem(5, Icons.create, 'Post Maker'),
+            _buildNavItem(6, Icons.format_quote, 'My Quotes'),
+            _buildNavItem(7, Icons.crop, 'Image Cropper'),
+            _buildNavItem(8, Icons.video_call, 'Image to Video'),
+            _buildNavItem(9, Icons.text_fields, 'Text Box'),
+            _buildNavItem(10, Icons.library_music, 'My Audios'),
+            _buildNavItem(11, Icons.auto_awesome, 'Automation'),
+            _buildNavItem(12, Icons.image, 'Cover Image'),
+            _buildNavItem(13, Icons.person, 'Profile'),
                   ],
                 ),
               ),
@@ -234,8 +240,8 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
   }
 
   Widget _buildPostMakerTab() {
-    final paths = _currentBottomNavIndex == 4 ? _currentPaths : null;
-    final purpose = _currentBottomNavIndex == 4 ? _currentPurpose : null;
+    final paths = _currentBottomNavIndex == 5 ? _currentPaths : null;
+    final purpose = _currentBottomNavIndex == 5 ? _currentPurpose : null;
 
     // When the app is opened via share intent or deep link with images,
     // route into the appropriate post maker template via PostMakerScreen.
@@ -264,7 +270,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         
         // Log screen view
         final screenNames = [
-          'Video Cropper', 'Watermark', 'Captions', 'Video Text', 
+          'Dashboard', 'Video Cropper', 'Watermark', 'Captions', 'Video Text', 
           'Post Maker', 'My Quotes', 'Image Cropper', 'Image to Video', 
           'Text Box', 'My Audios', 'Automation', 'Profile'
         ];

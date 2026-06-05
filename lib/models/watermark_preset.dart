@@ -106,53 +106,59 @@ class WatermarkPreset extends HiveObject {
   @HiveField(35)
   double iconShadowOffsetY;
 
-  @HiveField(37)
+  @HiveField(37, defaultValue: 0.5)
   double videoY;
 
-  @HiveField(38)
+  @HiveField(38, defaultValue: 5.0)
   double storyRingWidth;
 
-  @HiveField(39)
+  @HiveField(39, defaultValue: '#FF4081')
   String storyRingColor;
 
-  @HiveField(40)
+  @HiveField(40, defaultValue: false)
   bool isCustomRingColor;
 
-  @HiveField(41)
+  @HiveField(41, defaultValue: '#1DA1F2')
   String verifiedBadgeColor;
 
-  @HiveField(42)
+  @HiveField(42, defaultValue: 'handle')
   String verifiedBadgeAttachTo;
 
-  @HiveField(43)
+  @HiveField(43, defaultValue: 1.0)
   double watermarkScale;
 
-  @HiveField(44)
+  @HiveField(44, defaultValue: 36.0)
   double usernameSize;
 
-  @HiveField(45)
+  @HiveField(45, defaultValue: 30.0)
   double handleSize;
 
-  @HiveField(46)
+  @HiveField(46, defaultValue: 1.0)
   double bgBrightness;
 
-  @HiveField(47)
+  @HiveField(47, defaultValue: 1.0)
   double bgSaturation;
 
-  @HiveField(48)
+  @HiveField(48, defaultValue: 0.0)
   double bgBlur;
 
-  @HiveField(49)
+  @HiveField(49, defaultValue: 0.0)
   double videoRadius;
 
-  @HiveField(50)
+  @HiveField(50, defaultValue: 0.0)
   double videoBorderWidth;
 
-  @HiveField(51)
+  @HiveField(51, defaultValue: '#000000')
   String videoBorderColor;
 
-  @HiveField(52)
+  @HiveField(52, defaultValue: 1.0)
   double videoScale;
+
+  @HiveField(53, defaultValue: 1.0)
+  double usernameOpacity;
+
+  @HiveField(54, defaultValue: 1.0)
+  double handleOpacity;
 
   WatermarkPreset({
     required this.id,
@@ -208,6 +214,8 @@ class WatermarkPreset extends HiveObject {
     this.videoBorderWidth = 0.0,
     this.videoBorderColor = "#000000",
     this.videoScale = 1.0,
+    this.usernameOpacity = 1.0,
+    this.handleOpacity = 1.0,
   });
 
   Map<String, dynamic> toMap() {
@@ -265,6 +273,8 @@ class WatermarkPreset extends HiveObject {
       'videoBorderWidth': videoBorderWidth,
       'videoBorderColor': videoBorderColor,
       'videoScale': videoScale,
+      'usernameOpacity': usernameOpacity,
+      'handleOpacity': handleOpacity,
     };
   }
 
@@ -323,6 +333,8 @@ class WatermarkPreset extends HiveObject {
       videoBorderWidth: (map['videoBorderWidth'] as num?)?.toDouble() ?? 0.0,
       videoBorderColor: map['videoBorderColor'] ?? '#FFFFFF',
       videoScale: (map['videoScale'] as num?)?.toDouble() ?? 1.0,
+      usernameOpacity: (map['usernameOpacity'] as num?)?.toDouble() ?? 1.0,
+      handleOpacity: (map['handleOpacity'] as num?)?.toDouble() ?? 1.0,
     );
   }
 }

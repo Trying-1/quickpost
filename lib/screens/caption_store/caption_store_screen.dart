@@ -337,6 +337,13 @@ class _CaptionStoreScreenState extends State<CaptionStoreScreen> {
                 tooltip: 'Copy Caption',
               ),
               IconButton(
+                icon: const Icon(Icons.copy_all_rounded, size: 18, color: Colors.blueAccent),
+                onPressed: () => _copyToClipboardWithTimestamp(variant.content),
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(8),
+                tooltip: 'Copy with Date & Time',
+              ),
+              IconButton(
                 icon: const Icon(Icons.edit_note_outlined, size: 20, color: Colors.grey),
                 onPressed: () => _showEditCaptionDialog(group),
                 constraints: const BoxConstraints(),
@@ -384,6 +391,39 @@ class _CaptionStoreScreenState extends State<CaptionStoreScreen> {
     AnalyticsService().logEvent(name: 'caption_copied');
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Caption copied to clipboard!'), duration: Duration(seconds: 1)),
+    );
+  }
+
+  String _formatCurrentDateTime() {
+    final now = DateTime.now();
+    
+    // Days of the week list
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    final String dayName = days[now.weekday % 7];
+    
+    // Formatting Hour & Minute with AM/PM
+    final int hour = now.hour;
+    final int minute = now.minute;
+    final String amPm = hour >= 12 ? 'PM' : 'AM';
+    final int displayHour = hour > 12 ? (hour - 12) : (hour == 0 ? 12 : hour);
+    final String displayMinute = minute < 10 ? '0$minute' : '$minute';
+    
+    // Formatting Month & Day
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final String monthName = months[now.month - 1];
+    final int day = now.day;
+    final int year = now.year;
+    
+    return '$dayName, $monthName $day, $year at $displayHour:$displayMinute $amPm';
+  }
+
+  void _copyToClipboardWithTimestamp(String text) {
+    final timestamp = _formatCurrentDateTime();
+    final combinedText = '$text\n\n[$timestamp]';
+    Clipboard.setData(ClipboardData(text: combinedText));
+    AnalyticsService().logEvent(name: 'caption_copied_with_timestamp');
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Copied with Date & Time timestamp!'), duration: Duration(seconds: 1)),
     );
   }
 

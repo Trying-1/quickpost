@@ -180,7 +180,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               );
             }
  
-            return const HomeScreen();
+            return HomeShellScreen(initialIndex: 0);
           },
         ),
       ),

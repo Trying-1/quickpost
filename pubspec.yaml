@@ -47,6 +47,7 @@ dependencies:
   crypto: ^3.0.3
   in_app_purchase: ^3.2.0
   google_mobile_ads: ^5.1.0
+  toastification: ^3.0.3
 
 
 dev_dependencies:

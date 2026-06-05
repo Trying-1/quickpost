@@ -54,13 +54,32 @@ class WatermarkPresetAdapter extends TypeAdapter<WatermarkPreset> {
       handleShadowOffsetY: fields[33] as double,
       iconShadowOffsetX: fields[34] as double,
       iconShadowOffsetY: fields[35] as double,
+      videoY: fields[37] == null ? 0.5 : fields[37] as double,
+      storyRingWidth: fields[38] == null ? 5.0 : fields[38] as double,
+      storyRingColor: fields[39] == null ? '#FF4081' : fields[39] as String,
+      isCustomRingColor: fields[40] == null ? false : fields[40] as bool,
+      verifiedBadgeColor: fields[41] == null ? '#1DA1F2' : fields[41] as String,
+      verifiedBadgeAttachTo:
+          fields[42] == null ? 'handle' : fields[42] as String,
+      watermarkScale: fields[43] == null ? 1.0 : fields[43] as double,
+      usernameSize: fields[44] == null ? 36.0 : fields[44] as double,
+      handleSize: fields[45] == null ? 30.0 : fields[45] as double,
+      bgBrightness: fields[46] == null ? 1.0 : fields[46] as double,
+      bgSaturation: fields[47] == null ? 1.0 : fields[47] as double,
+      bgBlur: fields[48] == null ? 0.0 : fields[48] as double,
+      videoRadius: fields[49] == null ? 0.0 : fields[49] as double,
+      videoBorderWidth: fields[50] == null ? 0.0 : fields[50] as double,
+      videoBorderColor: fields[51] == null ? '#000000' : fields[51] as String,
+      videoScale: fields[52] == null ? 1.0 : fields[52] as double,
+      usernameOpacity: fields[53] == null ? 1.0 : fields[53] as double,
+      handleOpacity: fields[54] == null ? 1.0 : fields[54] as double,
     );
   }
 
   @override
   void write(BinaryWriter writer, WatermarkPreset obj) {
     writer
-      ..writeByte(37)
+      ..writeByte(55)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -134,7 +153,43 @@ class WatermarkPresetAdapter extends TypeAdapter<WatermarkPreset> {
       ..writeByte(34)
       ..write(obj.iconShadowOffsetX)
       ..writeByte(35)
-      ..write(obj.iconShadowOffsetY);
+      ..write(obj.iconShadowOffsetY)
+      ..writeByte(37)
+      ..write(obj.videoY)
+      ..writeByte(38)
+      ..write(obj.storyRingWidth)
+      ..writeByte(39)
+      ..write(obj.storyRingColor)
+      ..writeByte(40)
+      ..write(obj.isCustomRingColor)
+      ..writeByte(41)
+      ..write(obj.verifiedBadgeColor)
+      ..writeByte(42)
+      ..write(obj.verifiedBadgeAttachTo)
+      ..writeByte(43)
+      ..write(obj.watermarkScale)
+      ..writeByte(44)
+      ..write(obj.usernameSize)
+      ..writeByte(45)
+      ..write(obj.handleSize)
+      ..writeByte(46)
+      ..write(obj.bgBrightness)
+      ..writeByte(47)
+      ..write(obj.bgSaturation)
+      ..writeByte(48)
+      ..write(obj.bgBlur)
+      ..writeByte(49)
+      ..write(obj.videoRadius)
+      ..writeByte(50)
+      ..write(obj.videoBorderWidth)
+      ..writeByte(51)
+      ..write(obj.videoBorderColor)
+      ..writeByte(52)
+      ..write(obj.videoScale)
+      ..writeByte(53)
+      ..write(obj.usernameOpacity)
+      ..writeByte(54)
+      ..write(obj.handleOpacity);
   }
 
   @override

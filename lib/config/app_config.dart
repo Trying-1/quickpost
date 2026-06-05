@@ -22,4 +22,7 @@ class AppConfig {
 
   /// Show the backup and restore (JSON import/export) buttons in the watermark presets tab
   static const bool showWatermarkBackupButtons = true;
+
+  /// Show the backup and restore (JSON import/export) buttons in the Cover Image tool
+  static const bool showImageTextImportExport = false;
 }

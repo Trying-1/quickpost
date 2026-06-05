@@ -479,7 +479,7 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
                   onPressed: () async {
                     final String path = outputPaths.first;
                     Navigator.pop(context);
-                    HomeShellScreen.navigateToTab(3, paths: [path], purpose: 'video_text');
+                    HomeShellScreen.navigateToTab(4, paths: [path], purpose: 'video_text');
                   },
                   icon: const Icon(Icons.auto_fix_high_rounded, size: 20),
                   label: const Text('Send to Designer', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -501,7 +501,7 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
                   onPressed: () async {
                     final String path = outputPaths.first;
                     Navigator.pop(context);
-                    HomeShellScreen.navigateToTab(1, paths: [path], purpose: 'watermark');
+                    HomeShellScreen.navigateToTab(2, paths: [path], purpose: 'watermark');
                   },
                   icon: const Icon(Icons.branding_watermark_rounded, size: 20),
                   label: const Text('Send to Watermark', style: TextStyle(fontWeight: FontWeight.bold)),

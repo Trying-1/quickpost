@@ -17,6 +17,7 @@ import '../../services/watermark_preset_service.dart';
 import '../../config/app_config.dart';
 import '../../widgets/advanced_color_picker.dart';
 import '../../services/ad_service.dart';
+import 'package:toastification/toastification.dart';
 
 class VideoWatermarkScreen extends StatefulWidget {
   final List<String>? sharedVideoPaths;
@@ -92,6 +93,13 @@ class _ImageOverlay {
   }
 }
 
+String _colorWithAlpha(String hex, double opacity) {
+  final int alpha = (opacity * 255).toInt().clamp(0, 255);
+  final colorHex = hex.replaceFirst('#', '');
+  final rgb = colorHex.length >= 6 ? colorHex.substring(colorHex.length - 6) : colorHex;
+  return '#${alpha.toRadixString(16).padLeft(2, '0').toUpperCase()}$rgb';
+}
+
 class _TextOverlay {
   String text;
   double x;
@@ -110,6 +118,7 @@ class _TextOverlay {
   double lineHeight;
   double letterSpacing;
   double wordSpacing;
+  double opacity;
 
   _TextOverlay({
     required this.text,
@@ -129,6 +138,7 @@ class _TextOverlay {
     this.lineHeight = 1.2,
     this.letterSpacing = 0.0,
     this.wordSpacing = 0.0,
+    this.opacity = 1.0,
   });
 
   Map<String, dynamic> toMap(double videoWidth, double videoHeight, String resolvedFontPath) {
@@ -137,7 +147,7 @@ class _TextOverlay {
       'x': x * videoWidth,
       'y': y * videoHeight,
       'fontSize': fontSize * scale,
-      'color': color,
+      'color': _colorWithAlpha(color, opacity),
       'fontPath': resolvedFontPath,
       'showShadow': showShadow,
       'shadowColor': shadowColor,
@@ -273,6 +283,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     String _videoBorderColor = "#000000";
     double _videoScale = 1.0;
     bool _showControls = true;
+    double _usernameOpacity = 1.0;
+    double _handleOpacity = 1.0;
 
   int _selectedTabIndex = 1;
   int _selectedStyleSubTab = 0; // 0: Username, 1: Handle, 2: Icon
@@ -388,6 +400,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         _videoBorderWidth = target.videoBorderWidth;
         _videoBorderColor = target.videoBorderColor;
         _videoScale = target.videoScale;
+        _usernameOpacity = target.usernameOpacity;
+        _handleOpacity = target.handleOpacity;
       } catch (_) {
         // Defaults for old presets
         _storyRingWidth = 5.0;
@@ -405,6 +419,14 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         _videoBorderWidth = 0.0;
         _videoBorderColor = "#000000";
         _videoScale = 1.0;
+        _usernameOpacity = 1.0;
+        _handleOpacity = 1.0;
+      }
+      if (_usernameController.text != _username) {
+        _usernameController.text = _username;
+      }
+      if (_handleController.text != _handle) {
+        _handleController.text = _handle;
       }
     });
   }
@@ -485,6 +507,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
       videoBorderWidth: _videoBorderWidth,
       videoBorderColor: _videoBorderColor,
       videoScale: _videoScale,
+      usernameOpacity: _usernameOpacity,
+      handleOpacity: _handleOpacity,
     );
     await WatermarkPresetService.savePreset(preset);
     if (mounted) setState(() {});
@@ -540,13 +564,13 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     preset.videoBorderWidth = _videoBorderWidth;
     preset.videoBorderColor = _videoBorderColor;
     preset.videoScale = _videoScale;
+    preset.usernameOpacity = _usernameOpacity;
+    preset.handleOpacity = _handleOpacity;
 
     await WatermarkPresetService.savePreset(preset);
     if (mounted) {
       setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('✅ Updated "${preset.name}" with current settings')),
-      );
+      _showToast('✅ Updated "${preset.name}" with current settings');
     }
   }
 
@@ -602,15 +626,11 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     try {
       final dynamic success = await platform.invokeMethod('exportPresets', {'json': json});
       if (success == true && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Presets exported successfully!')),
-        );
+        _showToast('Presets exported successfully!');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e')),
-        );
+        _showToast('Export failed: $e', isError: true);
       }
     }
   }
@@ -622,16 +642,12 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         final int imported = await WatermarkPresetService.importPresetsJson(json);
         if (mounted) {
           setState(() {});
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Imported $imported presets successfully!')),
-          );
+          _showToast('Imported $imported presets successfully!');
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Import failed: $e')),
-        );
+        _showToast('Import failed: $e', isError: true);
       }
     }
   }
@@ -669,9 +685,14 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     }
   }
 
+  late final TextEditingController _usernameController;
+  late final TextEditingController _handleController;
+
   @override
   void initState() {
     super.initState();
+    _usernameController = TextEditingController(text: _username);
+    _handleController = TextEditingController(text: _handle);
     WidgetsBinding.instance.addObserver(this);
     _avgRatio = VideoPerfService.getAvgRatio();
     _loadPreset();
@@ -686,6 +707,18 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         _fullScreen = true; // Canvas on
       });
     }
+  }
+
+  void _showToast(String message, {bool isError = false}) {
+    toastification.show(
+      context: context,
+      type: isError ? ToastificationType.error : ToastificationType.success,
+      style: ToastificationStyle.flat,
+      title: Text(message),
+      alignment: Alignment.topRight,
+      autoCloseDuration: const Duration(seconds: 3),
+      showProgressBar: false,
+    );
   }
 
   void _setupMethodCallHandler() {
@@ -805,6 +838,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
       videoBorderWidth: _videoBorderWidth,
       videoBorderColor: _videoBorderColor,
       videoScale: _videoScale,
+      usernameOpacity: _usernameOpacity,
+      handleOpacity: _handleOpacity,
     );
     await WatermarkPresetService.savePreset(preset);
     AnalyticsService().logSaveAction(feature: 'video_watermark', type: 'preset');
@@ -857,8 +892,10 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         'y': (_watermarkY * (_fullScreen ? 1920 : _videoHeight)).toInt(),
         'fontSize': _fontSize.toInt(),
         'iconSize': _iconSize.toInt(),
-        'textColor': _textColor,
-        'accentColor': _accentColor,
+        'usernameSize': _usernameSize,
+        'handleSize': _handleSize,
+        'textColor': _colorWithAlpha(_textColor, _usernameOpacity),
+        'accentColor': _colorWithAlpha(_accentColor, _handleOpacity),
         'fontPath': usernameFontPath,
         'handleFontPath': handleFontPath,
         'isVerified': _isVerified,
@@ -943,9 +980,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         });
 
         if (e.toString().contains("Processing Canceled")) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Processing canceled by user')),
-          );
+          _showToast('Processing canceled by user', isError: true);
         } else if (e.toString().contains("PlatformException(PROCESSING_FAILED")) {
           _showError("Failed to export video. Check file sizes or try another template.");
         } else {
@@ -1568,7 +1603,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                     Text(
                       _username,
                       style: TextStyle(
-                        color: _parseColor(_textColor),
+                        color: _parseColorWithAlpha(_textColor, _usernameOpacity),
                         fontWeight: FontWeight.bold,
                         fontSize: _usernameSize * scale,
                         fontFamily: _selectedUsernameFont?.family,
@@ -1593,7 +1628,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                     Text(
                       _handle,
                       style: TextStyle(
-                        color: _parseColor(_accentColor),
+                        color: _parseColorWithAlpha(_accentColor, _handleOpacity),
                         fontSize: _handleSize * scale,
                         fontFamily: _selectedHandleFont?.family,
                         shadows: _showHandleShadow ? [
@@ -1672,7 +1707,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                           Text(
                             _username,
                             style: TextStyle(
-                              color: _parseColor(_textColor),
+                              color: _parseColorWithAlpha(_textColor, _usernameOpacity),
                               fontWeight: _selectedUsernameFont?.weight ?? FontWeight.bold,
                               fontStyle: _selectedUsernameFont?.style ?? FontStyle.normal,
                               fontSize: _usernameSize * scale,
@@ -1698,7 +1733,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                           Text(
                             _handle,
                             style: TextStyle(
-                              color: _parseColor(_accentColor),
+                              color: _parseColorWithAlpha(_accentColor, _handleOpacity),
                               fontWeight: _selectedHandleFont?.weight ?? _selectedUsernameFont?.weight ?? FontWeight.normal,
                               fontStyle: _selectedHandleFont?.style ?? _selectedUsernameFont?.style ?? FontStyle.normal,
                               fontSize: _handleSize * scale,
@@ -1725,7 +1760,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
               if (isSocial) ...[
                 Padding(
                   padding: EdgeInsets.only(bottom: _fontSize * 0.2 * scale, right: 12 * scale),
-                  child: Icon(Icons.more_horiz, color: _parseColor(_accentColor), size: _fontSize * 1.2 * scale),
+                  child: Icon(Icons.more_horiz, color: _parseColorWithAlpha(_accentColor, _handleOpacity), size: _fontSize * 1.2 * scale),
                 ),
               ],
             ],
@@ -1735,7 +1770,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         return Text(
           _username,
           style: TextStyle(
-            color: _parseColor(_textColor),
+            color: _parseColorWithAlpha(_textColor, _usernameOpacity),
             fontWeight: FontWeight.bold,
             fontSize: _usernameSize * scale,
             fontFamily: _selectedUsernameFont?.family,
@@ -1983,9 +2018,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     return GestureDetector(
       onTap: () {
         _loadPreset(preset);
-         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('✨ Loaded "${preset.name}"'), behavior: SnackBarBehavior.floating, duration: const Duration(seconds: 1)),
-        );
+         _showToast('✨ Loaded "${preset.name}"');
       },
       onLongPress: () {
         showDialog(
@@ -2239,7 +2272,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
               textAlign: t.textAlign,
               style: TextStyle(
                 fontSize: t.fontSize * scale * t.scale,
-                color: _parseColor(t.color),
+                color: _parseColorWithAlpha(t.color, t.opacity),
                 fontFamily: t.font?.family,
                 fontWeight: t.font?.weight,
                 fontStyle: t.font?.style,
@@ -2313,18 +2346,50 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
              crossAxisAlignment: CrossAxisAlignment.start,
              children: [
                Row(
-                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                 children: [
-                   Text("Text #${index + 1}", style: const TextStyle(fontWeight: FontWeight.bold)),
-                   IconButton(onPressed: () => setState(() { _textOverlays.removeAt(index); _selectedTextOverlayIndex = null; }), icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20)),
-                 ],
-               ),
-               TextFormField(
-                 initialValue: t.text,
-                 maxLines: null,
-                 onChanged: (v) => setState(() => t.text = v),
-                 decoration: const InputDecoration(labelText: "Text Content", border: OutlineInputBorder(), isDense: true),
-               ),
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text("Text #${index + 1}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          icon: const Icon(Icons.copy, size: 20, color: Colors.blueGrey),
+                          tooltip: 'Copy Text',
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: t.text));
+                            _showToast('Text copied to clipboard');
+                          },
+                        ),
+                        const SizedBox(width: 12),
+                        IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          icon: const Icon(Icons.clear, size: 20, color: Colors.orange),
+                          tooltip: 'Clear Text',
+                          onPressed: () => setState(() => t.text = ''),
+                        ),
+                        const SizedBox(width: 12),
+                        IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          onPressed: () => setState(() { _textOverlays.removeAt(index); _selectedTextOverlayIndex = null; }),
+                          icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                          tooltip: 'Delete',
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  key: ValueKey("text_field_${index}_${t.text.isEmpty}"),
+                  initialValue: t.text,
+                  maxLines: null,
+                  onChanged: (v) => setState(() => t.text = v),
+                  decoration: const InputDecoration(labelText: "Text Content", border: OutlineInputBorder(), isDense: true),
+                ),
                const SizedBox(height: 16),
                 _buildControlSlider(label: "Font Size", value: t.fontSize, min: 10, max: 200, onChanged: (v) => setState(() => t.fontSize = v)),
                 _buildControlSlider(label: "Scale", value: t.scale, min: 0.1, max: 5.0, onChanged: (v) => setState(() => t.scale = v)),
@@ -2335,6 +2400,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                const Text("Text Color", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                const SizedBox(height: 8),
                _buildColorPicker(t.color, (c) => setState(() => t.color = c)),
+               const SizedBox(height: 16),
+               _buildControlSlider(label: "Opacity", value: t.opacity, min: 0.0, max: 1.0, onChanged: (v) => setState(() => t.opacity = v)),
                const SizedBox(height: 16),
                const Text("Font Style", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                const SizedBox(height: 8),
@@ -2718,7 +2785,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
               border: const OutlineInputBorder()
             ),
             onChanged: (v) => setState(() => _username = v),
-            controller: TextEditingController(text: _username)..selection = TextSelection.fromPosition(TextPosition(offset: _username.length)),
+            controller: _usernameController,
           ),
           const SizedBox(height: 12),
         ],
@@ -2726,7 +2793,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
           TextField(
             decoration: const InputDecoration(labelText: 'Handle (@name)', border: OutlineInputBorder()),
             onChanged: (v) => setState(() => _handle = v),
-            controller: TextEditingController(text: _handle)..selection = TextSelection.fromPosition(TextPosition(offset: _handle.length)),
+            controller: _handleController,
           ),
           const SizedBox(height: 12),
         ],
@@ -2968,6 +3035,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                 const Text('Username Color', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 const SizedBox(height: 8),
                 _buildColorPicker(_textColor, (c) => setState(() => _textColor = c)),
+                const SizedBox(height: 16),
+                _buildControlSlider(label: "Username Opacity", value: _usernameOpacity, min: 0.0, max: 1.0, onChanged: (v) => setState(() => _usernameOpacity = v)),
                 const Divider(height: 32),
                 _buildShadowControlSection(
                   title: 'Username Shadow',
@@ -2992,6 +3061,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                 const Text('Handle Color', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 const SizedBox(height: 8),
                 _buildColorPicker(_accentColor, (c) => setState(() => _accentColor = c)),
+                const SizedBox(height: 16),
+                _buildControlSlider(label: "Handle Opacity", value: _handleOpacity, min: 0.0, max: 1.0, onChanged: (v) => setState(() => _handleOpacity = v)),
                 const Divider(height: 32),
                 _buildShadowControlSection(
                   title: 'Handle Shadow',
@@ -3527,7 +3598,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
       final image = await ImagePicker().pickImage(source: ImageSource.gallery);
       if (image != null) setState(() => _bgImage = File(image.path));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error picking background: $e')));
+      _showToast('Error picking background: $e', isError: true);
     }
   }
 
@@ -3774,6 +3845,10 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     }
   }
 
+  Color _parseColorWithAlpha(String hex, double opacity) {
+    return _parseColor(hex).withOpacity(opacity);
+  }
+
   Widget _buildTextOverlayAlignButton(IconData icon, String label, double xValue, _TextOverlay t) {
     final isSelected = (t.x - xValue).abs() < 0.05;
     return InkWell(
@@ -3823,6 +3898,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     WidgetsBinding.instance.removeObserver(this);
     _uiUpdateTimer?.cancel();
     _videoController?.dispose();
+    _usernameController.dispose();
+    _handleController.dispose();
     super.dispose();
   }
 }
