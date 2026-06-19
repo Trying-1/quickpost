@@ -160,6 +160,30 @@ class WatermarkPreset extends HiveObject {
   @HiveField(54, defaultValue: 1.0)
   double handleOpacity;
 
+  @HiveField(55, defaultValue: 12.0)
+  double wireRadius;
+
+  @HiveField(56, defaultValue: 1.5)
+  double wireWidth;
+
+  @HiveField(57, defaultValue: '#FFFFFF')
+  String wireColor;
+
+  @HiveField(58, defaultValue: true)
+  bool wireCutout;
+
+  @HiveField(59, defaultValue: true)
+  bool wireCutoutDots;
+
+  @HiveField(60, defaultValue: 40.0)
+  double wireInset;
+
+  @HiveField(61, defaultValue: 'bottom')
+  String wireTextPosition;
+
+  @HiveField(62, defaultValue: 16.0)
+  double wireGap;
+
   WatermarkPreset({
     required this.id,
     required this.name,
@@ -216,6 +240,14 @@ class WatermarkPreset extends HiveObject {
     this.videoScale = 1.0,
     this.usernameOpacity = 1.0,
     this.handleOpacity = 1.0,
+    this.wireRadius = 12.0,
+    this.wireWidth = 1.5,
+    this.wireColor = '#FFFFFF',
+    this.wireCutout = true,
+    this.wireCutoutDots = true,
+    this.wireInset = 40.0,
+    this.wireTextPosition = 'bottom',
+    this.wireGap = 16.0,
   });
 
   Map<String, dynamic> toMap() {
@@ -275,6 +307,14 @@ class WatermarkPreset extends HiveObject {
       'videoScale': videoScale,
       'usernameOpacity': usernameOpacity,
       'handleOpacity': handleOpacity,
+      'wireRadius': wireRadius,
+      'wireWidth': wireWidth,
+      'wireColor': wireColor,
+      'wireCutout': wireCutout,
+      'wireCutoutDots': wireCutoutDots,
+      'wireInset': wireInset,
+      'wireTextPosition': wireTextPosition,
+      'wireGap': wireGap,
     };
   }
 
@@ -335,6 +375,14 @@ class WatermarkPreset extends HiveObject {
       videoScale: (map['videoScale'] as num?)?.toDouble() ?? 1.0,
       usernameOpacity: (map['usernameOpacity'] as num?)?.toDouble() ?? 1.0,
       handleOpacity: (map['handleOpacity'] as num?)?.toDouble() ?? 1.0,
+      wireRadius: (map['wireRadius'] as num?)?.toDouble() ?? 12.0,
+      wireWidth: (map['wireWidth'] as num?)?.toDouble() ?? 1.5,
+      wireColor: map['wireColor'] ?? '#FFFFFF',
+      wireCutout: map['wireCutout'] ?? true,
+      wireCutoutDots: map['wireCutoutDots'] ?? true,
+      wireInset: (map['wireInset'] as num?)?.toDouble() ?? 40.0,
+      wireTextPosition: map['wireTextPosition'] ?? 'bottom',
+      wireGap: (map['wireGap'] as num?)?.toDouble() ?? 16.0,
     );
   }
 }

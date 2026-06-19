@@ -283,8 +283,17 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     String _videoBorderColor = "#000000";
     double _videoScale = 1.0;
     bool _showControls = true;
+    double _wireRadius = 12.0;
+    double _wireWidth = 1.5;
+    String _wireColor = '#FFFFFF';
+    bool _wireCutout = true;
+    bool _wireCutoutDots = true;
+    double _lastPreviewWidth = 360.0;
     double _usernameOpacity = 1.0;
     double _handleOpacity = 1.0;
+    double _wireInset = 40.0;
+    String _wireTextPosition = 'bottom';
+    double _wireGap = 16.0;
 
   int _selectedTabIndex = 1;
   int _selectedStyleSubTab = 0; // 0: Username, 1: Handle, 2: Icon
@@ -327,6 +336,14 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
       _videoRadius = target.videoRadius;
       _videoBorderWidth = target.videoBorderWidth;
       _videoBorderColor = target.videoBorderColor;
+      _wireRadius = target.wireRadius;
+      _wireWidth = target.wireWidth;
+      _wireColor = target.wireColor;
+      _wireCutout = target.wireCutout;
+      _wireCutoutDots = target.wireCutoutDots;
+      _wireInset = target.wireInset;
+      _wireTextPosition = target.wireTextPosition;
+      _wireGap = target.wireGap;
       _watermarkX = target.watermarkX;
       _watermarkY = target.watermarkY;
       _fontSize = target.fontSize;
@@ -402,6 +419,14 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         _videoScale = target.videoScale;
         _usernameOpacity = target.usernameOpacity;
         _handleOpacity = target.handleOpacity;
+        _wireRadius = target.wireRadius;
+        _wireWidth = target.wireWidth;
+        _wireColor = target.wireColor;
+        _wireCutout = target.wireCutout;
+        _wireCutoutDots = target.wireCutoutDots;
+        _wireInset = target.wireInset;
+        _wireTextPosition = target.wireTextPosition;
+        _wireGap = target.wireGap;
       } catch (_) {
         // Defaults for old presets
         _storyRingWidth = 5.0;
@@ -421,6 +446,14 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         _videoScale = 1.0;
         _usernameOpacity = 1.0;
         _handleOpacity = 1.0;
+        _wireRadius = 12.0;
+        _wireWidth = 1.5;
+        _wireColor = '#FFFFFF';
+        _wireCutout = true;
+        _wireCutoutDots = true;
+        _wireInset = 40.0;
+        _wireTextPosition = 'bottom';
+        _wireGap = 16.0;
       }
       if (_usernameController.text != _username) {
         _usernameController.text = _username;
@@ -509,6 +542,14 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
       videoScale: _videoScale,
       usernameOpacity: _usernameOpacity,
       handleOpacity: _handleOpacity,
+      wireRadius: _wireRadius,
+      wireWidth: _wireWidth,
+      wireColor: _wireColor,
+      wireCutout: _wireCutout,
+      wireCutoutDots: _wireCutoutDots,
+      wireInset: _wireInset,
+      wireTextPosition: _wireTextPosition,
+      wireGap: _wireGap,
     );
     await WatermarkPresetService.savePreset(preset);
     if (mounted) setState(() {});
@@ -566,6 +607,14 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     preset.videoScale = _videoScale;
     preset.usernameOpacity = _usernameOpacity;
     preset.handleOpacity = _handleOpacity;
+    preset.wireRadius = _wireRadius;
+    preset.wireWidth = _wireWidth;
+    preset.wireColor = _wireColor;
+    preset.wireCutout = _wireCutout;
+    preset.wireCutoutDots = _wireCutoutDots;
+    preset.wireInset = _wireInset;
+    preset.wireTextPosition = _wireTextPosition;
+    preset.wireGap = _wireGap;
 
     await WatermarkPresetService.savePreset(preset);
     if (mounted) {
@@ -840,6 +889,14 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
       videoScale: _videoScale,
       usernameOpacity: _usernameOpacity,
       handleOpacity: _handleOpacity,
+      wireRadius: _wireRadius,
+      wireWidth: _wireWidth,
+      wireColor: _wireColor,
+      wireCutout: _wireCutout,
+      wireCutoutDots: _wireCutoutDots,
+      wireInset: _wireInset,
+      wireTextPosition: _wireTextPosition,
+      wireGap: _wireGap,
     );
     await WatermarkPresetService.savePreset(preset);
     AnalyticsService().logSaveAction(feature: 'video_watermark', type: 'preset');
@@ -888,8 +945,17 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         'handle': _handle,
         'profileImagePath': _profileImage?.path ?? "",
         'bgImagePath': _bgImage?.path ?? "",
-        'x': (_watermarkX * (_fullScreen ? 1080 : _videoWidth)).toInt(),
-        'y': (_watermarkY * (_fullScreen ? 1920 : _videoHeight)).toInt(),
+        'x': (_watermarkType == 'wire' ? 0 : (_watermarkX * (_fullScreen ? 1080 : _videoWidth)).toInt()),
+        'y': (_watermarkType == 'wire' ? 0 : (_watermarkY * (_fullScreen ? 1920 : _videoHeight)).toInt()),
+        'wireRadius': _wireRadius,
+        'wireWidth': _wireWidth,
+        'wireColor': _wireColor,
+        'wireCutout': _wireCutout,
+        'wireCutoutDots': _wireCutoutDots,
+        'wireInset': _wireInset,
+        'wireTextPosition': _wireTextPosition,
+        'wireGap': _wireGap,
+        'previewScale': _lastPreviewWidth / _videoWidth,
         'fontSize': _fontSize.toInt(),
         'iconSize': _iconSize.toInt(),
         'usernameSize': _usernameSize,
@@ -1455,77 +1521,84 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                                   borderRadius: BorderRadius.circular(_videoRadius),
                                   child: AspectRatio(
                                     aspectRatio: _videoAspectRatio,
-                                    child: Stack(
-                                      children: [
-                                        VideoPlayer(_videoController!),
-                                        if (_showControls) ...[
-                                          Center(
-                                            child: IconButton(
-                                              iconSize: 64,
-                                              icon: Icon(
-                                                _videoController!.value.isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
-                                                color: Colors.white70,
-                                              ),
-                                              onPressed: _togglePlayPause,
-                                            ),
-                                          ),
-                                          Positioned(
-                                            bottom: 0,
-                                            left: 0,
-                                            right: 0,
-                                            child: Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                              color: Colors.black26,
-                                              child: VideoProgressIndicator(
-                                                _videoController!,
-                                                allowScrubbing: true,
-                                                colors: const VideoProgressColors(
-                                                  playedColor: Colors.blueAccent,
-                                                  bufferedColor: Colors.white24,
-                                                  backgroundColor: Colors.white10,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
+                                     child: Stack(
+                                       children: [
+                                         VideoPlayer(_videoController!),
+                                         if (_watermarkType == 'wire')
+                                           Positioned.fill(
+                                             child: LayoutBuilder(
+                                               builder: (context, videoConstraints) {
+                                                  _lastPreviewWidth = videoConstraints.maxWidth;
+                                                  final double previewScale = videoConstraints.maxWidth / _videoWidth * _watermarkScale;
+                                                  return _buildWatermarkPreview(previewScale);
+                                               },
+                                             ),
+                                           ),
+                                         if (_showControls) ...[
+                                           Center(
+                                             child: IconButton(
+                                               iconSize: 64,
+                                               icon: Icon(
+                                                 _videoController!.value.isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
+                                                 color: Colors.white70,
+                                               ),
+                                               onPressed: _togglePlayPause,
+                                             ),
+                                           ),
+                                           Positioned(
+                                             bottom: 0,
+                                             left: 0,
+                                             right: 0,
+                                             child: Container(
+                                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                               color: Colors.black26,
+                                               child: VideoProgressIndicator(
+                                                 _videoController!,
+                                                 allowScrubbing: true,
+                                                 colors: const VideoProgressColors(
+                                                   playedColor: Colors.blueAccent,
+                                                   bufferedColor: Colors.white24,
+                                                   backgroundColor: Colors.white10,
+                                                 ),
+                                               ),
+                                             ),
+                                           ),
+                                         ],
+                                       ],
+                                     ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
 
-                         // Patches (Top Layer)
                          ..._patches.asMap().entries.where((e) => e.value.isTop).map((entry) {
                            final idx = entry.key;
                            final p = entry.value;
                            return _buildPatchPreview(p, idx, constraints);
                          }).toList(),
 
-                        // Text Overlays
                         ..._textOverlays.asMap().entries.map((entry) {
                            final idx = entry.key;
                            final t = entry.value;
                            return _buildTextOverlayPreview(t, idx, constraints);
                         }).toList(),
 
-                        // Image Overlays
                         ..._imageOverlays.asMap().entries.map((entry) {
                            final idx = entry.key;
                            final img = entry.value;
                            return _buildImageOverlayPreview(img, idx, constraints);
                         }).toList(),
 
-                        // Watermark Layer
-                        Positioned(
-                          left: _watermarkX * constraints.maxWidth,
-                          top: _watermarkY * constraints.maxHeight,
-                          child: FractionalTranslation(
-                            translation: const Offset(-0.5, -0.5),
-                            child: _buildWatermarkPreview(constraints.maxWidth / (_fullScreen ? 1080 : _videoWidth) * _watermarkScale),
-                          ),
-                        ),
+                         if (_watermarkType != 'wire')
+                           Positioned(
+                             left: _watermarkX * constraints.maxWidth,
+                             top: _watermarkY * constraints.maxHeight,
+                             child: FractionalTranslation(
+                               translation: const Offset(-0.5, -0.5),
+                               child: _buildWatermarkPreview(constraints.maxWidth / (_fullScreen ? 1080 : _videoWidth) * _watermarkScale),
+                             ),
+                           ),
                       ],
                     ),
                   );
@@ -1539,7 +1612,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
   }
 
   Widget _buildWatermarkPreview(double scale) {
-    if (!_showBox) return _buildWatermarkContent(scale);
+    if (!_showBox || _watermarkType == 'wire') return _buildWatermarkContent(scale);
     
     return Container(
       padding: const EdgeInsets.all(8),
@@ -1782,6 +1855,142 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
               )
             ] : null,
           ),
+        );
+      case 'wire':
+        final double inset = _wireInset * scale;
+        final textPainter = TextPainter(
+          text: TextSpan(
+            text: _username,
+            style: TextStyle(
+              fontWeight: _selectedUsernameFont?.weight ?? FontWeight.bold,
+              fontStyle: _selectedUsernameFont?.style ?? FontStyle.normal,
+              fontSize: _usernameSize * scale,
+              fontFamily: _selectedUsernameFont?.family,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        final double textWidth = textPainter.width;
+
+        final textWidget = _showBox
+            ? Container(
+                padding: EdgeInsets.symmetric(horizontal: 12 * scale, vertical: 6 * scale),
+                decoration: BoxDecoration(
+                  color: _parseColor(_boxColor).withOpacity(_boxOpacity),
+                  borderRadius: BorderRadius.circular(_boxRadius * scale),
+                ),
+                child: Text(
+                  _username,
+                  style: TextStyle(
+                    color: _parseColorWithAlpha(_textColor, _usernameOpacity),
+                    fontWeight: _selectedUsernameFont?.weight ?? FontWeight.bold,
+                    fontStyle: _selectedUsernameFont?.style ?? FontStyle.normal,
+                    fontSize: _usernameSize * scale,
+                    fontFamily: _selectedUsernameFont?.family,
+                    shadows: _showUsernameShadow ? [
+                      Shadow(
+                        color: _parseColor(_usernameShadowColor),
+                        blurRadius: _usernameShadowBlur * scale,
+                        offset: Offset(_usernameShadowOffsetX * scale, _usernameShadowOffsetY * scale),
+                      )
+                    ] : null,
+                  ),
+                ),
+              )
+            : Text(
+                _username,
+                style: TextStyle(
+                  color: _parseColorWithAlpha(_textColor, _usernameOpacity),
+                  fontWeight: _selectedUsernameFont?.weight ?? FontWeight.bold,
+                  fontStyle: _selectedUsernameFont?.style ?? FontStyle.normal,
+                  fontSize: _usernameSize * scale,
+                  fontFamily: _selectedUsernameFont?.family,
+                  shadows: _showUsernameShadow ? [
+                    Shadow(
+                      color: _parseColor(_usernameShadowColor),
+                      blurRadius: _usernameShadowBlur * scale,
+                      offset: Offset(_usernameShadowOffsetX * scale, _usernameShadowOffsetY * scale),
+                    )
+                  ] : null,
+                ),
+              );
+
+        return Stack(
+          children: [
+            Positioned(
+              left: inset,
+              top: inset,
+              right: inset,
+              bottom: inset,
+              child: CustomPaint(
+                painter: WireFramePainter(
+                  radius: _wireRadius,
+                  width: _wireWidth,
+                  color: _parseColorWithAlpha(_wireColor, _handleOpacity),
+                  textWidth: textWidth,
+                  scale: scale,
+                  hasCutout: _wireCutout,
+                  hasCutoutDots: _wireCutoutDots,
+                  textPosition: _wireTextPosition,
+                  wireGap: _wireGap,
+                ),
+              ),
+            ),
+            if (_wireTextPosition == 'bottom')
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: _showBox 
+                    ? (inset - (_usernameSize * scale / 2.0) - (6 * scale))
+                    : (_wireCutout 
+                        ? (inset - (_usernameSize * scale / 2.0))
+                        : (inset + (8 * scale))),
+                child: Center(child: textWidget),
+              )
+            else if (_wireTextPosition == 'top')
+              Positioned(
+                left: 0,
+                right: 0,
+                top: _showBox 
+                    ? (inset - (_usernameSize * scale / 2.0) - (6 * scale))
+                    : (_wireCutout 
+                        ? (inset - (_usernameSize * scale / 2.0))
+                        : (inset + (8 * scale))),
+                child: Center(child: textWidget),
+              )
+            else if (_wireTextPosition == 'left')
+              Positioned(
+                top: 0,
+                bottom: 0,
+                left: _showBox 
+                    ? (inset - (_usernameSize * scale / 2.0) - (6 * scale))
+                    : (_wireCutout 
+                        ? (inset - (_usernameSize * scale / 2.0))
+                        : (inset + (8 * scale))),
+                child: Center(
+                  child: RotatedBox(
+                    quarterTurns: 1,
+                    child: textWidget,
+                  ),
+                ),
+              )
+            else // right
+              Positioned(
+                top: 0,
+                bottom: 0,
+                right: _showBox 
+                    ? (inset - (_usernameSize * scale / 2.0) - (6 * scale))
+                    : (_wireCutout 
+                        ? (inset - (_usernameSize * scale / 2.0))
+                        : (inset + (8 * scale))),
+                child: Center(
+                  child: RotatedBox(
+                    quarterTurns: 1,
+                    child: textWidget,
+                  ),
+                ),
+              ),
+          ],
         );
       case 'image':
         return _profileImage != null 
@@ -2099,6 +2308,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
               _buildTypeChip('profile', 'Standard', 'Icon + Text (H)'),
               _buildTypeChip('profile_vertical', 'Vertical', 'Icon + Text (V)'),
               _buildTypeChip('profile_dots', 'Social', 'Standard + Menu'),
+              _buildTypeChip('wire', 'Wire', 'Line + Bottom Text'),
               _buildTypeChip('text', 'Minimal', 'Text Only'),
               _buildTypeChip('image', 'Logo', 'Image Only'),
               _buildTypeChip('none', 'None', 'Disable All'),
@@ -2113,7 +2323,12 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     final isSelected = _watermarkType == type;
 
     return GestureDetector(
-      onTap: () => setState(() => _watermarkType = type),
+      onTap: () => setState(() {
+        _watermarkType = type;
+        if (type != 'wire' && _selectedStyleSubTab == 4) {
+          _selectedStyleSubTab = 0;
+        }
+      }),
       child: Container(
         width: 140,
         margin: const EdgeInsets.only(right: 12),
@@ -2208,6 +2423,22 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         );
       case 'image':
         return const Icon(Icons.image, size: 20, color: Colors.black26);
+      case 'wire':
+        return Container(
+          width: 30,
+          height: 40,
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.black26, width: 0.5),
+          ),
+          child: const Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: EdgeInsets.only(bottom: 2),
+              child: Text('User', style: TextStyle(fontSize: 4, color: Colors.black54)),
+            ),
+          ),
+        );
       default:
         return Container();
     }
@@ -2769,7 +3000,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
   }
 
   Widget _buildProfileTab() {
-    bool showText = _watermarkType == 'profile' || _watermarkType == 'profile_vertical' || _watermarkType == 'text';
+    bool showText = _watermarkType == 'profile' || _watermarkType == 'profile_vertical' || _watermarkType == 'text' || _watermarkType == 'wire';
     bool showHandle = _watermarkType == 'profile' || _watermarkType == 'profile_vertical';
     bool showImage = _watermarkType == 'profile' || _watermarkType == 'profile_vertical' || _watermarkType == 'image';
 
@@ -2962,8 +3193,10 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         const SizedBox(height: 16),
         const Text('Manual Coordinates (Fine-tune)', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
-        _buildControlSlider(label: 'Horizontal Position (X)', value: _watermarkX, min: 0, max: 1, onChanged: (v) => setState(() => _watermarkX = v)),
-        _buildControlSlider(label: 'Vertical Position (Y)', value: _watermarkY, min: 0, max: 1, onChanged: (v) => setState(() => _watermarkY = v)),
+        if (_watermarkType != 'wire') ...[
+          _buildControlSlider(label: 'Horizontal Position (X)', value: _watermarkX, min: 0, max: 1, onChanged: (v) => setState(() => _watermarkX = v)),
+          _buildControlSlider(label: 'Vertical Position (Y)', value: _watermarkY, min: 0, max: 1, onChanged: (v) => setState(() => _watermarkY = v)),
+        ],
       ],
     );
   }
@@ -3022,6 +3255,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
             _buildSubTabButton(1, 'Handle', Icons.alternate_email),
             _buildSubTabButton(2, 'Icon', Icons.image_outlined),
             _buildSubTabButton(3, 'Video', Icons.videocam_outlined),
+            if (_watermarkType == 'wire')
+              _buildSubTabButton(4, 'Wire', Icons.border_outer),
           ],
         ),
         const SizedBox(height: 20),
@@ -3153,6 +3388,129 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                   const SizedBox(height: 8),
                   _buildColorPicker(_videoBorderColor, (c) => setState(() => _videoBorderColor = c)),
                 ],
+              ],
+            ),
+            // --- Wire Style ---
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Wire Frame Options', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                const SizedBox(height: 16),
+                _buildControlSlider(
+                  label: 'Wire Inset (Margin)',
+                  value: _wireInset,
+                  min: 0.0,
+                  max: 150.0,
+                  onChanged: (v) => setState(() => _wireInset = v),
+                ),
+                const SizedBox(height: 16),
+                _buildControlSlider(
+                  label: 'Wire Corner Radius',
+                  value: _wireRadius,
+                  min: 0.0,
+                  max: 100.0,
+                  onChanged: (v) => setState(() => _wireRadius = v),
+                ),
+                const SizedBox(height: 16),
+                _buildControlSlider(
+                  label: 'Wire Width (Thickness)',
+                  value: _wireWidth,
+                  min: 0.5,
+                  max: 10.0,
+                  onChanged: (v) => setState(() => _wireWidth = v),
+                ),
+                const SizedBox(height: 16),
+                const Text('Wire Color', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 8),
+                _buildColorPicker(_wireColor, (c) => setState(() => _wireColor = c)),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Cutout text from wire', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    Switch(
+                      value: _wireCutout,
+                      activeColor: AppColors.primary,
+                      onChanged: (v) => setState(() {
+                        _wireCutout = v;
+                      }),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Show dots on cutout ends',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: _wireCutout ? Colors.black : Colors.grey,
+                      ),
+                    ),
+                    Switch(
+                      value: _wireCutoutDots,
+                      activeColor: AppColors.primary,
+                      onChanged: _wireCutout
+                          ? (v) => setState(() => _wireCutoutDots = v)
+                          : null,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Text('Text Position on Wire', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: ['top', 'bottom', 'left', 'right'].map((pos) {
+                    final isSelected = _wireTextPosition == pos;
+                    return ChoiceChip(
+                      label: Text(
+                        pos[0].toUpperCase() + pos.substring(1),
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : Colors.black,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                      selected: isSelected,
+                      selectedColor: AppColors.primary,
+                      backgroundColor: Colors.grey[200],
+                      onSelected: (selected) {
+                        if (selected) {
+                          setState(() {
+                            _wireTextPosition = pos;
+                          });
+                        }
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Wire Cutout Gap: ${_wireGap.toStringAsFixed(0)} px',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: _wireCutout ? Colors.black : Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
+                Slider(
+                  value: _wireGap,
+                  min: 0.0,
+                  max: 100.0,
+                  divisions: 100,
+                  activeColor: AppColors.primary,
+                  inactiveColor: Colors.grey[200],
+                  onChanged: _wireCutout
+                      ? (v) => setState(() => _wireGap = v)
+                      : null,
+                ),
               ],
             ),
           ],
@@ -3901,5 +4259,288 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     _usernameController.dispose();
     _handleController.dispose();
     super.dispose();
+  }
+}
+
+class WireFramePainter extends CustomPainter {
+  final double radius;
+  final double width;
+  final Color color;
+  final double textWidth;
+  final double scale;
+  final bool hasCutout;
+  final bool hasCutoutDots;
+  final String textPosition;
+  final double wireGap;
+
+  WireFramePainter({
+    required this.radius,
+    required this.width,
+    required this.color,
+    required this.textWidth,
+    required this.scale,
+    required this.hasCutout,
+    required this.hasCutoutDots,
+    this.textPosition = 'bottom',
+    this.wireGap = 16.0,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = width
+      ..isAntiAlias = true;
+
+    final double left = 0;
+    final double top = 0;
+    final double right = size.width;
+    final double bottom = size.height;
+    
+    final double r = radius.clamp(0, size.width / 2 < size.height / 2 ? size.width / 2 : size.height / 2);
+    final double diameter = r * 2;
+
+    if (!hasCutout) {
+      if (r > 0) {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTRB(left, top, right, bottom),
+            Radius.circular(r),
+          ),
+          paint,
+        );
+      } else {
+        canvas.drawRect(Rect.fromLTRB(left, top, right, bottom), paint);
+      }
+      return;
+    }
+
+    final double centerVal = (textPosition == 'left' || textPosition == 'right')
+        ? size.height / 2
+        : size.width / 2;
+    final double cutoutHalf = (textWidth + (wireGap * scale)) / 2;
+    final double cutoutStart = centerVal - cutoutHalf;
+    final double cutoutEnd = centerVal + cutoutHalf;
+
+    final path = Path();
+    
+    if (r <= 0) {
+      if (textPosition == 'bottom') {
+        path.moveTo(left, top);
+        path.lineTo(right, top);
+        path.lineTo(right, bottom);
+        if (cutoutEnd < right) {
+          path.lineTo(cutoutEnd, bottom);
+        }
+        path.moveTo(cutoutStart, bottom);
+        if (cutoutStart > left) {
+          path.lineTo(left, bottom);
+        }
+        path.lineTo(left, top);
+      } else if (textPosition == 'top') {
+        path.moveTo(left, bottom);
+        path.lineTo(left, top);
+        if (cutoutStart > left) {
+          path.lineTo(cutoutStart, top);
+        }
+        path.moveTo(cutoutEnd, top);
+        if (cutoutEnd < right) {
+          path.lineTo(right, top);
+        }
+        path.lineTo(right, bottom);
+        path.lineTo(left, bottom);
+      } else if (textPosition == 'left') {
+        path.moveTo(right, top);
+        path.lineTo(right, bottom);
+        path.lineTo(left, bottom);
+        if (cutoutEnd < bottom) {
+          path.lineTo(left, cutoutEnd);
+        }
+        path.moveTo(left, cutoutStart);
+        if (cutoutStart > top) {
+          path.lineTo(left, cutoutStart);
+        }
+        path.lineTo(left, top);
+        path.lineTo(right, top);
+      } else { // right
+        path.moveTo(left, top);
+        path.lineTo(right, top);
+        if (cutoutStart > top) {
+          path.lineTo(right, cutoutStart);
+        }
+        path.moveTo(right, cutoutEnd);
+        if (cutoutEnd < bottom) {
+          path.lineTo(right, bottom);
+        }
+        path.lineTo(left, bottom);
+        path.lineTo(left, top);
+      }
+      canvas.drawPath(path, paint);
+      
+      if (hasCutoutDots) {
+        final dotPaint = Paint()
+          ..color = color
+          ..style = PaintingStyle.fill
+          ..isAntiAlias = true;
+        final double dotRadius = width * 1.5;
+        if (textPosition == 'bottom') {
+          canvas.drawCircle(Offset(cutoutStart, bottom), dotRadius, dotPaint);
+          canvas.drawCircle(Offset(cutoutEnd, bottom), dotRadius, dotPaint);
+        } else if (textPosition == 'top') {
+          canvas.drawCircle(Offset(cutoutStart, top), dotRadius, dotPaint);
+          canvas.drawCircle(Offset(cutoutEnd, top), dotRadius, dotPaint);
+        } else if (textPosition == 'left') {
+          canvas.drawCircle(Offset(left, cutoutStart), dotRadius, dotPaint);
+          canvas.drawCircle(Offset(left, cutoutEnd), dotRadius, dotPaint);
+        } else {
+          canvas.drawCircle(Offset(right, cutoutStart), dotRadius, dotPaint);
+          canvas.drawCircle(Offset(right, cutoutEnd), dotRadius, dotPaint);
+        }
+      }
+      return;
+    }
+
+    if (textPosition == 'bottom') {
+      // Top edge
+      path.moveTo(left + r, top);
+      path.lineTo(right - r, top);
+      // Top-Right corner
+      path.arcTo(Rect.fromLTWH(right - diameter, top, diameter, diameter), -3.141592653589793 / 2, 3.141592653589793 / 2, false);
+      // Right edge
+      path.lineTo(right, bottom - r);
+      // Bottom-Right corner
+      path.arcTo(Rect.fromLTWH(right - diameter, bottom - diameter, diameter, diameter), 0, 3.141592653589793 / 2, false);
+      // Bottom edge segment 1
+      if (cutoutEnd < right - r) {
+        path.lineTo(cutoutEnd, bottom);
+      }
+      // Move to cutout start
+      path.moveTo(cutoutStart, bottom);
+      // Bottom edge segment 2
+      if (cutoutStart > left + r) {
+        path.lineTo(left + r, bottom);
+      }
+      // Bottom-Left corner
+      path.arcTo(Rect.fromLTWH(left, bottom - diameter, diameter, diameter), 3.141592653589793 / 2, 3.141592653589793 / 2, false);
+      // Left edge
+      path.lineTo(left, top + r);
+      // Top-Left corner
+      path.arcTo(Rect.fromLTWH(left, top, diameter, diameter), 3.141592653589793, 3.141592653589793 / 2, false);
+    } else if (textPosition == 'top') {
+      // Left edge
+      path.moveTo(left, bottom - r);
+      path.lineTo(left, top + r);
+      // Top-Left corner
+      path.arcTo(Rect.fromLTWH(left, top, diameter, diameter), 3.141592653589793, 3.141592653589793 / 2, false);
+      // Top edge segment 1
+      if (cutoutStart > left + r) {
+        path.lineTo(cutoutStart, top);
+      }
+      // Move to cutout end
+      path.moveTo(cutoutEnd, top);
+      // Top edge segment 2
+      if (cutoutEnd < right - r) {
+        path.lineTo(right - r, top);
+      }
+      // Top-Right corner
+      path.arcTo(Rect.fromLTWH(right - diameter, top, diameter, diameter), -3.141592653589793 / 2, 3.141592653589793 / 2, false);
+      // Right edge
+      path.lineTo(right, bottom - r);
+      // Bottom-Right corner
+      path.arcTo(Rect.fromLTWH(right - diameter, bottom - diameter, diameter, diameter), 0, 3.141592653589793 / 2, false);
+      // Bottom edge
+      path.lineTo(left + r, bottom);
+      // Bottom-Left corner
+      path.arcTo(Rect.fromLTWH(left, bottom - diameter, diameter, diameter), 3.141592653589793 / 2, 3.141592653589793 / 2, false);
+    } else if (textPosition == 'left') {
+      // Top edge
+      path.moveTo(left + r, top);
+      path.lineTo(right - r, top);
+      // Top-Right corner
+      path.arcTo(Rect.fromLTWH(right - diameter, top, diameter, diameter), -3.141592653589793 / 2, 3.141592653589793 / 2, false);
+      // Right edge
+      path.lineTo(right, bottom - r);
+      // Bottom-Right corner
+      path.arcTo(Rect.fromLTWH(right - diameter, bottom - diameter, diameter, diameter), 0, 3.141592653589793 / 2, false);
+      // Bottom edge
+      path.lineTo(left + r, bottom);
+      // Bottom-Left corner
+      path.arcTo(Rect.fromLTWH(left, bottom - diameter, diameter, diameter), 3.141592653589793 / 2, 3.141592653589793 / 2, false);
+      // Left edge segment 1
+      if (cutoutEnd < bottom - r) {
+        path.lineTo(left, cutoutEnd);
+      }
+      // Move to cutout start
+      path.moveTo(left, cutoutStart);
+      // Left edge segment 2
+      if (cutoutStart > top + r) {
+        path.lineTo(left, top + r);
+      }
+      // Top-Left corner
+      path.arcTo(Rect.fromLTWH(left, top, diameter, diameter), 3.141592653589793, 3.141592653589793 / 2, false);
+    } else { // right
+      // Bottom edge
+      path.moveTo(right - r, bottom);
+      path.lineTo(left + r, bottom);
+      // Bottom-Left corner
+      path.arcTo(Rect.fromLTWH(left, bottom - diameter, diameter, diameter), 3.141592653589793 / 2, 3.141592653589793 / 2, false);
+      // Left edge
+      path.lineTo(left, top + r);
+      // Top-Left corner
+      path.arcTo(Rect.fromLTWH(left, top, diameter, diameter), 3.141592653589793, 3.141592653589793 / 2, false);
+      // Top edge
+      path.lineTo(right - r, top);
+      // Top-Right corner
+      path.arcTo(Rect.fromLTWH(right - diameter, top, diameter, diameter), -3.141592653589793 / 2, 3.141592653589793 / 2, false);
+      // Right edge segment 1
+      if (cutoutStart > top + r) {
+        path.lineTo(right, cutoutStart);
+      }
+      // Move to cutout end
+      path.moveTo(right, cutoutEnd);
+      // Right edge segment 2
+      if (cutoutEnd < bottom - r) {
+        path.lineTo(right, bottom - r);
+      }
+      // Bottom-Right corner
+      path.arcTo(Rect.fromLTWH(right - diameter, bottom - diameter, diameter, diameter), 0, 3.141592653589793 / 2, false);
+    }
+    
+    canvas.drawPath(path, paint);
+
+    if (hasCutoutDots) {
+      final dotPaint = Paint()
+        ..color = color
+        ..style = PaintingStyle.fill
+        ..isAntiAlias = true;
+      final double dotRadius = width * 1.5;
+      if (textPosition == 'bottom') {
+        canvas.drawCircle(Offset(cutoutStart, bottom), dotRadius, dotPaint);
+        canvas.drawCircle(Offset(cutoutEnd, bottom), dotRadius, dotPaint);
+      } else if (textPosition == 'top') {
+        canvas.drawCircle(Offset(cutoutStart, top), dotRadius, dotPaint);
+        canvas.drawCircle(Offset(cutoutEnd, top), dotRadius, dotPaint);
+      } else if (textPosition == 'left') {
+        canvas.drawCircle(Offset(left, cutoutStart), dotRadius, dotPaint);
+        canvas.drawCircle(Offset(left, cutoutEnd), dotRadius, dotPaint);
+      } else {
+        canvas.drawCircle(Offset(right, cutoutStart), dotRadius, dotPaint);
+        canvas.drawCircle(Offset(right, cutoutEnd), dotRadius, dotPaint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant WireFramePainter oldDelegate) {
+    return oldDelegate.radius != radius ||
+        oldDelegate.width != width ||
+        oldDelegate.color != color ||
+        oldDelegate.textWidth != textWidth ||
+        oldDelegate.scale != scale ||
+        oldDelegate.hasCutout != hasCutout ||
+        oldDelegate.hasCutoutDots != hasCutoutDots ||
+        oldDelegate.textPosition != textPosition ||
+        oldDelegate.wireGap != wireGap;
   }
 }

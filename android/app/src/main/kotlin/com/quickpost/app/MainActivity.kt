@@ -912,7 +912,16 @@ class MainActivity : FlutterActivity() {
                                     "videoRadius" to ((call.argument<Number>("videoRadius"))?.toFloat() ?: 0f),
                                     "videoBorderWidth" to ((call.argument<Number>("videoBorderWidth"))?.toFloat() ?: 0f),
                                     "videoBorderColor" to (call.argument<String>("videoBorderColor") ?: "#000000"),
-                                    "videoScale" to ((call.argument<Number>("videoScale"))?.toFloat() ?: 1.0f)
+                                    "videoScale" to ((call.argument<Number>("videoScale"))?.toFloat() ?: 1.0f),
+                                    "wireRadius" to ((call.argument<Number>("wireRadius"))?.toFloat() ?: 12f),
+                                    "wireWidth" to ((call.argument<Number>("wireWidth"))?.toFloat() ?: 1.5f),
+                                    "wireColor" to (call.argument<String>("wireColor") ?: "#FFFFFF"),
+                                    "wireCutout" to (call.argument<Boolean>("wireCutout") ?: true),
+                                    "wireCutoutDots" to (call.argument<Boolean>("wireCutoutDots") ?: true),
+                                    "previewScale" to ((call.argument<Number>("previewScale"))?.toFloat() ?: 0.33f),
+                                    "wireInset" to ((call.argument<Number>("wireInset"))?.toFloat() ?: 40f),
+                                    "wireTextPosition" to (call.argument<String>("wireTextPosition") ?: "bottom"),
+                                    "wireGap" to ((call.argument<Number>("wireGap"))?.toFloat() ?: 16f)
                                 )
                                 val outputFile = java.io.File(outputPath)
                                 val callback = object : OpenGLWatermarkProcessor.ProgressCallback {

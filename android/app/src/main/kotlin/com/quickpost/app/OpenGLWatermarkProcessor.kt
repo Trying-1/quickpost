@@ -242,6 +242,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         
         // Extract basic params
         val fullScreen = params["fullScreen"] as? Boolean ?: false
+        val type = params["type"] as? String ?: "profile"
         val bgColorStr = params["bgColor"] as? String ?: "#000000"
         val bgColor = try { Color.parseColor(bgColorStr) } catch (e: Exception) { Color.BLACK }
 
@@ -408,7 +409,9 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         decoder.start()
         Log.d(TAG, "Decoder started: ${decoder.name}")
 
-        val watermarkResult = renderWatermarkBitmap(params, 0, movie, outWidth)
+        val watermarkW = if (type == "wire") inputWidth else outWidth
+        val watermarkH = if (type == "wire") inputHeight else outHeight
+        val watermarkResult = renderWatermarkBitmap(params, 0, movie, watermarkW, watermarkH)
         var watermarkTexId = loadBitmapTexture(flipBitmapVertically(watermarkResult.bitmap))
         
         // Store box dims for positioning
@@ -572,15 +575,15 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         
         // Calculate Watermark MVP (Position and Scale relative to -1..1 coordinates)
         val watermarkMvp = FloatArray(16)
-        android.opengl.Matrix.setIdentityM(watermarkMvp, 0)
-        
-        // OpenGL coords are -1 to 1. (0,0) is center.
-        // x,y are in outWidth/outHeight pixels (0,0 is top-left).
-        val glX = (x.toFloat() / outWidth.toFloat()) * 2f - 1f
-        val glY = (1f - (y.toFloat() / outHeight.toFloat())) * 2f - 1f // Flip Y for GL
-        
-        android.opengl.Matrix.translateM(watermarkMvp, 0, glX, glY, 0f)
-        android.opengl.Matrix.scaleM(watermarkMvp, 0, boxW / outWidth.toFloat(), boxH / outHeight.toFloat(), 1.0f)
+        if (type == "wire") {
+            System.arraycopy(videoMvp, 0, watermarkMvp, 0, 16)
+        } else {
+            android.opengl.Matrix.setIdentityM(watermarkMvp, 0)
+            val glX = (x.toFloat() / outWidth.toFloat()) * 2f - 1f
+            val glY = (1f - (y.toFloat() / outHeight.toFloat())) * 2f - 1f // Flip Y for GL
+            android.opengl.Matrix.translateM(watermarkMvp, 0, glX, glY, 0f)
+            android.opengl.Matrix.scaleM(watermarkMvp, 0, boxW / outWidth.toFloat(), boxH / outHeight.toFloat(), 1.0f)
+        }
 
         var frameIndex = 0
         var inputDone = false
@@ -669,7 +672,9 @@ class OpenGLWatermarkProcessor(private val context: Context) {
                         // If GIF, re-render only the small box and update texture
                         if (movie != null && movie.duration() > 0) {
                             val timeMs = (frameIndex.toLong() * 1000 / FRAME_RATE).toInt() % movie.duration()
-                            val gifResult = renderWatermarkBitmap(params, timeMs, movie, outWidth)
+                            val gifW = if (type == "wire") inputWidth else outWidth
+                            val gifH = if (type == "wire") inputHeight else outHeight
+                            val gifResult = renderWatermarkBitmap(params, timeMs, movie, gifW, gifH)
                             val fGif = flipBitmapVertically(gifResult.bitmap)
                             updateBitmapTexture(watermarkTexId, fGif)
                             gifResult.bitmap.recycle()
@@ -798,7 +803,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
 
     class WatermarkResult(val bitmap: Bitmap, val boxWidth: Float, val boxHeight: Float)
 
-    private fun renderWatermarkBitmap(params: Map<String, Any?>, timeMs: Int, movieIn: Movie? = null, targetWidth: Int = 1080): WatermarkResult {
+    private fun renderWatermarkBitmap(params: Map<String, Any?>, timeMs: Int, movieIn: Movie? = null, targetWidth: Int = 1080, targetHeight: Int = 1920): WatermarkResult {
         val type = params["type"] as? String ?: "profile"
         val showBox = params["showBox"] as? Boolean ?: true
         val boxColorStr = params["boxColor"] as? String ?: "#000000"
@@ -965,6 +970,10 @@ class OpenGLWatermarkProcessor(private val context: Context) {
                     contentHeight = maxOf(iconW, maxOf(usernameSize, handleSize) * 2.3f)
                 }
             }
+            "wire" -> {
+                contentWidth = targetWidth.toFloat() - (padding * 2)
+                contentHeight = targetHeight.toFloat() - (padding * 2)
+            }
             "text" -> {
                 contentWidth = textPaint.measureText(username)
                 contentHeight = fontSize
@@ -999,7 +1008,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         val canvas = Canvas(bitmap)
 
         // 2. Draw Box
-        if (showBox) {
+        if (showBox && type != "wire") {
             val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG)
             val baseColor = Color.parseColor(boxColorStr)
             boxPaint.color = Color.argb((boxOpacity * 255).toInt(), Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor))
@@ -1146,6 +1155,270 @@ class OpenGLWatermarkProcessor(private val context: Context) {
                         canvas.drawCircle(dotsX, dotY, dotRadius, dotPaint)
                     }
                 }
+            }
+            "wire" -> {
+                val previewScale = (params["previewScale"] as? Number)?.toFloat() ?: 0.33f
+                val scale = (params["watermarkScale"] as? Number)?.toFloat() ?: 1.0f
+                val wireInset = ((params["wireInset"] as? Number)?.toFloat() ?: 40f) * scale
+                val inset = wireInset
+                val rectLeft = inset - padding
+                val rectTop = inset - padding
+                val rectRight = contentWidth + padding - inset
+                val rectBottom = contentHeight + padding - inset
+                
+                val wireRadius = (((params["wireRadius"] as? Number)?.toFloat() ?: 12f) / previewScale) * scale
+                val wireWidth = (((params["wireWidth"] as? Number)?.toFloat() ?: 1.5f) / previewScale) * scale
+                val wireColorStr = params["wireColor"] as? String ?: "#FFFFFF"
+                val wireCutout = params["wireCutout"] as? Boolean ?: true
+                val wireCutoutDots = params["wireCutoutDots"] as? Boolean ?: true
+                val wireGap = (((params["wireGap"] as? Number)?.toFloat() ?: 16f) / previewScale) * scale
+
+                val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.parseColor(wireColorStr)
+                    style = Paint.Style.STROKE
+                    strokeWidth = wireWidth
+                }
+                
+                textPaint.clearShadowLayer()
+                if (showUsernameShadow) {
+                    textPaint.setShadowLayer(usernameShadowBlur.coerceAtLeast(0.1f), usernameShadowOffsetX, usernameShadowOffsetY, Color.parseColor(usernameShadowColorStr))
+                }
+
+                val wireTextPosition = params["wireTextPosition"] as? String ?: "bottom"
+                val textW = textPaint.measureText(username)
+                val rectWidth = rectRight - rectLeft
+                val rectHeight = rectBottom - rectTop
+                val centerX = rectLeft + rectWidth / 2f
+                val centerY = rectTop + rectHeight / 2f
+                
+                if (wireCutout) {
+                    val gap = wireGap
+                    val cutoutHalf = (textW + gap) / 2f
+                    val cutoutStart = if (wireTextPosition == "left" || wireTextPosition == "right") {
+                        centerY - cutoutHalf
+                    } else {
+                        centerX - cutoutHalf
+                    }
+                    val cutoutEnd = if (wireTextPosition == "left" || wireTextPosition == "right") {
+                        centerY + cutoutHalf
+                    } else {
+                        centerX + cutoutHalf
+                    }
+                    
+                    val path = Path()
+                    if (wireRadius <= 0f) {
+                        if (wireTextPosition == "bottom") {
+                            path.moveTo(rectLeft, rectTop)
+                            path.lineTo(rectRight, rectTop)
+                            path.lineTo(rectRight, rectBottom)
+                            if (cutoutEnd < rectRight) {
+                                path.lineTo(cutoutEnd, rectBottom)
+                            }
+                            path.moveTo(cutoutStart, rectBottom)
+                            if (cutoutStart > rectLeft) {
+                                path.lineTo(rectLeft, rectBottom)
+                            }
+                            path.lineTo(rectLeft, rectTop)
+                        } else if (wireTextPosition == "top") {
+                            path.moveTo(rectLeft, rectBottom)
+                            path.lineTo(rectLeft, rectTop)
+                            if (cutoutStart > rectLeft) {
+                                path.lineTo(cutoutStart, rectTop)
+                            }
+                            path.moveTo(cutoutEnd, rectTop)
+                            if (cutoutEnd < rectRight) {
+                                path.lineTo(rectRight, rectTop)
+                            }
+                            path.lineTo(rectRight, rectBottom)
+                            path.lineTo(rectLeft, rectBottom)
+                        } else if (wireTextPosition == "left") {
+                            path.moveTo(rectRight, rectTop)
+                            path.lineTo(rectRight, rectBottom)
+                            path.lineTo(rectLeft, rectBottom)
+                            if (cutoutEnd < rectBottom) {
+                                path.lineTo(rectLeft, cutoutEnd)
+                            }
+                            path.moveTo(rectLeft, cutoutStart)
+                            if (cutoutStart > rectTop) {
+                                path.lineTo(rectLeft, rectTop)
+                            }
+                            path.lineTo(rectRight, rectTop)
+                        } else { // right
+                            path.moveTo(rectLeft, rectTop)
+                            path.lineTo(rectRight, rectTop)
+                            if (cutoutStart > rectTop) {
+                                path.lineTo(rectRight, cutoutStart)
+                            }
+                            path.moveTo(rectRight, cutoutEnd)
+                            if (cutoutEnd < rectBottom) {
+                                path.lineTo(rectRight, rectBottom)
+                            }
+                            path.lineTo(rectLeft, rectBottom)
+                            path.lineTo(rectLeft, rectTop)
+                        }
+                    } else {
+                        val diameter = wireRadius * 2f
+                        if (wireTextPosition == "bottom") {
+                            path.moveTo(rectLeft + wireRadius, rectTop)
+                            path.lineTo(rectRight - wireRadius, rectTop)
+                            path.arcTo(RectF(rectRight - diameter, rectTop, rectRight, rectTop + diameter), -90f, 90f)
+                            path.lineTo(rectRight, rectBottom - wireRadius)
+                            path.arcTo(RectF(rectRight - diameter, rectBottom - diameter, rectRight, rectBottom), 0f, 90f)
+                            if (cutoutEnd < rectRight - wireRadius) {
+                                path.lineTo(cutoutEnd, rectBottom)
+                            }
+                            path.moveTo(cutoutStart, rectBottom)
+                            if (cutoutStart > rectLeft + wireRadius) {
+                                path.lineTo(rectLeft + wireRadius, rectBottom)
+                            }
+                            path.arcTo(RectF(rectLeft, rectBottom - diameter, rectLeft + diameter, rectBottom), 90f, 90f)
+                            path.lineTo(rectLeft, rectTop + wireRadius)
+                            path.arcTo(RectF(rectLeft, rectTop, rectLeft + diameter, rectTop + diameter), 180f, 90f)
+                        } else if (wireTextPosition == "top") {
+                            path.moveTo(rectLeft, rectBottom - wireRadius)
+                            path.lineTo(rectLeft, rectTop + wireRadius)
+                            path.arcTo(RectF(rectLeft, rectTop, rectLeft + diameter, rectTop + diameter), 180f, 90f)
+                            if (cutoutStart > rectLeft + wireRadius) {
+                                path.lineTo(cutoutStart, rectTop)
+                            }
+                            path.moveTo(cutoutEnd, rectTop)
+                            if (cutoutEnd < rectRight - wireRadius) {
+                                path.lineTo(rectRight - wireRadius, rectTop)
+                            }
+                            path.arcTo(RectF(rectRight - diameter, rectTop, rectRight, rectTop + diameter), -90f, 90f)
+                            path.lineTo(rectRight, rectBottom - wireRadius)
+                            path.arcTo(RectF(rectRight - diameter, rectBottom - diameter, rectRight, rectBottom), 0f, 90f)
+                            path.lineTo(rectLeft + wireRadius, rectBottom)
+                            path.arcTo(RectF(rectLeft, rectBottom - diameter, rectLeft + diameter, rectBottom), 90f, 90f)
+                        } else if (wireTextPosition == "left") {
+                            path.moveTo(rectLeft + wireRadius, rectTop)
+                            path.lineTo(rectRight - wireRadius, rectTop)
+                            path.arcTo(RectF(rectRight - diameter, rectTop, rectRight, rectTop + diameter), -90f, 90f)
+                            path.lineTo(rectRight, rectBottom - wireRadius)
+                            path.arcTo(RectF(rectRight - diameter, rectBottom - diameter, rectRight, rectBottom), 0f, 90f)
+                            path.lineTo(rectLeft + wireRadius, rectBottom)
+                            path.arcTo(RectF(rectLeft, rectBottom - diameter, rectLeft + diameter, rectBottom), 90f, 90f)
+                            if (cutoutEnd < rectBottom - wireRadius) {
+                                path.lineTo(rectLeft, cutoutEnd)
+                            }
+                            path.moveTo(rectLeft, cutoutStart)
+                            if (cutoutStart > rectTop + wireRadius) {
+                                path.lineTo(rectLeft, rectTop + wireRadius)
+                            }
+                            path.arcTo(RectF(rectLeft, rectTop, rectLeft + diameter, rectTop + diameter), 180f, 90f)
+                        } else { // right
+                            path.moveTo(rectRight - wireRadius, rectBottom)
+                            path.lineTo(rectLeft + wireRadius, rectBottom)
+                            path.arcTo(RectF(rectLeft, rectBottom - diameter, rectLeft + diameter, rectBottom), 90f, 90f)
+                            path.lineTo(rectLeft, rectTop + wireRadius)
+                            path.arcTo(RectF(rectLeft, rectTop, rectLeft + diameter, rectTop + diameter), 180f, 90f)
+                            path.lineTo(rectRight - wireRadius, rectTop)
+                            path.arcTo(RectF(rectRight - diameter, rectTop, rectRight, rectTop + diameter), -90f, 90f)
+                            if (cutoutStart > rectTop + wireRadius) {
+                                path.lineTo(rectRight, cutoutStart)
+                            }
+                            path.moveTo(rectRight, cutoutEnd)
+                            if (cutoutEnd < rectBottom - wireRadius) {
+                                path.lineTo(rectRight, rectBottom - wireRadius)
+                            }
+                            path.arcTo(RectF(rectRight - diameter, rectBottom - diameter, rectRight, rectBottom), 0f, 90f)
+                        }
+                    }
+                    canvas.drawPath(path, linePaint)
+                    if (wireCutoutDots) {
+                        val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            color = Color.parseColor(wireColorStr)
+                            style = Paint.Style.FILL
+                        }
+                        val dotRadius = wireWidth * 1.5f
+                        if (wireTextPosition == "bottom") {
+                            canvas.drawCircle(cutoutStart, rectBottom, dotRadius, dotPaint)
+                            canvas.drawCircle(cutoutEnd, rectBottom, dotRadius, dotPaint)
+                        } else if (wireTextPosition == "top") {
+                            canvas.drawCircle(cutoutStart, rectTop, dotRadius, dotPaint)
+                            canvas.drawCircle(cutoutEnd, rectTop, dotRadius, dotPaint)
+                        } else if (wireTextPosition == "left") {
+                            canvas.drawCircle(rectLeft, cutoutStart, dotRadius, dotPaint)
+                            canvas.drawCircle(rectLeft, cutoutEnd, dotRadius, dotPaint)
+                        } else {
+                            canvas.drawCircle(rectRight, cutoutStart, dotRadius, dotPaint)
+                            canvas.drawCircle(rectRight, cutoutEnd, dotRadius, dotPaint)
+                        }
+                    }
+                } else {
+                    val rect = RectF(rectLeft, rectTop, rectRight, rectBottom)
+                    if (wireRadius > 0) {
+                        canvas.drawRoundRect(rect, wireRadius, wireRadius, linePaint)
+                    } else {
+                        canvas.drawRect(rect, linePaint)
+                    }
+                }
+                
+                val textCenterX: Float
+                val textCenterY: Float
+                val rotationAngle: Float
+                
+                when (wireTextPosition) {
+                    "top" -> {
+                        textCenterX = rectLeft + rectWidth / 2f
+                        textCenterY = if (showBox) {
+                            rectTop
+                        } else {
+                            if (wireCutout) rectTop else rectTop + 8f * scale
+                        }
+                        rotationAngle = 0f
+                    }
+                    "left" -> {
+                        textCenterX = if (showBox) {
+                            rectLeft
+                        } else {
+                            if (wireCutout) rectLeft else rectLeft + 8f * scale
+                        }
+                        textCenterY = rectTop + rectHeight / 2f
+                        rotationAngle = 90f
+                    }
+                    "right" -> {
+                        textCenterX = if (showBox) {
+                            rectRight
+                        } else {
+                            if (wireCutout) rectRight else rectRight - 8f * scale
+                        }
+                        textCenterY = rectTop + rectHeight / 2f
+                        rotationAngle = 90f
+                    }
+                    else -> { // "bottom"
+                        textCenterX = rectLeft + rectWidth / 2f
+                        textCenterY = if (showBox) {
+                            rectBottom
+                        } else {
+                            if (wireCutout) rectBottom else rectBottom - 8f * scale
+                        }
+                        rotationAngle = 0f
+                    }
+                }
+
+                canvas.save()
+                canvas.translate(textCenterX, textCenterY)
+                canvas.rotate(rotationAngle)
+
+                if (showBox) {
+                    val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+                    val baseColor = Color.parseColor(boxColorStr)
+                    boxPaint.color = Color.argb((boxOpacity * 255).toInt(), Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor))
+                    
+                    val boxWText = textW + (fontSize * 0.8f)
+                    val boxHText = usernameSize + (fontSize * 0.4f)
+                    
+                    val rBox = RectF(-boxWText / 2f, -boxHText / 2f, boxWText / 2f, boxHText / 2f)
+                    canvas.drawRoundRect(rBox, boxRadius, boxRadius, boxPaint)
+                    
+                    val textInsideY = -((textPaint.descent() + textPaint.ascent()) / 2f)
+                    canvas.drawText(username, -textW / 2f, textInsideY, textPaint)
+                } else {
+                    val textY = -((textPaint.descent() + textPaint.ascent()) / 2f)
+                    canvas.drawText(username, -textW / 2f, textY, textPaint)
+                }
+                canvas.restore()
             }
             "text" -> {
                 val fm = textPaint.fontMetrics

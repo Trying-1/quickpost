@@ -73,13 +73,21 @@ class WatermarkPresetAdapter extends TypeAdapter<WatermarkPreset> {
       videoScale: fields[52] == null ? 1.0 : fields[52] as double,
       usernameOpacity: fields[53] == null ? 1.0 : fields[53] as double,
       handleOpacity: fields[54] == null ? 1.0 : fields[54] as double,
+      wireRadius: fields[55] == null ? 12.0 : fields[55] as double,
+      wireWidth: fields[56] == null ? 1.5 : fields[56] as double,
+      wireColor: fields[57] == null ? '#FFFFFF' : fields[57] as String,
+      wireCutout: fields[58] == null ? true : fields[58] as bool,
+      wireCutoutDots: fields[59] == null ? true : fields[59] as bool,
+      wireInset: fields[60] == null ? 40.0 : fields[60] as double,
+      wireTextPosition: fields[61] == null ? 'bottom' : fields[61] as String,
+      wireGap: fields[62] == null ? 16.0 : fields[62] as double,
     );
   }
 
   @override
   void write(BinaryWriter writer, WatermarkPreset obj) {
     writer
-      ..writeByte(55)
+      ..writeByte(63)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -189,7 +197,23 @@ class WatermarkPresetAdapter extends TypeAdapter<WatermarkPreset> {
       ..writeByte(53)
       ..write(obj.usernameOpacity)
       ..writeByte(54)
-      ..write(obj.handleOpacity);
+      ..write(obj.handleOpacity)
+      ..writeByte(55)
+      ..write(obj.wireRadius)
+      ..writeByte(56)
+      ..write(obj.wireWidth)
+      ..writeByte(57)
+      ..write(obj.wireColor)
+      ..writeByte(58)
+      ..write(obj.wireCutout)
+      ..writeByte(59)
+      ..write(obj.wireCutoutDots)
+      ..writeByte(60)
+      ..write(obj.wireInset)
+      ..writeByte(61)
+      ..write(obj.wireTextPosition)
+      ..writeByte(62)
+      ..write(obj.wireGap);
   }
 
   @override
