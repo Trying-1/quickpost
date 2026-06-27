@@ -6,6 +6,7 @@ import 'screens/onboarding/onboarding_flow_screen.dart';
 import 'services/subscription_service.dart';
 import 'services/audio_library_service.dart';
 import 'services/watermark_preset_service.dart';
+import 'services/image_post_preset_service.dart';
 import 'services/app_update_service.dart';
 import 'services/app_review_service.dart';
 import 'services/onboarding_service.dart';
@@ -53,6 +54,9 @@ void main() async {
  
   // Initialize Watermark Preset
   await WatermarkPresetService.init();
+ 
+  // Initialize Image Post Preset
+  await ImagePostPresetService.init();
  
   // Initialize Video Perf Service
   await VideoPerfService.init();

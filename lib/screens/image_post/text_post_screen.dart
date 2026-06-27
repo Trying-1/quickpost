@@ -2526,6 +2526,7 @@ class _TextPostScreenState extends State<TextPostScreen> with WidgetsBindingObse
             isSelected: isSelected,
             color: activeColor,
             child: Container(
+              constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.92 * t.scale),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
                 color: t.showBox ? t.boxColor.withOpacity(t.boxOpacity) : null,

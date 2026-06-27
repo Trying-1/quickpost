@@ -25,9 +25,11 @@ class MainActivity : FlutterActivity() {
     private val PICK_BACKUP_FOLDER_REQUEST = 1004
     private val PICK_SAVE_PRESETS_REQUEST = 1005
     private val PICK_LOAD_PRESETS_REQUEST = 1006
+    private val PICK_LOAD_FILE_REQUEST = 1007
     private var methodChannel: MethodChannel? = null
     private var pendingResult: MethodChannel.Result? = null
     private var pendingPresetsJson: String? = null
+    private var pendingPresetsBytes: ByteArray? = null
     private var audioSource: String = "audio"
     private var mediaPlayer: android.media.MediaPlayer? = null
     private var sharedImagePaths: MutableList<String> = mutableListOf()
@@ -979,6 +981,18 @@ class MainActivity : FlutterActivity() {
                     pendingResult = result
                     importPresets()
                 }
+                "exportFile" -> {
+                    val bytes = call.argument<ByteArray>("bytes")
+                    val filename = call.argument<String>("filename") ?: "QuickPost_Project.zip"
+                    val mimeType = call.argument<String>("mimeType") ?: "application/zip"
+                    pendingResult = result
+                    exportFile(bytes, filename, mimeType)
+                }
+                "importFile" -> {
+                    val mimeType = call.argument<String>("mimeType") ?: "*/*"
+                    pendingResult = result
+                    importFile(mimeType)
+                }
                 "saveProcessedImage" -> {
                     val imagePath = call.argument<String>("imagePath")
                     val automationSettings = call.argument<Map<String, Any>>("automationSettings")
@@ -1082,6 +1096,32 @@ class MainActivity : FlutterActivity() {
         }
         startActivityForResult(intent, PICK_LOAD_PRESETS_REQUEST)
     }
+
+    private fun exportFile(bytes: ByteArray?, filename: String, mimeType: String) {
+        if (bytes == null) {
+            pendingResult?.error("INVALID_ARGUMENT", "Bytes are null", null)
+            pendingResult = null
+            return
+        }
+        pendingPresetsBytes = bytes
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = mimeType
+            putExtra(Intent.EXTRA_TITLE, filename)
+        }
+        startActivityForResult(intent, PICK_SAVE_PRESETS_REQUEST)
+    }
+
+    private fun importFile(mimeType: String) {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = mimeType
+            if (mimeType == "*/*") {
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/json", "application/zip", "application/x-zip-compressed"))
+            }
+        }
+        startActivityForResult(intent, PICK_LOAD_FILE_REQUEST)
+    }
     
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -1162,10 +1202,14 @@ class MainActivity : FlutterActivity() {
             PICK_SAVE_PRESETS_REQUEST -> {
                 if (resultCode == Activity.RESULT_OK && data != null) {
                     val uri = data.data
-                    if (uri != null && pendingPresetsJson != null) {
+                    if (uri != null && (pendingPresetsJson != null || pendingPresetsBytes != null)) {
                         try {
                             contentResolver.openOutputStream(uri)?.use { out ->
-                                out.write(pendingPresetsJson!!.toByteArray(Charsets.UTF_8))
+                                if (pendingPresetsBytes != null) {
+                                    out.write(pendingPresetsBytes)
+                                } else {
+                                    out.write(pendingPresetsJson!!.toByteArray(Charsets.UTF_8))
+                                }
                             }
                             pendingResult?.success(true)
                         } catch (e: Exception) {
@@ -1178,6 +1222,7 @@ class MainActivity : FlutterActivity() {
                     pendingResult?.success(false)
                 }
                 pendingPresetsJson = null
+                pendingPresetsBytes = null
                 pendingResult = null
             }
             PICK_LOAD_PRESETS_REQUEST -> {
@@ -1187,6 +1232,24 @@ class MainActivity : FlutterActivity() {
                         try {
                             val json = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
                             pendingResult?.success(json)
+                        } catch (e: Exception) {
+                            pendingResult?.error("READ_ERROR", e.message, null)
+                        }
+                    } else {
+                        pendingResult?.success(null)
+                    }
+                } else {
+                    pendingResult?.success(null)
+                }
+                pendingResult = null
+            }
+            1007 -> { // PICK_LOAD_FILE_REQUEST
+                if (resultCode == Activity.RESULT_OK && data != null) {
+                    val uri = data.data
+                    if (uri != null) {
+                        try {
+                            val cachedPath = copyUriToCache(uri)
+                            pendingResult?.success(cachedPath)
                         } catch (e: Exception) {
                             pendingResult?.error("READ_ERROR", e.message, null)
                         }

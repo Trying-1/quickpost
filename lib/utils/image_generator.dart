@@ -298,18 +298,7 @@ class ImageGenerator {
       final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
 
       if (byteData == null) return null;
-      final Uint8List pngBytes = byteData.buffer.asUint8List();
-
-      // If the resulting image is slightly different due to rounding,
-      // we CROP it to the target size instead of resizing (stretching) it.
-      // This prevents the "shifting" the user is seeing.
-      if (image.width != targetWidth || image.height != targetHeight) {
-         return compute<_ResizeParams, Uint8List?>(
-          _cropToExactSize,
-          _ResizeParams(pngBytes, targetWidth ?? 1080, targetHeight ?? 1350),
-        );
-      }
-      return pngBytes;
+      return byteData.buffer.asUint8List();
     } catch (e) {
       return null;
     }

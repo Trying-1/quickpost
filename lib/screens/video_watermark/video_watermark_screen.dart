@@ -18,6 +18,7 @@ import '../../config/app_config.dart';
 import '../../widgets/advanced_color_picker.dart';
 import '../../services/ad_service.dart';
 import 'package:toastification/toastification.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class VideoWatermarkScreen extends StatefulWidget {
   final List<String>? sharedVideoPaths;
@@ -306,7 +307,112 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
   Stopwatch _processStopwatch = Stopwatch();
   String _elapsedTime = "00:00";
   String _remainingTime = "--:--";
+  Timer? _autoSaveTimer;
   Timer? _uiUpdateTimer;
+  String? _activePresetId;
+
+  FontInfo _getAvailableFontOrFallback(String? family) {
+    if (family == null || family.isEmpty) {
+      return const FontInfo(family: 'KleeOne', displayName: 'Klee One SemiBold', weight: FontWeight.w600, assetPath: 'assets/fonts/KleeOne-SemiBold.ttf');
+    }
+    final allFonts = getAllFonts();
+    try {
+      final font = allFonts.firstWhere((f) => f.family == family);
+      if (font.isCustom) {
+        if (font.filePath != null && File(font.filePath!).existsSync()) {
+          return font;
+        }
+      } else {
+        return font;
+      }
+    } catch (_) {}
+    return const FontInfo(family: 'KleeOne', displayName: 'Klee One SemiBold', weight: FontWeight.w600, assetPath: 'assets/fonts/KleeOne-SemiBold.ttf');
+  }
+
+  Future<void> _autoSaveCurrentSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('watermark_username', _username);
+      await prefs.setString('watermark_handle', _handle);
+      await prefs.setString('watermark_username_font_family', _selectedUsernameFont?.family ?? 'KleeOne');
+      await prefs.setString('watermark_handle_font_family', _selectedHandleFont?.family ?? 'KleeOne');
+      await prefs.setDouble('watermark_scale', _watermarkScale);
+      await prefs.setDouble('watermark_username_size', _usernameSize);
+      await prefs.setDouble('watermark_handle_size', _handleSize);
+      await prefs.setDouble('watermark_x', _watermarkX);
+      await prefs.setDouble('watermark_y', _watermarkY);
+      await prefs.setString('watermark_text_color', _textColor);
+      await prefs.setString('watermark_accent_color', _accentColor);
+      await prefs.setString('watermark_bg_color', _bgColor);
+      await prefs.setBool('watermark_show_box', _showBox);
+      await prefs.setString('watermark_box_color', _boxColor);
+      await prefs.setDouble('watermark_box_opacity', _boxOpacity);
+      await prefs.setDouble('watermark_box_radius', _boxRadius);
+      await prefs.setBool('watermark_show_story_ring', _showStoryRing);
+      await prefs.setBool('watermark_is_verified', _isVerified);
+      await prefs.setString('watermark_type', _watermarkType);
+      await prefs.setBool('watermark_full_screen', _fullScreen);
+      if (_profileImage != null) {
+        await prefs.setString('watermark_profile_image_path', _profileImage!.path);
+      } else {
+        await prefs.remove('watermark_profile_image_path');
+      }
+    } catch (e) {
+      debugPrint('Error auto-saving settings: $e');
+    }
+  }
+
+  void _triggerAutoSave() {
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(const Duration(milliseconds: 500), () {
+      _autoSaveCurrentSettings();
+    });
+  }
+
+  Future<void> _loadAutoSavedSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey('watermark_username')) {
+        setState(() {
+          _username = prefs.getString('watermark_username') ?? "Username";
+          _handle = prefs.getString('watermark_handle') ?? "@userhandle";
+          
+          _selectedUsernameFont = _getAvailableFontOrFallback(prefs.getString('watermark_username_font_family'));
+          _selectedHandleFont = _getAvailableFontOrFallback(prefs.getString('watermark_handle_font_family'));
+          
+          _watermarkScale = prefs.getDouble('watermark_scale') ?? 1.0;
+          _usernameSize = prefs.getDouble('watermark_username_size') ?? 36.0;
+          _handleSize = prefs.getDouble('watermark_handle_size') ?? 30.0;
+          _watermarkX = prefs.getDouble('watermark_x') ?? 0.5;
+          _watermarkY = prefs.getDouble('watermark_y') ?? 0.15;
+          _textColor = prefs.getString('watermark_text_color') ?? "#000000";
+          _accentColor = prefs.getString('watermark_accent_color') ?? "#AAAAAA";
+          _bgColor = prefs.getString('watermark_bg_color') ?? "#FFFFFF";
+          _showBox = prefs.getBool('watermark_show_box') ?? false;
+          _boxColor = prefs.getString('watermark_box_color') ?? "#000000";
+          _boxOpacity = prefs.getDouble('watermark_box_opacity') ?? 0.3;
+          _boxRadius = prefs.getDouble('watermark_box_radius') ?? 12.0;
+          _showStoryRing = prefs.getBool('watermark_show_story_ring') ?? true;
+          _isVerified = prefs.getBool('watermark_is_verified') ?? true;
+          _watermarkType = prefs.getString('watermark_type') ?? "profile_vertical";
+          _fullScreen = prefs.getBool('watermark_full_screen') ?? true;
+          
+          final pPath = prefs.getString('watermark_profile_image_path');
+          if (pPath != null && File(pPath).existsSync()) {
+            _profileImage = File(pPath);
+          }
+          
+          _usernameController.text = _username;
+          _handleController.text = _handle;
+        });
+      } else {
+        _loadPreset();
+      }
+    } catch (e) {
+      debugPrint('Error loading auto-saved settings: $e');
+      _loadPreset();
+    }
+  }
 
   void _recordStepTiming(String step) {
     if (_stepStartTime != null && _currentStep.isNotEmpty) {
@@ -326,6 +432,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     }
     
     setState(() {
+      _activePresetId = target.id;
       _watermarkType = target.watermarkType;
       _fullScreen = target.fullScreen;
       _bgColor = target.bgColor;
@@ -394,8 +501,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         _profileImage = null;
       }
       
-      _selectedUsernameFont = FontInfo.getFontByFamily(target.fontFamily) ?? FontInfo(family: target.fontFamily, displayName: target.fontFamily);
-      _selectedHandleFont = FontInfo.getFontByFamily(target.handleFontFamily ?? target.fontFamily) ?? _selectedUsernameFont;
+      _selectedUsernameFont = _getAvailableFontOrFallback(target.fontFamily);
+      _selectedHandleFont = _getAvailableFontOrFallback(target.handleFontFamily ?? target.fontFamily);
       _showStoryRing = target.showStoryRing;
       _isVerified = target.isVerified;
       _videoY = target.videoY;
@@ -462,6 +569,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         _handleController.text = _handle;
       }
     });
+    _triggerAutoSave();
   }
 
   void _savePreset() async {
@@ -504,8 +612,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
       accentColor: _accentColor,
       username: _username,
       handle: _handle,
-      fontFamily: _selectedUsernameFont?.family ?? 'KleeOne',
-      handleFontFamily: _selectedHandleFont?.family ?? _selectedUsernameFont?.family ?? 'KleeOne',
+      fontFamily: _selectedUsernameFont?.displayName ?? 'Klee One SemiBold',
+      handleFontFamily: _selectedHandleFont?.displayName ?? _selectedUsernameFont?.displayName ?? 'Klee One SemiBold',
       profileImagePath: _profileImage?.path,
       showStoryRing: _showStoryRing,
       isVerified: _isVerified,
@@ -744,7 +852,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     _handleController = TextEditingController(text: _handle);
     WidgetsBinding.instance.addObserver(this);
     _avgRatio = VideoPerfService.getAvgRatio();
-    _loadPreset();
+    _loadAutoSavedSettings();
     _setupMethodCallHandler();
     AnalyticsService().setCurrentScreen(screenName: 'Video Watermark');
     if (widget.sharedVideoPaths != null && widget.sharedVideoPaths!.isNotEmpty) {
@@ -829,7 +937,10 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
 
   Future<void> _pickProfileImage() async {
     final XFile? img = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (img != null) setState(() => _profileImage = File(img.path));
+    if (img != null) {
+      setState(() => _profileImage = File(img.path));
+      _triggerAutoSave();
+    }
   }
 
   Future<void> _processVideo() async {
@@ -855,8 +966,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
       accentColor: _accentColor,
       username: _username,
       handle: _handle,
-      fontFamily: _selectedUsernameFont?.family ?? 'KleeOne',
-      handleFontFamily: _selectedHandleFont?.family ?? _selectedUsernameFont?.family ?? 'KleeOne',
+      fontFamily: _selectedUsernameFont?.displayName ?? 'Klee One SemiBold',
+      handleFontFamily: _selectedHandleFont?.displayName ?? _selectedUsernameFont?.displayName ?? 'Klee One SemiBold',
       profileImagePath: _profileImage?.path,
       showStoryRing: _showStoryRing,
       isVerified: _isVerified,
@@ -1112,11 +1223,27 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
   }
 
   Future<String> _getFontPath(String family, String displayName, {String? filePath, FontInfo? fontInfo}) async {
-    // Use the exact FontInfo if provided (preserves weight/style/assetPath),
-    // otherwise fall back to family lookup then manual construction.
-    final font = fontInfo ?? 
+    // Check if the font is available in our library
+    FontInfo font = fontInfo ?? 
                  FontInfo.getFontByFamily(family) ?? 
                  FontInfo(family: family, displayName: displayName, isCustom: filePath != null, filePath: filePath);
+                 
+    bool isAvailable = true;
+    if (font.isCustom) {
+      if (font.filePath == null || !File(font.filePath!).existsSync()) {
+        isAvailable = false;
+      }
+    } else {
+      if (FontInfo.getFontByFamily(font.family) == null) {
+        isAvailable = false;
+      }
+    }
+    
+    if (!isAvailable) {
+      // Fallback default font KleeOne
+      font = const FontInfo(family: 'KleeOne', displayName: 'Klee One SemiBold', weight: FontWeight.w600, assetPath: 'assets/fonts/KleeOne-SemiBold.ttf');
+    }
+    
     return await FontInfo.getFontFilePath(font);
   }
 
@@ -2497,7 +2624,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
             t.y = (t.y + d.delta.dy / constraints.maxHeight).clamp(0.0, 1.0);
           }),
           child: Container(
-            constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.8 * t.scale),
+            constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.92 * t.scale),
             child: Text(
               t.text,
               textAlign: t.textAlign,
@@ -3015,7 +3142,10 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
               labelText: _watermarkType == 'text' ? 'Watermark Text' : 'Username', 
               border: const OutlineInputBorder()
             ),
-            onChanged: (v) => setState(() => _username = v),
+            onChanged: (v) {
+              setState(() => _username = v);
+              _triggerAutoSave();
+            },
             controller: _usernameController,
           ),
           const SizedBox(height: 12),
@@ -3023,7 +3153,10 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         if (showHandle) ...[
           TextField(
             decoration: const InputDecoration(labelText: 'Handle (@name)', border: OutlineInputBorder()),
-            onChanged: (v) => setState(() => _handle = v),
+            onChanged: (v) {
+              setState(() => _handle = v);
+              _triggerAutoSave();
+            },
             controller: _handleController,
           ),
           const SizedBox(height: 12),
@@ -3676,6 +3809,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                         _selectedHandleFont = font;
                       }
                     });
+                    _triggerAutoSave();
                   },
                   selectedColor: AppColors.primary,
                   backgroundColor: Colors.grey.shade100,
@@ -4056,11 +4190,16 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     final double range = max - min;
     final double increment = step ?? (range <= 2 ? 0.05 : (range <= 10 ? 0.5 : (range / 20).roundToDouble().clamp(1.0, 10.0)));
     
+    void handleChanged(double val) {
+      onChanged(val);
+      _triggerAutoSave();
+    }
+
     return Row(
       children: [
         _buildPreciseBtn(
           icon: Icons.remove,
-          onTap: () => onChanged((value - increment).clamp(min, max)),
+          onTap: () => handleChanged((value - increment).clamp(min, max)),
         ),
         Expanded(
           child: SliderTheme(
@@ -4077,13 +4216,13 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
               value: value,
               min: min,
               max: max,
-              onChanged: onChanged,
+              onChanged: handleChanged,
             ),
           ),
         ),
         _buildPreciseBtn(
           icon: Icons.add,
-          onTap: () => onChanged((value + increment).clamp(min, max)),
+          onTap: () => handleChanged((value + increment).clamp(min, max)),
         ),
       ],
     );
@@ -4255,6 +4394,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _uiUpdateTimer?.cancel();
+    _autoSaveTimer?.cancel();
+    _autoSaveCurrentSettings();
     _videoController?.dispose();
     _usernameController.dispose();
     _handleController.dispose();

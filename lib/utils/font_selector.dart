@@ -63,7 +63,7 @@ class FontInfo {
 
   static FontInfo? getFontByFamily(String family) {
     try {
-      return availableFonts.firstWhere((f) => f.family == family);
+      return getAllFonts().firstWhere((f) => f.family == family);
     } catch (_) {
       return null;
     }
@@ -130,7 +130,9 @@ class FontInfo {
   static Future<String> getFontFilePath(FontInfo font) async {
     // 1. Custom uploaded font: use its absolute file path directly
     if (font.isCustom && font.filePath != null && font.filePath!.startsWith('/')) {
-      return font.filePath!;
+      if (await File(font.filePath!).exists()) {
+        return font.filePath!;
+      }
     }
 
     // 2. Built-in font: copy from assets if we have an assetPath

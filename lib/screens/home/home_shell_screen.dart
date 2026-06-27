@@ -3,6 +3,7 @@ import '../video_text_overlay/video_text_overlay_screen.dart';
 import '../video_cropper/video_cropper_screen.dart';
 import '../image_post/post_maker_screen.dart';
 import '../image_post/post_maker_templates_screen.dart';
+import '../image_post/image_post_maker_screen.dart';
 import '../image_cropper/image_cropper_screen.dart';
 import '../video_creator/video_creator_screen.dart';
 import '../audio_library/audio_library_screen_with_folders.dart';
@@ -13,6 +14,7 @@ import '../caption_store/caption_store_screen.dart';
 import '../quotes/my_quotes_screen.dart';
 import '../video_watermark/video_watermark_screen.dart';
 import '../cover_image/cover_image_screen.dart';
+import '../font_library/font_library_screen.dart';
 import '../../config/app_theme.dart';
 import '../../services/analytics_service.dart';
 import 'home_screen.dart';
@@ -142,6 +144,9 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         case 'automation':
           _currentBottomNavIndex = 11;
           break;
+        case 'image_post_maker':
+          _currentBottomNavIndex = 14;
+          break;
         default:
           _currentBottomNavIndex = 0;
           break;
@@ -194,6 +199,8 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
             AriseAutomationScreen(sharedPaths: _currentBottomNavIndex == 11 ? _currentPaths : null, sharedPurpose: _currentPurpose),
             const CoverImageScreen(),
             const ProfileScreen(),
+            ImagePostMakerScreen(sharedImagePaths: _currentBottomNavIndex == 14 ? _currentPaths : null),
+            FontLibraryScreen(isActive: _currentBottomNavIndex == 15),
           ],
         ),
         bottomNavigationBar: Column(
@@ -229,6 +236,8 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
             _buildNavItem(11, Icons.auto_awesome, 'Automation'),
             _buildNavItem(12, Icons.image, 'Cover Image'),
             _buildNavItem(13, Icons.person, 'Profile'),
+            _buildNavItem(14, Icons.add_photo_alternate, 'Image Post'),
+            _buildNavItem(15, Icons.font_download, 'My Fonts'),
                   ],
                 ),
               ),
@@ -272,7 +281,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         final screenNames = [
           'Dashboard', 'Video Cropper', 'Watermark', 'Captions', 'Video Text', 
           'Post Maker', 'My Quotes', 'Image Cropper', 'Image to Video', 
-          'Text Box', 'My Audios', 'Automation', 'Profile'
+          'Text Box', 'My Audios', 'Automation', 'Cover Image', 'Profile', 'Image Post Maker', 'My Fonts'
         ];
         if (index < screenNames.length) {
           AnalyticsService().setCurrentScreen(screenName: screenNames[index]);
