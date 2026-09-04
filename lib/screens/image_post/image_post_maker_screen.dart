@@ -333,6 +333,7 @@ class _ImagePostMakerScreenState extends State<ImagePostMakerScreen> with Widget
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _handleController = TextEditingController();
   final TextEditingController _overlayTextController = TextEditingController();
+  int? _lastSelectedOverlayIndex;
 
   @override
   void initState() {
@@ -2806,6 +2807,7 @@ class _ImagePostMakerScreenState extends State<ImagePostMakerScreen> with Widget
           ),
           Expanded(
             child: ListView(
+              key: const PageStorageKey<String>('image_post_maker_tabs_list'),
               scrollDirection: Axis.horizontal,
               children: [
                 _buildTabItem(-1, Icons.add_to_photos, 'Import', AppColors.primary, customOnTap: _pickImage),
@@ -4906,6 +4908,10 @@ class _ImagePostMakerScreenState extends State<ImagePostMakerScreen> with Widget
   }
 
   Widget _buildActiveTextOverlayControls(_TextOverlay t, int index) {
+    if (_lastSelectedOverlayIndex != index || _overlayTextController.text != t.text) {
+      _lastSelectedOverlayIndex = index;
+      _overlayTextController.text = t.text;
+    }
      return Column(
        crossAxisAlignment: CrossAxisAlignment.start,
        children: [
@@ -4966,8 +4972,8 @@ class _ImagePostMakerScreenState extends State<ImagePostMakerScreen> with Widget
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
-                  key: ValueKey("text_field_${index}_${t.text.isEmpty}"),
-                  initialValue: t.text,
+                  key: ValueKey("text_field_${index}"),
+                  controller: _overlayTextController,
                   maxLines: null,
                   onChanged: (v) => setState(() => t.text = v),
                   decoration: InputDecoration(labelText: t.isSplitWord ? "Word Text" : "Text Content", border: const OutlineInputBorder(), isDense: true),

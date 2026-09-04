@@ -49,7 +49,9 @@ int text_overlay_setup_filter(TextOverlayContext* ctx,
                               bool showShadow,
                               const char* shadowColor,
                               int shadowX,
-                              int shadowY);
+                              int shadowY,
+                              const char* boxImagePath,
+                              int boxOverlap);
 
 // Process video frames with text overlay
 int text_overlay_process_frames(TextOverlayContext* ctx, const char* output_file);

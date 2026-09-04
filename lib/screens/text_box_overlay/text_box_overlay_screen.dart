@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
+import 'dart:math' as math;
 import 'package:image_picker/image_picker.dart';
 import 'package:open_file/open_file.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
@@ -67,6 +69,12 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
   String _textColor = "#000000"; // default black
   String _boxColor = "#FFFFFF";  // default white
   double _boxOpacity = 1.0;
+  String _boxStyle = 'plain'; // 'plain' or 'paper_cut'
+  
+  double _paperCutRoughness = 15.0;
+  int _paperCutSeed = 42;
+  double _paperCutShadowAmount = 16.0;
+  String _paperCutShadowColor = "#000000";
 
   bool _showTextShadow = false;
   double _shadowX = 2.0;
@@ -77,18 +85,22 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
   double _horizontalPadding = 12.0;
   double _verticalPadding = 8.0;
   double _textScale = 1.0;
-  double _lineHeight = 1.2;
   String _hAlign = 'center'; // 'left', 'center', 'right'
   String _vAlign = 'middle'; // 'top', 'middle', 'bottom'
+  double _lineHeight = 1.2;
   
   // Encoding settings
   String _preset = 'veryfast';
   double _crf = 23.0;
   
+  Map<int, String> _wordColors = {};
+  Set<int> _selectedWordIndices = {};
+
   // Controllers
   final TextEditingController _textController = TextEditingController();
   final TextEditingController _textColorController = TextEditingController();
   final TextEditingController _boxColorController = TextEditingController();
+  final TextEditingController _paperCutShadowColorController = TextEditingController();
 
   final Map<String, String> _fontFileCache = {};
 
@@ -103,6 +115,7 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
     _boxHeight = _calculateDynamicBoxHeight(text: _textContent);
     _textColorController.text = _textColor.replaceFirst('#', '');
     _boxColorController.text = _boxColor.replaceFirst('#', '');
+    _paperCutShadowColorController.text = _paperCutShadowColor.replaceFirst('#', '');
     _setupMethodCallHandler();
     _handleSharedImages();
     AnalyticsService().setCurrentScreen(screenName: 'Text Box Overlay');
@@ -247,6 +260,7 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
     _textController.dispose();
     _textColorController.dispose();
     _boxColorController.dispose();
+    _paperCutShadowColorController.dispose();
     _videoController?.dispose();
     super.dispose();
   }
@@ -434,71 +448,7 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
     try {
       debugPrint('[TextBoxOverlay] Starting processing. isImageInput=$_isImageInput');
 
-      final dynamicBoxHeight = _calculateDynamicBoxHeight(text: _textContent);
-      if ((dynamicBoxHeight - _boxHeight).abs() >= 0.1) {
-        setState(() {
-          _boxHeight = dynamicBoxHeight;
-        });
-      }
-
-      // Manually wrap the text for FFmpeg since native drawtext wrapping is failing
-      final TextPainter textPainter = TextPainter(
-        text: TextSpan(
-          text: _textContent.replaceAll('\r\n', '\n'),
-          style: TextStyle(
-            fontSize: _fontSize * _textScale,
-            height: _lineHeight,
-            fontFamily: _selectedFont?.family,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-        textAlign: _hAlign == 'left' ? TextAlign.left : (_hAlign == 'right' ? TextAlign.right : TextAlign.center),
-      );
-
-      final double horizontalPaddingTotal = (_horizontalPadding + 12) * 2;
-      final double availableWidth = (_videoWidth.toDouble() - horizontalPaddingTotal).clamp(100.0, 2000.0);
-      textPainter.layout(maxWidth: availableWidth);
-
-      final List<LineMetrics> lines = textPainter.computeLineMetrics();
-      String wrappedText = "";
-      final String fullText = _textContent.replaceAll('\r\n', '\n');
-
-      for (int i = 0; i < lines.length; i++) {
-        final line = lines[i];
-        
-        // Find the vertical center of this specific line
-        double verticalOffset = 0;
-        for (int j = 0; j < i; j++) {
-          verticalOffset += lines[j].height;
-        }
-        final double midY = verticalOffset + (line.height * 0.5);
-        
-        // Use getPositionForOffset at x=0 and a very large width to find the character range for this line
-        final int startIdx = textPainter.getPositionForOffset(Offset(0, midY)).offset;
-        final int endIdx = textPainter.getPositionForOffset(Offset(availableWidth + 1000, midY)).offset;
-        
-        if (startIdx < fullText.length) {
-          int end = endIdx;
-          if (end > fullText.length) end = fullText.length;
-          
-          if (end > startIdx) {
-            String lineText = fullText.substring(startIdx, end).trim();
-            if (lineText.isNotEmpty) {
-              // Only add if not a duplicate of the previous line (getPositionForOffset can overlap)
-              final List<String> currentLines = wrappedText.split('\n');
-              if (wrappedText.isEmpty || currentLines.last != lineText) {
-                if (wrappedText.isNotEmpty) wrappedText += "\n";
-                wrappedText += lineText;
-              }
-            }
-          }
-        }
-      }
-
-      // Safety fallback: if manual wrapping lost too much text, use original (might overflow but better than missing text)
-      if (wrappedText.length < fullText.length * 0.8) {
-        wrappedText = _textContent;
-      }
+      final double finalBoxHeight = _boxHeight;
 
       _progressTimer?.cancel();
       final startTime = DateTime.now();
@@ -530,17 +480,20 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
       String method;
       Map<String, dynamic> params;
 
+      // Always generate box image, which now contains both the background and text
+      String? boxImagePath = await _generateBoxImage(_videoWidth.toDouble(), finalBoxHeight);
+
       if (_isImageInput) {
         inputPath = _selectedImage!.path;
         method = 'addTextToImageVideo';
         params = {
           'inputPath': inputPath,
           'outputPath': outputPath,
-          'text': wrappedText,
+          'text': " ", // Text is rendered in Flutter PNG
           'fontSize': (_fontSize * _textScale).toInt(),
           'fontColor': _textColor,
           'boxColor': _boxColor,
-          'boxHeight': dynamicBoxHeight.toInt(),
+          'boxHeight': finalBoxHeight.toInt(),
           'horizontalPadding': _horizontalPadding.toInt(),
           'verticalPadding': _verticalPadding.toInt(),
           'hAlign': _hAlign,
@@ -560,6 +513,8 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
           'audioPath': _selectedAudio?.path,
           'audioVolume': _audioVolume,
           'loopAudio': _loopAudio,
+          'boxImagePath': boxImagePath,
+          'boxOverlap': _boxStyle == 'paper_cut' ? _paperCutRoughness.toInt() + _paperCutShadowAmount.toInt() : 0,
         };
       } else {
         inputPath = _selectedVideo!.path;
@@ -567,13 +522,13 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
         params = {
           'inputPath': inputPath,
           'outputPath': outputPath,
-          'text': wrappedText,
+          'text': " ", // Text is rendered in Flutter PNG
           'x': 0,
           'y': 0,
           'fontSize': (_fontSize * _textScale).toInt(),
           'fontColor': _textColor,
           'boxColor': _boxColor,
-          'boxHeight': dynamicBoxHeight.toInt(),
+          'boxHeight': finalBoxHeight.toInt(),
           'horizontalPadding': _horizontalPadding.toInt(),
           'verticalPadding': _verticalPadding.toInt(),
           'hAlign': _hAlign,
@@ -590,6 +545,8 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
           'audioPath': _selectedAudio?.path,
           'audioVolume': _audioVolume,
           'loopAudio': _loopAudio,
+          'boxImagePath': boxImagePath,
+          'boxOverlap': _boxStyle == 'paper_cut' ? _paperCutRoughness.toInt() + _paperCutShadowAmount.toInt() : 0,
         };
       }
 
@@ -662,15 +619,16 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
     return '#${value.substring(2)}';
   }
 
-  Future<void> _pickColor({required bool isText, bool isShadow = false}) async {
+  Future<void> _pickColor({required bool isText, bool isShadow = false, bool isPaperCutShadow = false}) async {
     final initial = _parseHexColor(
-      isShadow ? _shadowColor : (isText ? _textColor : _boxColor),
-      isText ? Colors.black : Colors.white,
+      isPaperCutShadow ? _paperCutShadowColor : (isShadow ? _shadowColor : (isText ? _textColor : _boxColor)),
+      isPaperCutShadow || isShadow || isText ? Colors.black : Colors.white,
     );
 
     final String originalTextColor = _textColor;
     final String originalBoxColor = _boxColor;
     final String originalShadowColor = _shadowColor;
+    final String originalPaperCutShadowColor = _paperCutShadowColor;
 
     HSVColor hsv = HSVColor.fromColor(initial);
     Color tempColor = hsv.toColor();
@@ -684,10 +642,18 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
     void applyTempToPreview() {
       final hex = _colorToHex(tempColor);
       setState(() {
-        if (isShadow) {
+        if (isPaperCutShadow) {
+          _paperCutShadowColor = hex;
+        } else if (isShadow) {
           _shadowColor = hex;
         } else if (isText) {
-          _textColor = hex;
+          if (_selectedWordIndices.isNotEmpty) {
+            for (final i in _selectedWordIndices) {
+              _wordColors[i] = hex;
+            }
+          } else {
+            _textColor = hex;
+          }
         } else {
           _boxColor = hex;
         }
@@ -699,6 +665,7 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
         _textColor = originalTextColor;
         _boxColor = originalBoxColor;
         _shadowColor = originalShadowColor;
+        _paperCutShadowColor = originalPaperCutShadowColor;
       });
     }
 
@@ -915,15 +882,28 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
                               }
                               final hex = _colorToHex(tempColor);
                               setState(() {
-                                if (isShadow) {
-                                  _shadowColor = hex;
-                                } else if (isText) {
-                                  _textColor = hex;
+                                if (isPaperCutShadow) {
+                                  _paperCutShadowColor = hex;
                                   final digits = hex.replaceFirst('#', '');
-                                  _textColorController.value = TextEditingValue(
+                                  _paperCutShadowColorController.value = TextEditingValue(
                                     text: digits,
                                     selection: TextSelection.collapsed(offset: digits.length),
                                   );
+                                } else if (isShadow) {
+                                  _shadowColor = hex;
+                                } else if (isText) {
+                                  if (_selectedWordIndices.isNotEmpty) {
+                                    for (final i in _selectedWordIndices) {
+                                      _wordColors[i] = hex;
+                                    }
+                                  } else {
+                                    _textColor = hex;
+                                    final digits = hex.replaceFirst('#', '');
+                                    _textColorController.value = TextEditingValue(
+                                      text: digits,
+                                      selection: TextSelection.collapsed(offset: digits.length),
+                                    );
+                                  }
                                 } else {
                                   _boxColor = hex;
                                   final digits = hex.replaceFirst('#', '');
@@ -1501,49 +1481,78 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
                   ),
                 );
 
-                final boxWidget = Container(
+                final textWidget = Container(
                   width: previewWidth,
                   height: boxHeight,
-                  color: _parseHexColor(_boxColor, Colors.white),
                   alignment: textAlignment,
                   padding: EdgeInsets.symmetric(
                     horizontal: previewHorizontalPadding + (12 / scaleFactor),
                     vertical: previewVerticalPadding,
                   ),
-                  child: Text(
-                    _textContent,
+                  child: RichText(
                     textAlign: textAlign,
                     softWrap: true,
                     overflow: TextOverflow.visible,
-                    style: TextStyle(
-                      color: _parseHexColor(_textColor, Colors.black),
+                    text: _buildWordColoredTextSpan(
+                      text: _textContent,
+                      wordColors: _wordColors,
+                      defaultColor: _parseHexColor(_textColor, Colors.black),
                       fontSize: previewFontSize,
                       fontFamily: _selectedFont?.family,
                       height: _lineHeight,
-                      shadows: _showTextShadow
-                          ? [
-                              Shadow(
-                                color: _parseHexColor(_shadowColor, Colors.black).withOpacity(0.5),
-                                offset: Offset(_shadowX, _shadowY),
-                                blurRadius: 0,
-                              ),
-                            ]
-                          : null,
+                      showShadow: _showTextShadow,
+                      shadowColor: _parseHexColor(_shadowColor, Colors.black).withOpacity(0.5),
+                      shadowOffset: Offset(_shadowX, _shadowY),
+                      shadowBlur: 0.0,
                     ),
                   ),
                 );
 
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: _textBoxPosition == 'top'
-                      ? [
-                          boxWidget,
-                          mediaWidget,
-                        ]
-                      : [
-                          mediaWidget,
-                          boxWidget,
-                        ],
+                final double previewRoughness = _paperCutRoughness / scaleFactor;
+                final double previewShadowPadding = _paperCutShadowAmount / scaleFactor;
+                final double overlapAmount = _boxStyle == 'paper_cut' ? previewRoughness + previewShadowPadding : 0;
+
+                final boxWidget = _boxStyle == 'paper_cut' 
+                    ? CustomPaint(
+                        painter: TornPaperPainter(
+                          color: _parseHexColor(_boxColor, Colors.white).withOpacity(_boxOpacity),
+                          isTop: _textBoxPosition == 'top',
+                          roughness: previewRoughness,
+                          seed: _paperCutSeed,
+                          shadowPadding: previewShadowPadding,
+                          shadowColor: _parseHexColor(_paperCutShadowColor, Colors.black).withOpacity(0.5),
+                        ),
+                        child: textWidget,
+                      )
+                    : Container(
+                        width: previewWidth,
+                        height: boxHeight,
+                        color: _parseHexColor(_boxColor, Colors.white).withOpacity(_boxOpacity),
+                        child: textWidget,
+                      );
+
+                return Stack(
+                  children: [
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: _textBoxPosition == 'top'
+                          ? [
+                              SizedBox(height: boxHeight - overlapAmount),
+                              mediaWidget,
+                            ]
+                          : [
+                              mediaWidget,
+                              SizedBox(height: boxHeight - overlapAmount),
+                            ],
+                    ),
+                    Positioned(
+                      top: _textBoxPosition == 'top' ? 0 : null,
+                      bottom: _textBoxPosition == 'bottom' ? 0 : null,
+                      left: 0,
+                      right: 0,
+                      child: boxWidget,
+                    ),
+                  ],
                 );
               },
             ),
@@ -1688,6 +1697,7 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
               },
             ),
             const SizedBox(height: 16),
+            if (_textContent.trim().isNotEmpty) _buildWordSelectionChips(),
             const Text('Position', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Row(
@@ -1739,6 +1749,7 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (_textContent.trim().isNotEmpty) _buildWordSelectionChips(),
             const Text('Font Settings', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             Text('Size: ${_fontSize.toInt()}px'),
@@ -1791,6 +1802,7 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
       case 2: // Colors
         return Column(
           children: [
+            if (_textContent.trim().isNotEmpty) _buildWordSelectionChips(),
             _buildColorOption('Text Color', _textColor, true),
             const SizedBox(height: 16),
             _buildColorOption('Box Color', _boxColor, false),
@@ -1857,6 +1869,78 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
           children: [
             const Text('Box Layout', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
+            const Text('Box Style', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: ChoiceChip(
+                    label: const Center(child: Text('Plain Box')),
+                    selected: _boxStyle == 'plain',
+                    onSelected: (s) => setState(() => _boxStyle = 'plain'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ChoiceChip(
+                    label: const Center(child: Text('Paper Cut Edge')),
+                    selected: _boxStyle == 'paper_cut',
+                    onSelected: (s) => setState(() => _boxStyle = 'paper_cut'),
+                  ),
+                ),
+              ],
+            ),
+            if (_boxStyle == 'paper_cut') ...[
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Paper Cut Roughness', style: TextStyle(fontWeight: FontWeight.bold)),
+                  TextButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _paperCutSeed = DateTime.now().millisecondsSinceEpoch;
+                      });
+                    },
+                    icon: const Icon(Icons.shuffle, size: 16),
+                    label: const Text('Randomize'),
+                  ),
+                ],
+              ),
+              Slider(
+                value: _paperCutRoughness,
+                min: 0, max: 40,
+                onChanged: (v) => setState(() => _paperCutRoughness = v),
+              ),
+              const SizedBox(height: 8),
+              Text('Paper Cut Shadow Amount: ${_paperCutShadowAmount.toInt()}px'),
+              Slider(
+                value: _paperCutShadowAmount,
+                min: 0, max: 40,
+                onChanged: (v) => setState(() => _paperCutShadowAmount = v),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text('Paper Cut Shadow Color', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  GestureDetector(
+                    onTap: () => _pickColor(isText: false, isPaperCutShadow: true),
+                    child: Container(
+                      width: 80,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: _parseHexColor(_paperCutShadowColor, Colors.black),
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 16),
             Text('Box Height: ${_boxHeight.toInt()}px'),
             Slider(
               value: _boxHeight,
@@ -1986,6 +2070,61 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
     }
   }
 
+  TextSpan _buildWordColoredTextSpan({
+    required String text,
+    required Map<int, String> wordColors,
+    required Color defaultColor,
+    required double fontSize,
+    required String? fontFamily,
+    required double height,
+    required bool showShadow,
+    required Color shadowColor,
+    required Offset shadowOffset,
+    required double shadowBlur,
+  }) {
+    if (text.isEmpty) return const TextSpan();
+    
+    final RegExp regex = RegExp(r'(\S+)|(\s+)');
+    final matches = regex.allMatches(text).toList();
+    
+    final List<TextSpan> children = [];
+    int wordIdx = 0;
+    
+    for (final match in matches) {
+      final str = match.group(0)!;
+      final isWhitespace = str.trim().isEmpty;
+      
+      Color color = defaultColor;
+      if (!isWhitespace) {
+        if (wordColors.containsKey(wordIdx)) {
+          color = _parseHexColor(wordColors[wordIdx]!, defaultColor);
+        }
+        wordIdx++;
+      }
+      
+      children.add(
+        TextSpan(
+          text: str,
+          style: TextStyle(
+            color: color,
+            fontSize: fontSize,
+            fontFamily: fontFamily,
+            height: height,
+            shadows: showShadow ? [
+              Shadow(
+                color: shadowColor,
+                offset: shadowOffset,
+                blurRadius: shadowBlur,
+              )
+            ] : null,
+          ),
+        ),
+      );
+    }
+    
+    return TextSpan(children: children);
+  }
+
   Widget _buildColorOption(String title, String hexColor, bool isText) {
     return Row(
       children: [
@@ -2011,6 +2150,52 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
             ),
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildWordSelectionChips() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text("Select words to highlight:", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54)),
+        const SizedBox(height: 8),
+        Builder(
+          builder: (context) {
+            final regex = RegExp(r'(\S+)|(\s+)');
+            final matches = regex.allMatches(_textContent).toList();
+            int wordIdx = 0;
+            final List<Widget> chips = [];
+            for (final match in matches) {
+              final str = match.group(0)!;
+              final isWhitespace = str.trim().isEmpty;
+              if (!isWhitespace) {
+                final currentIdx = wordIdx;
+                final isSelected = _selectedWordIndices.contains(currentIdx);
+                final wordColor = _wordColors[currentIdx];
+                chips.add(
+                  FilterChip(
+                    showCheckmark: false,
+                    padding: EdgeInsets.zero,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
+                    label: Text(str, style: TextStyle(color: wordColor != null ? _parseHexColor(wordColor, Colors.black) : null, fontSize: 12)),
+                    selected: isSelected,
+                    onSelected: (val) {
+                      setState(() {
+                        if (val) _selectedWordIndices.add(currentIdx);
+                        else _selectedWordIndices.remove(currentIdx);
+                      });
+                    },
+                  )
+                );
+                wordIdx++;
+              }
+            }
+            return Wrap(spacing: 4, runSpacing: 2, children: chips);
+          },
+        ),
+        const SizedBox(height: 16),
       ],
     );
   }
@@ -2049,5 +2234,179 @@ class _TextBoxOverlayScreenState extends State<TextBoxOverlayScreen> with Widget
         ),
       ),
     );
+  }
+
+  Future<String?> _generateBoxImage(double width, double height) async {
+    try {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      
+      if (_boxStyle == 'paper_cut') {
+        final painter = TornPaperPainter(
+          color: _parseHexColor(_boxColor, Colors.white).withOpacity(_boxOpacity),
+          isTop: _textBoxPosition == 'top',
+          roughness: _paperCutRoughness,
+          seed: _paperCutSeed,
+          shadowPadding: _paperCutShadowAmount,
+          shadowColor: _parseHexColor(_paperCutShadowColor, Colors.black).withOpacity(0.5),
+        );
+        painter.paint(canvas, Size(width, height));
+      } else {
+        final paint = Paint()..color = _parseHexColor(_boxColor, Colors.white).withOpacity(_boxOpacity);
+        canvas.drawRect(Rect.fromLTWH(0, 0, width, height), paint);
+      }
+      
+      if (_textContent.isNotEmpty) {
+        final fontSize = _fontSize * _textScale;
+        final span = _buildWordColoredTextSpan(
+          text: _textContent,
+          wordColors: _wordColors,
+          defaultColor: _parseHexColor(_textColor, Colors.black),
+          fontSize: fontSize,
+          fontFamily: _selectedFont?.family,
+          height: _lineHeight,
+          showShadow: _showTextShadow,
+          shadowColor: _parseHexColor(_shadowColor, Colors.black).withOpacity(0.5),
+          shadowOffset: Offset(_shadowX, _shadowY),
+          shadowBlur: 0.0,
+        );
+        
+        TextAlign textAlign;
+        if (_hAlign == 'left') textAlign = TextAlign.left;
+        else if (_hAlign == 'right') textAlign = TextAlign.right;
+        else textAlign = TextAlign.center;
+        
+        final textPainter = TextPainter(
+          text: span,
+          textAlign: textAlign,
+          textDirection: ui.TextDirection.ltr,
+        );
+        
+        final maxTextWidth = width - (_horizontalPadding * 2);
+        textPainter.layout(maxWidth: maxTextWidth);
+        
+        final overlapAmount = _boxStyle == 'paper_cut' ? _paperCutRoughness + _paperCutShadowAmount : 0;
+        
+        double textY = _verticalPadding;
+        final availableHeight = height - (_verticalPadding * 2) - overlapAmount;
+        if (_vAlign == 'middle') {
+          textY = _verticalPadding + (availableHeight - textPainter.height) / 2;
+        } else if (_vAlign == 'bottom') {
+          textY = height - _verticalPadding - overlapAmount - textPainter.height;
+        }
+        
+        if (_textBoxPosition == 'bottom' && _boxStyle == 'paper_cut') {
+           textY += overlapAmount;
+        }
+
+        double textX = _horizontalPadding;
+        if (_hAlign == 'center') {
+          textX = _horizontalPadding + (maxTextWidth - textPainter.width) / 2;
+        } else if (_hAlign == 'right') {
+          textX = width - _horizontalPadding - textPainter.width;
+        }
+        
+        textPainter.paint(canvas, Offset(textX, textY));
+      }
+      
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(width.toInt(), height.toInt());
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      
+      if (byteData == null) return null;
+      
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/box_image_${DateTime.now().millisecondsSinceEpoch}.png');
+      await file.writeAsBytes(byteData.buffer.asUint8List());
+      return file.path;
+    } catch (e) {
+      debugPrint('Error generating box image: $e');
+      return null;
+    }
+  }
+}
+
+class TornPaperPainter extends CustomPainter {
+  final Color color;
+  final bool isTop;
+  final double roughness;
+  final int seed;
+  final double shadowPadding;
+  final Color shadowColor;
+
+  TornPaperPainter({
+    required this.color,
+    required this.isTop,
+    required this.roughness,
+    required this.seed,
+    this.shadowPadding = 0.0,
+    this.shadowColor = const Color(0x80000000), // Default semi-transparent black
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    final path = Path();
+    final random = math.Random(seed);
+    
+    if (isTop) {
+      // Box is at the top, torn edge is at the bottom
+      path.moveTo(0, 0);
+      path.lineTo(size.width, 0);
+      
+      // Draw torn edge from right to left at the bottom
+      final segments = 50;
+      final segmentWidth = size.width / segments;
+      
+      for (int i = segments; i >= 0; i--) {
+        final x = i * segmentWidth;
+        final y = size.height - shadowPadding - random.nextDouble() * roughness;
+        path.lineTo(x, y);
+      }
+      
+      path.lineTo(0, 0);
+    } else {
+      // Box is at the bottom, torn edge is at the top
+      // Draw torn edge from left to right at the top
+      final segments = 50;
+      final segmentWidth = size.width / segments;
+      
+      path.moveTo(0, size.height);
+      path.lineTo(0, shadowPadding + random.nextDouble() * roughness);
+      
+      for (int i = 0; i <= segments; i++) {
+        final x = i * segmentWidth;
+        final y = shadowPadding + random.nextDouble() * roughness;
+        path.lineTo(x, y);
+      }
+      
+      path.lineTo(size.width, size.height);
+      path.lineTo(0, size.height);
+    }
+    
+    path.close();
+
+    if (shadowPadding > 0) {
+      final shadowBlur = shadowPadding * 0.3;
+      final shadowPaint = Paint()
+        ..color = shadowColor
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, shadowBlur);
+      
+      final shadowOffset = isTop ? Offset(0, shadowPadding * 0.2) : Offset(0, -shadowPadding * 0.2);
+      canvas.drawPath(path.shift(shadowOffset), shadowPaint);
+    }
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant TornPaperPainter oldDelegate) {
+    return oldDelegate.color != color || 
+           oldDelegate.isTop != isTop ||
+           oldDelegate.roughness != roughness ||
+           oldDelegate.seed != seed;
   }
 }

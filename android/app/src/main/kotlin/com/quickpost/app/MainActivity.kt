@@ -406,6 +406,8 @@ class MainActivity : FlutterActivity() {
                     val shadowColor = call.argument<String>("shadowColor") ?: "#000000"
                     val shadowX = call.argument<Int>("shadowX") ?: 2
                     val shadowY = call.argument<Int>("shadowY") ?: 2
+                    val boxImagePath = call.argument<String>("boxImagePath")
+                    val boxOverlap = call.argument<Int>("boxOverlap") ?: 0
 
                     if (inputPath == null || outputPath == null) {
                         result.error("INVALID_ARGUMENTS", "Missing input or output path", null)
@@ -436,6 +438,8 @@ class MainActivity : FlutterActivity() {
                                     shadowColor,
                                     shadowX,
                                     shadowY,
+                                    boxImagePath,
+                                    boxOverlap
                                 )
 
                                 runOnUiThread {
@@ -496,18 +500,16 @@ class MainActivity : FlutterActivity() {
                     val shadowColor = call.argument<String>("shadowColor") ?: "#000000"
                     val shadowX = call.argument<Int>("shadowX") ?: 2
                     val shadowY = call.argument<Int>("shadowY") ?: 2
+                    val boxImagePath = call.argument<String>("boxImagePath")
+                    val boxOverlap = call.argument<Int>("boxOverlap") ?: 0
 
                     if (inputPath == null || outputPath == null) {
                         result.error("INVALID_ARGUMENTS", "Missing input or output path", null)
                     } else {
                         Thread {
                             try {
-                // Two-step pipeline to avoid treating an image as a video stream in native FFmpeg:
-                                // 1) Create a temporary MP4 from the still image.
-                                // 2) Apply the existing addTextToVideo overlay (stable video pipeline).
                                 val videoProcessor = VideoProcessor(this)
                                 
-                                // Calculate dimensions to match the image aspect ratio, similar to video processing
                                 val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                                 BitmapFactory.decodeFile(inputPath, options)
                                 var targetWidth = options.outWidth
@@ -530,23 +532,23 @@ class MainActivity : FlutterActivity() {
                                     targetWidth,
                                     targetHeight,
                                     object : VideoProcessor.ProgressCallback {
-                                        override fun onProgress(progress: Double) {
-                                            // no-op
-                                        }
-                                        override fun onStep(step: String) {
-                                            // no-op
-                                        }
+                                        override fun onProgress(progress: Double) {}
+                                        override fun onStep(step: String) {}
                                     }
                                 )
 
-                                // Overlay text onto the created video, writing to the requested outputPath
+                                if (createdVideoPath.isEmpty()) {
+                                    runOnUiThread { result.error("FFMPEG_ERROR", "Failed to convert image to video", null) }
+                                    return@Thread
+                                }
+                                
                                 val overlay = FFmpegTextOverlay(this)
                                 val ret = overlay.addTextToVideo(
                                     createdVideoPath,
                                     outputPath,
                                     text,
-                                    0,
-                                    0,
+                                    0, // x
+                                    0, // y
                                     fontSize,
                                     fontColor,
                                     boxColor,
@@ -564,6 +566,8 @@ class MainActivity : FlutterActivity() {
                                     shadowColor,
                                     shadowX,
                                     shadowY,
+                                    boxImagePath,
+                                    boxOverlap
                                 )
 
                                 runOnUiThread {

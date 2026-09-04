@@ -41,6 +41,11 @@ class FFmpegTextOverlay(private val context: Context) {
         shadowColor: String,
         shadowX: Int,
         shadowY: Int,
+        audioPath: String?,
+        audioVolume: Float,
+        loopAudio: Boolean,
+        boxImagePath: String?,
+        boxOverlap: Int
     ): Int
 
     external fun nativeMergeAudioVideo(
@@ -132,6 +137,8 @@ class FFmpegTextOverlay(private val context: Context) {
         shadowColor: String,
         shadowX: Int,
         shadowY: Int,
+        boxImagePath: String? = null,
+        boxOverlap: Int = 0
     ): Int {
         Log.i(TAG, "addTextToVideo called: input=$inputPath, output=$outputPath")
 
@@ -163,6 +170,11 @@ class FFmpegTextOverlay(private val context: Context) {
             shadowColor,
             shadowX,
             shadowY,
+            null, // audioPath
+            1.0f, // audioVolume
+            false, // loopAudio
+            boxImagePath,
+            boxOverlap
         )
     }
 

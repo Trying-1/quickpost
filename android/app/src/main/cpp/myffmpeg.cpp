@@ -69,11 +69,9 @@ Java_com_quickpost_app_FFmpegTextOverlay_nativeAddTextToVideo(
     jstring fontPath,
     jstring preset,
     jint crf,
-    jboolean showShadow,
-    jstring shadowColor,
-    jint shadowX,
-    jint shadowY
-) {
+    jboolean showShadow, jstring shadowColor, jint shadowX, jint shadowY,
+    jstring audioPathStr, jfloat audioVolume, jboolean loopAudio,
+    jstring boxImagePath, jint boxOverlap) {
     // Get JNI strings
     const char* input_file = env->GetStringUTFChars(inputPath, nullptr);
     const char* output_file = env->GetStringUTFChars(outputPath, nullptr);
@@ -87,11 +85,12 @@ Java_com_quickpost_app_FFmpegTextOverlay_nativeAddTextToVideo(
     const char* font = env->GetStringUTFChars(fontPath, nullptr);
     const char* preset_str = env->GetStringUTFChars(preset, nullptr);
     const char* shadow_color_raw = shadowColor ? env->GetStringUTFChars(shadowColor, nullptr) : nullptr;
+    const char* box_image_path = boxImagePath ? env->GetStringUTFChars(boxImagePath, nullptr) : nullptr;
 
     LOGI("Starting text overlay: input=%s, output=%s", input_file, output_file);
-    LOGI("Text: %s, Position: (%d, %d), FontSize: %d, TextColor: %s, BoxColor: %s, BoxHeight: %d, HorizontalPadding: %d, VerticalPadding: %d, HAlign: %s, VAlign: %s, LineHeight: %.2f, BoxPos: %s, Font: %s, Preset: %s, CRF: %d, Shadow: %d, ShadowColor: %s, ShadowX: %d, ShadowY: %d",
+    LOGI("Text: %s, Position: (%d, %d), FontSize: %d, TextColor: %s, BoxColor: %s, BoxHeight: %d, HorizontalPadding: %d, VerticalPadding: %d, HAlign: %s, VAlign: %s, LineHeight: %.2f, BoxPos: %s, Font: %s, Preset: %s, CRF: %d, Shadow: %d, ShadowColor: %s, ShadowX: %d, ShadowY: %d, BoxImagePath: %s",
          overlay_text, x, y, fontSize, text_color_raw, box_color_raw, boxHeight, horizontalPadding, verticalPadding, h_align_raw, v_align_raw, lineHeight, position_raw, font, preset_str, crf,
-         (int)showShadow, (shadow_color_raw ? shadow_color_raw : ""), (int)shadowX, (int)shadowY);
+         (int)showShadow, (shadow_color_raw ? shadow_color_raw : ""), (int)shadowX, (int)shadowY, (box_image_path ? box_image_path : ""));
 
     // Convert hex colors from #RRGGBB to 0xRRGGBB format
     char text_color_buf[16];
@@ -161,7 +160,10 @@ Java_com_quickpost_app_FFmpegTextOverlay_nativeAddTextToVideo(
     }
 
     // Step 2: Setup encoder and output
-    if ((ret = ffmpeg_setup_encoder(&ctx.ffmpeg_ctx, output_file, preset_str, crf, boxHeight)) < 0) {
+    int padHeight;
+    padHeight = boxHeight - boxOverlap;
+    if (padHeight < 0) padHeight = 0;
+    if ((ret = ffmpeg_setup_encoder(&ctx.ffmpeg_ctx, output_file, preset_str, crf, padHeight)) < 0) {
         goto cleanup;
     }
 
@@ -173,7 +175,7 @@ Java_com_quickpost_app_FFmpegTextOverlay_nativeAddTextToVideo(
     // Step 4: Setup text overlay filter
     if ((ret = text_overlay_setup_filter(&ctx, overlay_text, textfile_cstr, text_color, box_color, 1.0f, boxHeight,
                                          horizontalPadding, verticalPadding, h_align_raw, v_align_raw, lineHeight, position_raw, font, fontSize,
-                                         (bool)showShadow, shadow_color, shadowX, shadowY)) < 0) {
+                                         (bool)showShadow, shadow_color, shadowX, shadowY, box_image_path, boxOverlap)) < 0) {
         goto cleanup;
     }
 
@@ -199,6 +201,7 @@ cleanup:
     if (font) env->ReleaseStringUTFChars(fontPath, font);
     if (preset_str) env->ReleaseStringUTFChars(preset, preset_str);
     if (shadow_color_raw) env->ReleaseStringUTFChars(shadowColor, shadow_color_raw);
+    if (box_image_path) env->ReleaseStringUTFChars(boxImagePath, box_image_path);
 
     return ret;
 }

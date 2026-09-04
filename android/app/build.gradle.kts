@@ -41,7 +41,14 @@ android {
         
         // NDK configuration for JNI - only arm64-v8a for FFmpeg
         ndk {
-            abiFilters += listOf("arm64-v8a")
+            abiFilters.clear()
+            abiFilters.add("arm64-v8a")
+        }
+
+        externalNativeBuild {
+            cmake {
+                abiFilters.add("arm64-v8a")
+            }
         }
     }
 

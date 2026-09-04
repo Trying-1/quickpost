@@ -44,7 +44,9 @@ int text_overlay_setup_filter(TextOverlayContext* ctx,
                               bool showShadow,
                               const char* shadowColor,
                               int shadowX,
-                              int shadowY) {
+                              int shadowY,
+                              const char* boxImagePath,
+                              int boxOverlap) {
     if (!ctx || !text_color || !box_color || !font) {
         LOGE("Invalid parameters for text overlay filter setup");
         return -1;
@@ -152,99 +154,229 @@ int text_overlay_setup_filter(TextOverlayContext* ctx,
         escaped_textfile[k] = '\0';
     }
 
+    bool use_box_image = file_exists(boxImagePath);
+    char escaped_boxImagePath[1024] = {0};
+    if (use_box_image) {
+        int k = 0;
+        for (int i = 0; boxImagePath[i] != '\0' && k < 1016; i++) {
+            const char c = boxImagePath[i];
+            if (c == '\\') {
+                escaped_boxImagePath[k++] = '\\';
+                escaped_boxImagePath[k++] = '\\';
+            } else if (c == '\'') {
+                escaped_boxImagePath[k++] = '\\';
+                escaped_boxImagePath[k++] = '\'';
+            } else {
+                escaped_boxImagePath[k++] = c;
+            }
+        }
+        escaped_boxImagePath[k] = '\0';
+    } else {
+        boxOverlap = 0;
+    }
+
+    int padHeight = boxHeight - boxOverlap;
+    if (padHeight < 0) padHeight = 0;
+
     if (place_top) {
-        // Pad the frame to match encoder height (ih + boxHeight). Place original video below the top box.
-        // This avoids uninitialized pixels (green belt) in the padded area.
         if (use_textfile) {
             if (have_fontfile) {
-                snprintf(filter_str, sizeof(filter_str),
-                    "pad=iw:ih+%d:0:%d:color=black,"
-                    "drawbox=x=0:y=0:w=iw:h=%d:color=%s@%.2f:t=fill,"
-                    "drawtext=fontfile='%s':textfile='%s':reload=1:fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=(%d-th)/2:text_align=%s%s,"
-                    "format=pix_fmts=yuv420p",
-                    boxHeight, boxHeight,
-                    boxHeight, box_color, boxOpacity,
-                    font, escaped_textfile, text_color, fontSize,
-                    (int)((lineHeight - 1.0f) * fontSize), boxHeight, text_align_val, effects_str);
+                if (use_box_image) {
+                    snprintf(filter_str, sizeof(filter_str),
+                        "movie='%s'[boximg];"
+                        "[in]pad=iw:ih+%d:0:%d:color=black[padded];"
+                        "[padded][boximg]overlay=0:0[withbox];"
+                        "[withbox]drawtext=fontfile='%s':textfile='%s':reload=1:fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=(%d-th)/2:text_align=%s%s,"
+                        "format=pix_fmts=yuv420p",
+                        escaped_boxImagePath,
+                        padHeight, padHeight,
+                        font, escaped_textfile, text_color, fontSize,
+                        (int)((lineHeight - 1.0f) * fontSize), boxHeight, text_align_val, effects_str);
+                } else {
+                    snprintf(filter_str, sizeof(filter_str),
+                        "pad=iw:ih+%d:0:%d:color=black,"
+                        "drawbox=x=0:y=0:w=iw:h=%d:color=%s@%.2f:t=fill,"
+                        "drawtext=fontfile='%s':textfile='%s':reload=1:fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=(%d-th)/2:text_align=%s%s,"
+                        "format=pix_fmts=yuv420p",
+                        padHeight, padHeight,
+                        boxHeight, box_color, boxOpacity,
+                        font, escaped_textfile, text_color, fontSize,
+                        (int)((lineHeight - 1.0f) * fontSize), boxHeight, text_align_val, effects_str);
+                }
             } else {
-                snprintf(filter_str, sizeof(filter_str),
-                    "pad=iw:ih+%d:0:%d:color=black,"
-                    "drawbox=x=0:y=0:w=iw:h=%d:color=%s@%.2f:t=fill,"
-                    "drawtext=textfile='%s':reload=1:fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=(%d-th)/2:text_align=%s%s,"
-                    "format=pix_fmts=yuv420p",
-                    boxHeight, boxHeight,
-                    boxHeight, box_color, boxOpacity,
-                    escaped_textfile, text_color, fontSize,
-                    (int)((lineHeight - 1.0f) * fontSize), boxHeight, text_align_val, effects_str);
+                if (use_box_image) {
+                    snprintf(filter_str, sizeof(filter_str),
+                        "movie='%s'[boximg];"
+                        "[in]pad=iw:ih+%d:0:%d:color=black[padded];"
+                        "[padded][boximg]overlay=0:0[withbox];"
+                        "[withbox]drawtext=textfile='%s':reload=1:fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=(%d-th)/2:text_align=%s%s,"
+                        "format=pix_fmts=yuv420p",
+                        escaped_boxImagePath,
+                        padHeight, padHeight,
+                        escaped_textfile, text_color, fontSize,
+                        (int)((lineHeight - 1.0f) * fontSize), boxHeight, text_align_val, effects_str);
+                } else {
+                    snprintf(filter_str, sizeof(filter_str),
+                        "pad=iw:ih+%d:0:%d:color=black,"
+                        "drawbox=x=0:y=0:w=iw:h=%d:color=%s@%.2f:t=fill,"
+                        "drawtext=textfile='%s':reload=1:fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=(%d-th)/2:text_align=%s%s,"
+                        "format=pix_fmts=yuv420p",
+                        padHeight, padHeight,
+                        boxHeight, box_color, boxOpacity,
+                        escaped_textfile, text_color, fontSize,
+                        (int)((lineHeight - 1.0f) * fontSize), boxHeight, text_align_val, effects_str);
+                }
             }
         } else {
             if (have_fontfile) {
-                snprintf(filter_str, sizeof(filter_str),
-                    "pad=iw:ih+%d:0:%d:color=black,"
-                    "drawbox=x=0:y=0:w=iw:h=%d:color=%s@%.2f:t=fill,"
-                    "drawtext=fontfile='%s':text=\"%s\":fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=(%d-th)/2:text_align=%s%s,"
-                    "format=pix_fmts=yuv420p",
-                    boxHeight, boxHeight,
-                    boxHeight, box_color, boxOpacity,
-                    font, escaped_text, text_color, fontSize,
-                    (int)((lineHeight - 1.0f) * fontSize), boxHeight, text_align_val, effects_str);
+                if (use_box_image) {
+                    snprintf(filter_str, sizeof(filter_str),
+                        "movie='%s'[boximg];"
+                        "[in]pad=iw:ih+%d:0:%d:color=black[padded];"
+                        "[padded][boximg]overlay=0:0[withbox];"
+                        "[withbox]drawtext=fontfile='%s':text=\"%s\":fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=(%d-th)/2:text_align=%s%s,"
+                        "format=pix_fmts=yuv420p",
+                        escaped_boxImagePath,
+                        padHeight, padHeight,
+                        font, escaped_text, text_color, fontSize,
+                        (int)((lineHeight - 1.0f) * fontSize), boxHeight, text_align_val, effects_str);
+                } else {
+                    snprintf(filter_str, sizeof(filter_str),
+                        "pad=iw:ih+%d:0:%d:color=black,"
+                        "drawbox=x=0:y=0:w=iw:h=%d:color=%s@%.2f:t=fill,"
+                        "drawtext=fontfile='%s':text=\"%s\":fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=(%d-th)/2:text_align=%s%s,"
+                        "format=pix_fmts=yuv420p",
+                        padHeight, padHeight,
+                        boxHeight, box_color, boxOpacity,
+                        font, escaped_text, text_color, fontSize,
+                        (int)((lineHeight - 1.0f) * fontSize), boxHeight, text_align_val, effects_str);
+                }
             } else {
-                snprintf(filter_str, sizeof(filter_str),
-                    "pad=iw:ih+%d:0:%d:color=black,"
-                    "drawbox=x=0:y=0:w=iw:h=%d:color=%s@%.2f:t=fill,"
-                    "drawtext=text=\"%s\":fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=(%d-th)/2:text_align=%s%s,"
-                    "format=pix_fmts=yuv420p",
-                    boxHeight, boxHeight,
-                    boxHeight, box_color, boxOpacity,
-                    escaped_text, text_color, fontSize,
-                    (int)((lineHeight - 1.0f) * fontSize), boxHeight, text_align_val, effects_str);
+                if (use_box_image) {
+                    snprintf(filter_str, sizeof(filter_str),
+                        "movie='%s'[boximg];"
+                        "[in]pad=iw:ih+%d:0:%d:color=black[padded];"
+                        "[padded][boximg]overlay=0:0[withbox];"
+                        "[withbox]drawtext=text=\"%s\":fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=(%d-th)/2:text_align=%s%s,"
+                        "format=pix_fmts=yuv420p",
+                        escaped_boxImagePath,
+                        padHeight, padHeight,
+                        escaped_text, text_color, fontSize,
+                        (int)((lineHeight - 1.0f) * fontSize), boxHeight, text_align_val, effects_str);
+                } else {
+                    snprintf(filter_str, sizeof(filter_str),
+                        "pad=iw:ih+%d:0:%d:color=black,"
+                        "drawbox=x=0:y=0:w=iw:h=%d:color=%s@%.2f:t=fill,"
+                        "drawtext=text=\"%s\":fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=(%d-th)/2:text_align=%s%s,"
+                        "format=pix_fmts=yuv420p",
+                        padHeight, padHeight,
+                        boxHeight, box_color, boxOpacity,
+                        escaped_text, text_color, fontSize,
+                        (int)((lineHeight - 1.0f) * fontSize), boxHeight, text_align_val, effects_str);
+                }
             }
         }
     } else {
         // Pad the frame to match encoder height (ih + boxHeight). Place original video at top, box at bottom.
         if (use_textfile) {
             if (have_fontfile) {
-                snprintf(filter_str, sizeof(filter_str),
-                    "pad=iw:ih+%d:0:0:color=black,"
-                    "drawbox=x=0:y=H-%d:w=iw:h=%d:color=%s@%.2f:t=fill,"
-                    "drawtext=fontfile='%s':textfile='%s':reload=1:fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=H-%d+(%d-th)/2:text_align=%s%s,"
-                    "format=pix_fmts=yuv420p",
-                    boxHeight,
-                    boxHeight, boxHeight, box_color, boxOpacity,
-                    font, escaped_textfile, text_color, fontSize,
-                    (int)((lineHeight - 1.0f) * fontSize), boxHeight, boxHeight, text_align_val, effects_str);
+                if (use_box_image) {
+                    snprintf(filter_str, sizeof(filter_str),
+                        "movie='%s'[boximg];"
+                        "[in]pad=iw:ih+%d:0:0:color=black[padded];"
+                        "[padded][boximg]overlay=0:H-%d[withbox];"
+                        "[withbox]drawtext=fontfile='%s':textfile='%s':reload=1:fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=H-%d+(%d-th)/2:text_align=%s%s,"
+                        "format=pix_fmts=yuv420p",
+                        escaped_boxImagePath,
+                        padHeight,
+                        boxHeight,
+                        font, escaped_textfile, text_color, fontSize,
+                        (int)((lineHeight - 1.0f) * fontSize), boxHeight, boxHeight, text_align_val, effects_str);
+                } else {
+                    snprintf(filter_str, sizeof(filter_str),
+                        "pad=iw:ih+%d:0:0:color=black,"
+                        "drawbox=x=0:y=H-%d:w=iw:h=%d:color=%s@%.2f:t=fill,"
+                        "drawtext=fontfile='%s':textfile='%s':reload=1:fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=H-%d+(%d-th)/2:text_align=%s%s,"
+                        "format=pix_fmts=yuv420p",
+                        padHeight,
+                        boxHeight, boxHeight, box_color, boxOpacity,
+                        font, escaped_textfile, text_color, fontSize,
+                        (int)((lineHeight - 1.0f) * fontSize), boxHeight, boxHeight, text_align_val, effects_str);
+                }
             } else {
-                snprintf(filter_str, sizeof(filter_str),
-                    "pad=iw:ih+%d:0:0:color=black,"
-                    "drawbox=x=0:y=H-%d:w=iw:h=%d:color=%s@%.2f:t=fill,"
-                    "drawtext=textfile='%s':reload=1:fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=H-%d+(%d-th)/2:text_align=%s%s,"
-                    "format=pix_fmts=yuv420p",
-                    boxHeight,
-                    boxHeight, boxHeight, box_color, boxOpacity,
-                    escaped_textfile, text_color, fontSize,
-                    (int)((lineHeight - 1.0f) * fontSize), boxHeight, boxHeight, text_align_val, effects_str);
+                if (use_box_image) {
+                    snprintf(filter_str, sizeof(filter_str),
+                        "movie='%s'[boximg];"
+                        "[in]pad=iw:ih+%d:0:0:color=black[padded];"
+                        "[padded][boximg]overlay=0:H-%d[withbox];"
+                        "[withbox]drawtext=textfile='%s':reload=1:fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=H-%d+(%d-th)/2:text_align=%s%s,"
+                        "format=pix_fmts=yuv420p",
+                        escaped_boxImagePath,
+                        padHeight,
+                        boxHeight,
+                        escaped_textfile, text_color, fontSize,
+                        (int)((lineHeight - 1.0f) * fontSize), boxHeight, boxHeight, text_align_val, effects_str);
+                } else {
+                    snprintf(filter_str, sizeof(filter_str),
+                        "pad=iw:ih+%d:0:0:color=black,"
+                        "drawbox=x=0:y=H-%d:w=iw:h=%d:color=%s@%.2f:t=fill,"
+                        "drawtext=textfile='%s':reload=1:fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=H-%d+(%d-th)/2:text_align=%s%s,"
+                        "format=pix_fmts=yuv420p",
+                        padHeight,
+                        boxHeight, boxHeight, box_color, boxOpacity,
+                        escaped_textfile, text_color, fontSize,
+                        (int)((lineHeight - 1.0f) * fontSize), boxHeight, boxHeight, text_align_val, effects_str);
+                }
             }
         } else {
             if (have_fontfile) {
-                snprintf(filter_str, sizeof(filter_str),
-                    "pad=iw:ih+%d:0:0:color=black,"
-                    "drawbox=x=0:y=H-%d:w=iw:h=%d:color=%s@%.2f:t=fill,"
-                    "drawtext=fontfile='%s':text=\"%s\":fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=H-%d+(%d-th)/2:text_align=%s%s,"
-                    "format=pix_fmts=yuv420p",
-                    boxHeight,
-                    boxHeight, boxHeight, box_color, boxOpacity,
-                    font, escaped_text, text_color, fontSize,
-                    (int)((lineHeight - 1.0f) * fontSize), boxHeight, boxHeight, text_align_val, effects_str);
+                if (use_box_image) {
+                    snprintf(filter_str, sizeof(filter_str),
+                        "movie='%s'[boximg];"
+                        "[in]pad=iw:ih+%d:0:0:color=black[padded];"
+                        "[padded][boximg]overlay=0:H-%d[withbox];"
+                        "[withbox]drawtext=fontfile='%s':text=\"%s\":fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=H-%d+(%d-th)/2:text_align=%s%s,"
+                        "format=pix_fmts=yuv420p",
+                        escaped_boxImagePath,
+                        padHeight,
+                        boxHeight,
+                        font, escaped_text, text_color, fontSize,
+                        (int)((lineHeight - 1.0f) * fontSize), boxHeight, boxHeight, text_align_val, effects_str);
+                } else {
+                    snprintf(filter_str, sizeof(filter_str),
+                        "pad=iw:ih+%d:0:0:color=black,"
+                        "drawbox=x=0:y=H-%d:w=iw:h=%d:color=%s@%.2f:t=fill,"
+                        "drawtext=fontfile='%s':text=\"%s\":fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=H-%d+(%d-th)/2:text_align=%s%s,"
+                        "format=pix_fmts=yuv420p",
+                        padHeight,
+                        boxHeight, boxHeight, box_color, boxOpacity,
+                        font, escaped_text, text_color, fontSize,
+                        (int)((lineHeight - 1.0f) * fontSize), boxHeight, boxHeight, text_align_val, effects_str);
+                }
             } else {
-                snprintf(filter_str, sizeof(filter_str),
-                    "pad=iw:ih+%d:0:0:color=black,"
-                    "drawbox=x=0:y=H-%d:w=iw:h=%d:color=%s@%.2f:t=fill,"
-                    "drawtext=text=\"%s\":fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=H-%d+(%d-th)/2:text_align=%s%s,"
-                    "format=pix_fmts=yuv420p",
-                    boxHeight,
-                    boxHeight, boxHeight, box_color, boxOpacity,
-                    escaped_text, text_color, fontSize,
-                    (int)((lineHeight - 1.0f) * fontSize), boxHeight, boxHeight, text_align_val, effects_str);
+                if (use_box_image) {
+                    snprintf(filter_str, sizeof(filter_str),
+                        "movie='%s'[boximg];"
+                        "[in]pad=iw:ih+%d:0:0:color=black[padded];"
+                        "[padded][boximg]overlay=0:H-%d[withbox];"
+                        "[withbox]drawtext=text=\"%s\":fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=H-%d+(%d-th)/2:text_align=%s%s,"
+                        "format=pix_fmts=yuv420p",
+                        escaped_boxImagePath,
+                        padHeight,
+                        boxHeight,
+                        escaped_text, text_color, fontSize,
+                        (int)((lineHeight - 1.0f) * fontSize), boxHeight, boxHeight, text_align_val, effects_str);
+                } else {
+                    snprintf(filter_str, sizeof(filter_str),
+                        "pad=iw:ih+%d:0:0:color=black,"
+                        "drawbox=x=0:y=H-%d:w=iw:h=%d:color=%s@%.2f:t=fill,"
+                        "drawtext=text=\"%s\":fontcolor=%s:fontsize=%d:line_spacing=%d:x=(w-tw)/2:y=H-%d+(%d-th)/2:text_align=%s%s,"
+                        "format=pix_fmts=yuv420p",
+                        padHeight,
+                        boxHeight, boxHeight, box_color, boxOpacity,
+                        escaped_text, text_color, fontSize,
+                        (int)((lineHeight - 1.0f) * fontSize), boxHeight, boxHeight, text_align_val, effects_str);
+                }
             }
         }
     }

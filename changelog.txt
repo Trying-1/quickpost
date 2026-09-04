@@ -88,3 +88,21 @@
 [okay next lets another feature, just like we have the text spliting feature in the carousel post maker,  I need exact feature in here, understood. so plan things accordingly]
 [yo I want exactly feature like we have in the carousel like, split, resplit classic, and other spilitng feature we have there understood]
 [also allow multiple selection as well like we have in the carousel post maker.  and when we go back to classic  and feature whether to preserve the separate colors and fonts understood]
+
+==========git-branch-version21--app-version-1.0.18+23=============
+[theres issue in the text input field. like the cursor focus changes abruptly during editing the text. like when I clear all text, the keyboard closes, when I add the first character keyboard closes abruptly wtf is that happening]
+[alright next I want feature in the watermark screen that, instead of having single color in the entire text, we can have specific color, like suppose the text is "Honesty is the best policy" then we can have the "Honesty" and "best" in yellow and rest of the text in black, I have seen many reels like that, it looks good and premium understood what I mean]
+[good but let not make the individual word in the preview, instead show them as chip above the input text field got it,  understood what I mean]
+[awesome, but lets not use the tick mark, and also gap between those chips is too much taking too much space got it]
+[move the color and font style above the below this, and keep the sliders belwo it]
+
+
+[I can't see the  live  preview of the paper cut, I think we should go with the ffmpeg+opegl+c+++ kotlin for this]
+[paper cut sytle setting to fine tune, or randomize it]
+[good but, for the paper cut I want to overlap with video, understood, I mean, make the  cut overflow in the video top, got it]
+[add drop shadow to it as well, so that its shadow is projected on the video]
+[log.txt app crashed and closed when tried to save]
+[good but the box height is gettin shurnk automatically when pressing save button, its not  what I set with the slider]
+[good next lets have more control over it, like shadwo controls, shadow amount shadow color etc of the paper cut, got it]
+[also similar to our watermark screen, how we split words to give them separate color, I need that feature in this text overlay as well got it]
+[cool, but lets show the word chips on the font and color tab sheets as well, so that we can know what word are selected, got it]

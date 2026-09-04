@@ -120,6 +120,8 @@ class _TextOverlay {
   double letterSpacing;
   double wordSpacing;
   double opacity;
+  Map<int, String> wordColors;
+  bool isLocked;
 
   _TextOverlay({
     required this.text,
@@ -140,29 +142,128 @@ class _TextOverlay {
     this.letterSpacing = 0.0,
     this.wordSpacing = 0.0,
     this.opacity = 1.0,
-  });
+    Map<int, String>? wordColors,
+    this.isLocked = false,
+  }) : wordColors = wordColors ?? {};
 
-  Map<String, dynamic> toMap(double videoWidth, double videoHeight, String resolvedFontPath) {
-    return {
-      'text': text,
-      'x': x * videoWidth,
-      'y': y * videoHeight,
-      'fontSize': fontSize * scale,
-      'color': _colorWithAlpha(color, opacity),
-      'fontPath': resolvedFontPath,
-      'showShadow': showShadow,
-      'shadowColor': shadowColor,
-      'shadowBlur': shadowBlur,
-      'shadowOffsetX': shadowOffsetX,
-      'shadowOffsetY': shadowOffsetY,
-      'textAlign': textAlign.name,
-      'maxWidth': videoWidth * 0.8 * scale,
-      'anchor': anchor,
-      'scale': scale,
-      'lineHeight': lineHeight,
-      'letterSpacing': letterSpacing,
-      'wordSpacing': wordSpacing,
-    };
+  List<Map<String, dynamic>> toMaps(double videoWidth, double videoHeight, String resolvedFontPath) {
+    if (wordColors.isEmpty || text.trim().isEmpty) {
+      return [{
+        'text': text,
+        'x': x * videoWidth,
+        'y': y * videoHeight,
+        'fontSize': fontSize * scale,
+        'color': _colorWithAlpha(color, opacity),
+        'fontPath': resolvedFontPath,
+        'showShadow': showShadow,
+        'shadowColor': shadowColor,
+        'shadowBlur': shadowBlur,
+        'shadowOffsetX': shadowOffsetX,
+        'shadowOffsetY': shadowOffsetY,
+        'textAlign': textAlign.name,
+        'maxWidth': videoWidth * 0.92 * scale,
+        'anchor': anchor,
+        'scale': scale,
+        'lineHeight': lineHeight,
+        'letterSpacing': letterSpacing,
+        'wordSpacing': wordSpacing,
+      }];
+    }
+
+    final double refWidth = videoWidth;
+    final double refHeight = videoHeight;
+    final double maxTextWidth = refWidth * 0.92 * scale;
+
+    final TextStyle style = TextStyle(
+      fontSize: fontSize * scale,
+      fontFamily: font?.family,
+      height: lineHeight,
+      letterSpacing: letterSpacing,
+      wordSpacing: wordSpacing,
+    );
+
+    final fullPainter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: ui.TextDirection.ltr,
+      textAlign: textAlign,
+    )..layout(maxWidth: maxTextWidth.clamp(0.0, double.infinity));
+
+    final double fullTextWidth = fullPainter.width;
+    final double fullTextHeight = fullPainter.height;
+
+    final double centerX = x * refWidth;
+    final double centerY = y * refHeight;
+    final double blockLeft = centerX - fullTextWidth / 2;
+    final double blockTop = centerY - fullTextHeight / 2;
+
+    final wordRegex = RegExp(r'\S+');
+    final matches = wordRegex.allMatches(text).toList();
+    final List<Map<String, dynamic>> splitOverlays = [];
+
+    for (int i = 0; i < matches.length; i++) {
+      final match = matches[i];
+      final String wordStr = match.group(0)!;
+      final range = TextSelection(baseOffset: match.start, extentOffset: match.end);
+      final boxes = fullPainter.getBoxesForSelection(range);
+
+      if (boxes.isEmpty) continue;
+
+      final box = boxes.first;
+      final double wordLeft = blockLeft + box.left;
+      final double wordTop = blockTop + box.top;
+      final double wordW = box.right - box.left;
+      final double wordH = box.bottom - box.top;
+
+      final double wordCenterX = wordLeft + wordW / 2;
+      final double wordCenterY = wordTop + wordH / 2;
+
+      final double newX = (wordCenterX / refWidth).clamp(0.0, 1.0);
+      final double newY = (wordCenterY / refHeight).clamp(0.0, 1.0);
+
+      String wordColor = wordColors[i] ?? color;
+
+      splitOverlays.add({
+        'text': wordStr,
+        'x': newX * videoWidth,
+        'y': newY * videoHeight,
+        'fontSize': fontSize * scale,
+        'color': _colorWithAlpha(wordColor, opacity),
+        'fontPath': resolvedFontPath,
+        'showShadow': showShadow,
+        'shadowColor': shadowColor,
+        'shadowBlur': shadowBlur,
+        'shadowOffsetX': shadowOffsetX,
+        'shadowOffsetY': shadowOffsetY,
+        'textAlign': TextAlign.center.name,
+        'maxWidth': videoWidth * 0.92 * scale,
+        'anchor': anchor,
+        'scale': scale,
+        'lineHeight': lineHeight,
+        'letterSpacing': letterSpacing,
+        'wordSpacing': wordSpacing,
+      });
+    }
+
+    return splitOverlays.isNotEmpty ? splitOverlays : [{
+        'text': text,
+        'x': x * videoWidth,
+        'y': y * videoHeight,
+        'fontSize': fontSize * scale,
+        'color': _colorWithAlpha(color, opacity),
+        'fontPath': resolvedFontPath,
+        'showShadow': showShadow,
+        'shadowColor': shadowColor,
+        'shadowBlur': shadowBlur,
+        'shadowOffsetX': shadowOffsetX,
+        'shadowOffsetY': shadowOffsetY,
+        'textAlign': textAlign.name,
+        'maxWidth': videoWidth * 0.92 * scale,
+        'anchor': anchor,
+        'scale': scale,
+        'lineHeight': lineHeight,
+        'letterSpacing': letterSpacing,
+        'wordSpacing': wordSpacing,
+      }];
   }
 }
 
@@ -197,6 +298,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
 
   List<_TextOverlay> _textOverlays = [];
   int? _selectedTextOverlayIndex;
+  final Set<int> _selectedWordIndices = {};
 
   List<_ImageOverlay> _imageOverlays = [];
   int? _selectedImageOverlayIndex;
@@ -844,6 +946,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
 
   late final TextEditingController _usernameController;
   late final TextEditingController _handleController;
+  final TextEditingController _overlayTextController = TextEditingController();
+  int? _lastSelectedOverlayIndex;
 
   @override
   void initState() {
@@ -1039,7 +1143,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
       final List<Map<String, dynamic>> resolvedTextOverlays = [];
       for (final t in _textOverlays) {
         final path = await _getFontPath(t.font?.family ?? 'Roboto', t.font?.displayName ?? 'Roboto', filePath: t.font?.filePath, fontInfo: t.font);
-        resolvedTextOverlays.add(t.toMap((_fullScreen ? 1080 : _videoWidth).toDouble(), (_fullScreen ? 1920 : _videoHeight).toDouble(), path));
+        resolvedTextOverlays.addAll(t.toMaps((_fullScreen ? 1080 : _videoWidth).toDouble(), (_fullScreen ? 1920 : _videoHeight).toDouble(), path));
       }
 
       final params = {
@@ -2155,6 +2259,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
           ),
           Expanded(
             child: ListView(
+              key: const PageStorageKey<String>('video_watermark_tabs_list'),
               scrollDirection: Axis.horizontal,
               children: [
                 _buildTabItem(-1, Icons.add_to_photos, 'Import', AppColors.primary, customOnTap: _pickVideo),
@@ -2609,39 +2714,81 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     );
   }
 
+  void _updateSelectedTextOverlays(void Function(_TextOverlay) updater) {
+    setState(() {
+      if (_selectedTextOverlayIndex != null && _selectedTextOverlayIndex! < _textOverlays.length) {
+        updater(_textOverlays[_selectedTextOverlayIndex!]);
+      }
+    });
+  }
+
   Widget _buildTextOverlayPreview(_TextOverlay t, int index, BoxConstraints constraints) {
     final scale = constraints.maxWidth / (_fullScreen ? 1080 : _videoWidth);
     final isSelected = _selectedTextOverlayIndex == index && _selectedTabIndex == 8;
+
+    final wordRegex = RegExp(r'\S+|\s+');
+    final matches = wordRegex.allMatches(t.text).toList();
+    List<TextSpan> spans = [];
+    int wordIdx = 0;
+    
+    for (final match in matches) {
+      final str = match.group(0)!;
+      if (str.trim().isEmpty) {
+        spans.add(TextSpan(text: str));
+      } else {
+        final cStr = t.wordColors[wordIdx] ?? t.color;
+        spans.add(TextSpan(text: str, style: TextStyle(color: _parseColor(cStr))));
+        wordIdx++;
+      }
+    }
+
     return Positioned(
       left: t.x * constraints.maxWidth,
       top: t.y * constraints.maxHeight,
       child: FractionalTranslation(
-        translation: const Offset(-0.5, -0.5), // Center anchoring
+        translation: const Offset(-0.5, -0.5),
         child: GestureDetector(
-          onPanStart: (_) => setState(() => _selectedTextOverlayIndex = index),
-          onPanUpdate: (d) => setState(() {
-            t.x = (t.x + d.delta.dx / constraints.maxWidth).clamp(0.0, 1.0);
-            t.y = (t.y + d.delta.dy / constraints.maxHeight).clamp(0.0, 1.0);
+          onPanStart: t.isLocked ? null : (_) => setState(() {
+            _selectedTextOverlayIndex = index;
           }),
-          child: Container(
-            constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.92 * t.scale),
-            child: Text(
-              t.text,
-              textAlign: t.textAlign,
-              style: TextStyle(
-                fontSize: t.fontSize * scale * t.scale,
-                color: _parseColorWithAlpha(t.color, t.opacity),
-                fontFamily: t.font?.family,
-                fontWeight: t.font?.weight,
-                fontStyle: t.font?.style,
-                height: t.lineHeight,
-                letterSpacing: t.letterSpacing,
-                wordSpacing: t.wordSpacing,
-                shadows: t.showShadow ? [Shadow(
-                  color: _parseColor(t.shadowColor), 
-                  blurRadius: t.shadowBlur, 
-                  offset: Offset(t.shadowOffsetX, t.shadowOffsetY)
-                )] : null,
+          onPanUpdate: t.isLocked ? null : (d) => setState(() {
+            final double dx = d.delta.dx / constraints.maxWidth;
+            final double dy = d.delta.dy / constraints.maxHeight;
+            t.x = (t.x + dx).clamp(0.0, 1.0);
+            t.y = (t.y + dy).clamp(0.0, 1.0);
+          }),
+          onTap: () => setState(() {
+            _selectedTextOverlayIndex = index;
+            _selectedTabIndex = 8;
+            _selectedWordIndices.clear();
+          }),
+          child: Opacity(
+            opacity: t.opacity,
+            child: Container(
+              constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.92 * t.scale),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              decoration: isSelected
+                  ? BoxDecoration(border: Border.all(color: AppColors.primary, width: 1.5), borderRadius: BorderRadius.circular(4))
+                  : null,
+              child: RichText(
+                textAlign: t.textAlign,
+                text: TextSpan(
+                  style: TextStyle(
+                    fontSize: t.fontSize * scale * t.scale,
+                    fontFamily: t.font?.family,
+                    fontWeight: t.font?.weight,
+                    fontStyle: t.font?.style,
+                    height: t.lineHeight,
+                    letterSpacing: t.letterSpacing,
+                    wordSpacing: t.wordSpacing,
+                    shadows: t.showShadow ? [Shadow(
+                      color: _parseColor(t.shadowColor), 
+                      blurRadius: t.shadowBlur, 
+                      offset: Offset(t.shadowOffsetX, t.shadowOffsetY)
+                    )] : null,
+                  ),
+                  children: spans,
+                ),
               ),
             ),
           ),
@@ -2694,6 +2841,14 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
   }
 
   Widget _buildActiveTextOverlayControls(_TextOverlay t, int index) {
+    if (_lastSelectedOverlayIndex != index || _overlayTextController.text != t.text) {
+      _lastSelectedOverlayIndex = index;
+      _overlayTextController.text = t.text;
+    }
+    
+    final wordRegex = RegExp(r'\S+');
+    final matches = wordRegex.allMatches(t.text).toList();
+
      return Column(
        crossAxisAlignment: CrossAxisAlignment.start,
        children: [
@@ -2726,13 +2881,17 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                           constraints: const BoxConstraints(),
                           icon: const Icon(Icons.clear, size: 20, color: Colors.orange),
                           tooltip: 'Clear Text',
-                          onPressed: () => setState(() => t.text = ''),
+                          onPressed: () => _updateSelectedTextOverlays((o) => o.text = ''),
                         ),
                         const SizedBox(width: 12),
                         IconButton(
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
-                          onPressed: () => setState(() { _textOverlays.removeAt(index); _selectedTextOverlayIndex = null; }),
+                          onPressed: () => setState(() {
+                            if (index < _textOverlays.length) _textOverlays.removeAt(index);
+                            _selectedTextOverlayIndex = null;
+                            _selectedWordIndices.clear();
+                          }),
                           icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
                           tooltip: 'Delete',
                         ),
@@ -2742,59 +2901,99 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
-                  key: ValueKey("text_field_${index}_${t.text.isEmpty}"),
-                  initialValue: t.text,
+                  key: ValueKey("text_field_${index}"),
+                  controller: _overlayTextController,
                   maxLines: null,
-                  onChanged: (v) => setState(() => t.text = v),
+                  onChanged: (v) => _updateSelectedTextOverlays((o) => o.text = v),
                   decoration: const InputDecoration(labelText: "Text Content", border: OutlineInputBorder(), isDense: true),
                 ),
-               const SizedBox(height: 16),
-                _buildControlSlider(label: "Font Size", value: t.fontSize, min: 10, max: 200, onChanged: (v) => setState(() => t.fontSize = v)),
-                _buildControlSlider(label: "Scale", value: t.scale, min: 0.1, max: 5.0, onChanged: (v) => setState(() => t.scale = v)),
-                _buildControlSlider(label: "Line Spacing", value: t.lineHeight, min: 0.5, max: 3.0, onChanged: (v) => setState(() => t.lineHeight = v)),
-                _buildControlSlider(label: "Letter Spacing", value: t.letterSpacing, min: -5.0, max: 20.0, onChanged: (v) => setState(() => t.letterSpacing = v)),
-                _buildControlSlider(label: "Word Spacing", value: t.wordSpacing, min: -10.0, max: 50.0, onChanged: (v) => setState(() => t.wordSpacing = v)),
-               const SizedBox(height: 8),
-               const Text("Text Color", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-               const SizedBox(height: 8),
-               _buildColorPicker(t.color, (c) => setState(() => t.color = c)),
-               const SizedBox(height: 16),
-               _buildControlSlider(label: "Opacity", value: t.opacity, min: 0.0, max: 1.0, onChanged: (v) => setState(() => t.opacity = v)),
-               const SizedBox(height: 16),
-               const Text("Font Style", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-               const SizedBox(height: 8),
-               SizedBox(
-                  height: 48,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: getAllFonts().length,
-                    itemBuilder: (context, index) {
-                      final f = getAllFonts()[index];
-                      final bool isSelected = t.font == f;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ChoiceChip(
-                          label: Text(
-                            f.displayName,
-                            style: TextStyle(
-                              fontFamily: f.family,
-                              fontWeight: f.weight,
-                              fontStyle: f.style,
-                              fontSize: 12,
-                              color: isSelected ? Colors.white : Colors.black87,
-                            ),
-                          ),
-                          selected: isSelected,
-                          showCheckmark: false,
-                          selectedColor: AppColors.primary,
-                          backgroundColor: Colors.grey.shade100,
-                          onSelected: (_) => setState(() => t.font = f),
-                        ),
+                if (matches.length > 1) ...[
+                  const SizedBox(height: 12),
+                  const Text("Select words to highlight:", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 2,
+                    children: List.generate(matches.length, (i) {
+                      final wordStr = matches[i].group(0)!;
+                      final isSelected = _selectedWordIndices.contains(i);
+                      final wordColor = t.wordColors[i];
+                      return FilterChip(
+                        showCheckmark: false,
+                        padding: EdgeInsets.zero,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
+                        label: Text(wordStr, style: TextStyle(color: wordColor != null ? _parseColor(wordColor) : null, fontSize: 12)),
+                        selected: isSelected,
+                        onSelected: (val) {
+                          setState(() {
+                            if (val) _selectedWordIndices.add(i);
+                            else _selectedWordIndices.remove(i);
+                          });
+                        },
                       );
-                    },
+                    }),
                   ),
+                ],
+                const SizedBox(height: 16),
+                const Text("Text Color", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                const SizedBox(height: 8),
+                _buildColorPicker(
+                  _selectedWordIndices.isNotEmpty && _selectedWordIndices.every((i) => t.wordColors[i] == t.wordColors[_selectedWordIndices.first]) 
+                     ? (t.wordColors[_selectedWordIndices.first] ?? t.color) 
+                     : t.color,
+                  (c) => setState(() {
+                    if (_selectedWordIndices.isNotEmpty) {
+                      for (final i in _selectedWordIndices) {
+                        t.wordColors[i] = c;
+                      }
+                    } else {
+                      t.color = c;
+                    }
+                  }),
                 ),
-               const SizedBox(height: 16),
+                const SizedBox(height: 16),
+                const Text("Font Style", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                const SizedBox(height: 8),
+                SizedBox(
+                   height: 48,
+                   child: ListView.builder(
+                     scrollDirection: Axis.horizontal,
+                     itemCount: getAllFonts().length,
+                     itemBuilder: (context, index) {
+                       final f = getAllFonts()[index];
+                       final bool isSelected = t.font == f;
+                       return Padding(
+                         padding: const EdgeInsets.only(right: 8),
+                         child: ChoiceChip(
+                           label: Text(
+                             f.displayName,
+                             style: TextStyle(
+                               fontFamily: f.family,
+                               fontWeight: f.weight,
+                               fontStyle: f.style,
+                               fontSize: 12,
+                               color: isSelected ? Colors.white : Colors.black87,
+                             ),
+                           ),
+                           selected: isSelected,
+                           showCheckmark: false,
+                           selectedColor: AppColors.primary,
+                           backgroundColor: Colors.grey.shade100,
+                           onSelected: (_) => _updateSelectedTextOverlays((o) => o.font = f),
+                         ),
+                       );
+                     },
+                   ),
+                 ),
+                const SizedBox(height: 16),
+                _buildControlSlider(label: "Font Size", value: t.fontSize, min: 10, max: 200, onChanged: (v) => _updateSelectedTextOverlays((o) => o.fontSize = v)),
+                _buildControlSlider(label: "Scale", value: t.scale, min: 0.1, max: 5.0, onChanged: (v) => _updateSelectedTextOverlays((o) => o.scale = v)),
+                _buildControlSlider(label: "Line Spacing", value: t.lineHeight, min: 0.5, max: 3.0, onChanged: (v) => _updateSelectedTextOverlays((o) => o.lineHeight = v)),
+                _buildControlSlider(label: "Letter Spacing", value: t.letterSpacing, min: -5.0, max: 20.0, onChanged: (v) => _updateSelectedTextOverlays((o) => o.letterSpacing = v)),
+                _buildControlSlider(label: "Word Spacing", value: t.wordSpacing, min: -10.0, max: 50.0, onChanged: (v) => _updateSelectedTextOverlays((o) => o.wordSpacing = v)),
+                _buildControlSlider(label: "Opacity", value: t.opacity, min: 0.0, max: 1.0, onChanged: (v) => _updateSelectedTextOverlays((o) => o.opacity = v)),
+                const SizedBox(height: 16),
                const Text("Alignment", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                const SizedBox(height: 8),
                ToggleButtons(
@@ -2804,10 +3003,10 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                    t.textAlign == TextAlign.right,
                  ],
                  onPressed: (index) {
-                   setState(() {
-                     if (index == 0) t.textAlign = TextAlign.left;
-                     if (index == 1) t.textAlign = TextAlign.center;
-                     if (index == 2) t.textAlign = TextAlign.right;
+                   _updateSelectedTextOverlays((o) {
+                     if (index == 0) o.textAlign = TextAlign.left;
+                     if (index == 1) o.textAlign = TextAlign.center;
+                     if (index == 2) o.textAlign = TextAlign.right;
                    });
                  },
                  borderRadius: BorderRadius.circular(8),
@@ -2846,20 +3045,20 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                const SizedBox(height: 16),
                const Text("Fine-tune Positioning", style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold)),
                const SizedBox(height: 12),
-               _buildControlSlider(label: "Horizontal Position (X)", value: t.x, min: 0, max: 1, onChanged: (v) => setState(() => t.x = v)),
-               _buildControlSlider(label: "Vertical Position (Y)", value: t.y, min: 0, max: 1, onChanged: (v) => setState(() => t.y = v)),
+               _buildControlSlider(label: "Horizontal Position (X)", value: t.x, min: 0, max: 1, onChanged: (v) => _updateSelectedTextOverlays((o) => o.x = v)),
+               _buildControlSlider(label: "Vertical Position (Y)", value: t.y, min: 0, max: 1, onChanged: (v) => _updateSelectedTextOverlays((o) => o.y = v)),
                const SizedBox(height: 8),
                const Divider(height: 32),
                const Text("Shadow Settings", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-               SwitchListTile(title: const Text("Show Drop Shadow", style: TextStyle(fontSize: 13)), value: t.showShadow, onChanged: (v) => setState(() => t.showShadow = v), dense: true, contentPadding: EdgeInsets.zero),
+               SwitchListTile(title: const Text("Show Drop Shadow", style: TextStyle(fontSize: 13)), value: t.showShadow, onChanged: (v) => _updateSelectedTextOverlays((o) => o.showShadow = v), dense: true, contentPadding: EdgeInsets.zero),
                if (t.showShadow) ...[
-                 _buildControlSlider(label: "Shadow Blur", value: t.shadowBlur, min: 0.1, max: 20.0, onChanged: (v) => setState(() => t.shadowBlur = v)),
-                 _buildControlSlider(label: "Offset X", value: t.shadowOffsetX, min: -20.0, max: 20.0, onChanged: (v) => setState(() => t.shadowOffsetX = v)),
-                 _buildControlSlider(label: "Offset Y", value: t.shadowOffsetY, min: -20.0, max: 20.0, onChanged: (v) => setState(() => t.shadowOffsetY = v)),
+                 _buildControlSlider(label: "Shadow Blur", value: t.shadowBlur, min: 0.1, max: 20.0, onChanged: (v) => _updateSelectedTextOverlays((o) => o.shadowBlur = v)),
+                 _buildControlSlider(label: "Offset X", value: t.shadowOffsetX, min: -20.0, max: 20.0, onChanged: (v) => _updateSelectedTextOverlays((o) => o.shadowOffsetX = v)),
+                 _buildControlSlider(label: "Offset Y", value: t.shadowOffsetY, min: -20.0, max: 20.0, onChanged: (v) => _updateSelectedTextOverlays((o) => o.shadowOffsetY = v)),
                  const SizedBox(height: 8),
                  const Text("Shadow Color", style: TextStyle(fontSize: 12)),
                  const SizedBox(height: 8),
-                 _buildColorPicker(t.shadowColor, (c) => setState(() => t.shadowColor = c)),
+                 _buildColorPicker(t.shadowColor, (c) => _updateSelectedTextOverlays((o) => o.shadowColor = c)),
                ],
              ]
            )
@@ -4349,7 +4548,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
   Widget _buildTextOverlayAlignButton(IconData icon, String label, double xValue, _TextOverlay t) {
     final isSelected = (t.x - xValue).abs() < 0.05;
     return InkWell(
-      onTap: () => setState(() => t.x = xValue),
+      onTap: () => _updateSelectedTextOverlays((o) => o.x = xValue),
       borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -4371,7 +4570,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
   Widget _buildTextOverlayAlignYButton(IconData icon, String label, double yValue, _TextOverlay t) {
     final isSelected = (t.y - yValue).abs() < 0.05;
     return InkWell(
-      onTap: () => setState(() => t.y = yValue),
+      onTap: () => _updateSelectedTextOverlays((o) => o.y = yValue),
       borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -4399,6 +4598,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     _videoController?.dispose();
     _usernameController.dispose();
     _handleController.dispose();
+    _overlayTextController.dispose();
     super.dispose();
   }
 }
