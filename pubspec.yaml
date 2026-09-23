@@ -49,8 +49,8 @@ dependencies:
   in_app_purchase: ^3.3.0
   google_mobile_ads: ^5.1.0
   toastification: ^3.0.3
-
-
+  image_cropper: ^12.2.1
+  widget_mask: ^1.0.0+0
 dev_dependencies:
   flutter_test:
     sdk: flutter

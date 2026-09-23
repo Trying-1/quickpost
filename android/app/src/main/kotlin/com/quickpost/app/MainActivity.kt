@@ -1,5 +1,6 @@
 package com.quickpost.app
 
+import kotlinx.coroutines.launch
 import android.graphics.BitmapFactory
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -129,6 +130,52 @@ class MainActivity : FlutterActivity() {
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         methodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
+                "removeBackground" -> {
+                    val inputPath = call.argument<String>("inputPath")
+                    val outputPath = call.argument<String>("outputPath")
+                    val smoothing = (call.argument<Number>("smoothing")?.toDouble() ?: 0.0).toFloat()
+                    val strokeWidth = (call.argument<Number>("strokeWidth")?.toDouble() ?: 0.0).toFloat()
+                    val strokeColor = call.argument<Number>("strokeColor")?.toLong()?.toInt() ?: android.graphics.Color.TRANSPARENT
+                    val bgColor = call.argument<Number>("bgColor")?.toLong()?.toInt() ?: android.graphics.Color.TRANSPARENT
+
+                    val edgePadding = call.argument<Number>("edgePadding")?.toInt() ?: 0
+                    val scale = (call.argument<Number>("scale")?.toDouble() ?: 1.0).toFloat()
+                    val offsetX = (call.argument<Number>("offsetX")?.toDouble() ?: 0.0).toFloat()
+                    val offsetY = (call.argument<Number>("offsetY")?.toDouble() ?: 0.0).toFloat()
+                    val outputWidth = call.argument<Number>("outputWidth")?.toInt() ?: 0
+                    val outputHeight = call.argument<Number>("outputHeight")?.toInt() ?: 0
+                    
+                    val shadowRadius = (call.argument<Number>("shadowRadius")?.toDouble() ?: 0.0).toFloat()
+                    val shadowColor = call.argument<Number>("shadowColor")?.toLong()?.toInt() ?: android.graphics.Color.TRANSPARENT
+                    val shadowDx = (call.argument<Number>("shadowDx")?.toDouble() ?: 0.0).toFloat()
+                    val shadowDy = (call.argument<Number>("shadowDy")?.toDouble() ?: 0.0).toFloat()
+                    val bgImagePath = call.argument<String>("bgImagePath")
+                    val brightness = (call.argument<Number>("brightness")?.toDouble() ?: 0.0).toFloat()
+                    val contrast = (call.argument<Number>("contrast")?.toDouble() ?: 1.0).toFloat()
+                    val saturation = (call.argument<Number>("saturation")?.toDouble() ?: 1.0).toFloat()
+                    val autoTrim = call.argument<Boolean>("autoTrim") ?: false
+
+                    if (inputPath == null || outputPath == null) {
+                        result.error("INVALID_ARGUMENTS", "Missing input or output path", null)
+                        return@setMethodCallHandler
+                    }
+                    
+                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                        try {
+                            val res = BackgroundRemover.removeBackground(
+                                this@MainActivity, inputPath, outputPath,
+                                smoothing, strokeWidth, strokeColor, bgColor,
+                                edgePadding, scale, offsetX, offsetY, outputWidth, outputHeight,
+                                shadowRadius, shadowColor, shadowDx, shadowDy,
+                                bgImagePath, brightness, contrast, saturation, autoTrim
+                            )
+                            result.success(res)
+                        } catch (e: Exception) {
+                            Log.e("MainActivity", "removeBackground failed", e)
+                            result.error("REMOVE_BG_FAILED", e.message, null)
+                        }
+                    }
+                }
                 "createVideo" -> {
                     val template = call.argument<String>("template") ?: "fade_in"
                     val duration = call.argument<Int>("duration") ?: 3
@@ -267,13 +314,17 @@ class MainActivity : FlutterActivity() {
                 }
                 "saveImageToGallery" -> {
                     val imageBytes = call.argument<ByteArray>("imageBytes")
+                    val imagePath = call.argument<String>("imagePath")
                     val filename = call.argument<String>("filename") ?: "QuickPost_${System.currentTimeMillis()}.png"
                     val folderName = call.argument<String>("folderName") ?: "Quick Post"
                     if (imageBytes != null) {
                         val savedPath = saveImageToGallery(imageBytes, filename, folderName)
                         result.success(savedPath)
+                    } else if (imagePath != null) {
+                        val galleryPath = moveImageToGallery(imagePath)
+                        result.success(galleryPath)
                     } else {
-                        result.error("INVALID_ARGUMENT", "Image bytes are required", null)
+                        result.error("INVALID_ARGUMENT", "Image bytes or path is required", null)
                     }
                 }
                 "getVideoOutputPath" -> {

@@ -7,8 +7,7 @@ import 'package:open_file/open_file.dart';
 import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-
-import '../../utils/image_generator.dart';
+import 'package:widget_mask/widget_mask.dart';
 import '../../utils/font_selector.dart';
 import '../../widgets/advanced_color_picker.dart';
 import '../../utils/custom_font_manager.dart';
@@ -18,47 +17,18 @@ import '../../services/analytics_service.dart';
 import '../../services/ad_service.dart';
 import '../quotes/my_quotes_screen.dart';
 import '../../models/quote_item.dart';
+import '../../models/word_token.dart';
+import '../../utils/background_remover.dart';
+import '../background_remover/background_remover_screen.dart';
 
 import 'dart:math' as math;
 
-class WordToken {
-  String text;
-  Alignment position;
-  Alignment? originalPosition; // Stores the position right after splitting
-  double fontSize;
-  Color color;
-  FontInfo? font;
-  double rotation; // degrees
 
-  // Text effects (inherited from slide defaults)
-  bool enableShadow;
-  double shadowBlur;
-  Offset shadowOffset;
-  Color shadowColor;
-  bool enableGlow;
-  double glowRadius;
-  Color glowColor;
-
-  WordToken({
-    required this.text,
-    this.position = Alignment.center,
-    this.originalPosition,
-    this.fontSize = 28.0,
-    this.color = Colors.white,
-    this.font,
-    this.rotation = 0.0,
-    this.enableShadow = true,
-    this.shadowBlur = 4.0,
-    this.shadowOffset = const Offset(2, 2),
-    this.shadowColor = Colors.black54,
-    this.enableGlow = false,
-    this.glowRadius = 10.0,
-    this.glowColor = Colors.white70,
-  });
-}
 
 class CarouselSlide {
   File? image;
+  File? foregroundImage;
+  ui.Image? uiForegroundImage;
   String text = '';
   Color bgColor = Colors.black87;
   Color textColor = Colors.white;
@@ -76,10 +46,24 @@ class CarouselSlide {
   double glowRadius = 10.0;
   Color glowColor = Colors.white70;
 
-  // Image Adjustments
+  // Text Stroke & Fill
+  double textStrokeWidth = 0.0;
+  Color textStrokeColor = Colors.black;
+  bool textFill = true;
+  bool strokeOverForeground = false;
+  bool fgStrokeOnly = false;
+
+  // Image Adjustments (Background)
   double brightness = 1.0; // 0.0 to 2.0 (multiplicative/gain)
   double saturation = 1.0; // 0.0 to 2.0
   double hue = 0.0;        // -3.14 to 3.14
+  
+  // Image Adjustments (Foreground)
+  double fgBrightness = 1.0;
+  double fgSaturation = 1.0;
+  double fgHue = 0.0;
+  double fgOpacity = 1.0;
+  double feathering = 0.0;
 
   // Typography Adjustments
   double slideFontSize = 28.0;
@@ -201,6 +185,8 @@ class CarouselSlide {
         fontSize: slideFontSize,
         color: textColor,
         font: font,
+        strokeWidth: textStrokeWidth,
+        strokeColor: textStrokeColor,
         enableShadow: enableShadow,
         shadowBlur: shadowBlur,
         shadowOffset: shadowOffset,
@@ -208,6 +194,10 @@ class CarouselSlide {
         enableGlow: enableGlow,
         glowRadius: glowRadius,
         glowColor: glowColor,
+
+        textFill: textFill,
+        strokeOverForeground: strokeOverForeground,
+        fgStrokeOnly: fgStrokeOnly,
       ));
     }
 
@@ -256,6 +246,8 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
   Offset? _eyeDropperPos;
   Color _eyeDropperColor = Colors.transparent;
   String _eyeDropperTarget = 'text'; // 'text', 'bg', 'shadow', 'mask'
+  bool _isRemovingBg = false;
+  bool _editFgAdjustments = false;
 
   // Track preview dimensions for precise coordinate mapping
   double _lastPreviewWidth = 360;
@@ -592,6 +584,65 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     }
   }
 
+  Future<void> _removeBackgroundForSlide(int index) async {
+    final slide = _slides[index];
+    if (slide.image == null) return;
+
+    setState(() => _isRemovingBg = true);
+    
+    try {
+      final resultPath = await BackgroundRemover.removeBackground(
+        slide.image!.path,
+        autoTrim: false, // keep original position
+        smoothing: slide.feathering,
+      );
+      
+      if (resultPath != null && mounted) {
+        setState(() {
+          slide.foregroundImage = File(resultPath);
+          _loadUiImageForSlide(slide);
+        });
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to remove background.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error removing background: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRemovingBg = false);
+      }
+    }
+  }
+
+  Future<void> _editForegroundCutout(int index) async {
+    final slide = _slides[index];
+    if (slide.image == null) return;
+
+    final File? editedFile = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => BackgroundRemoverScreen(
+          imageFile: slide.image!,
+          isEditorMode: true,
+          initialSmoothing: slide.feathering,
+        ),
+      ),
+    );
+
+    if (editedFile != null && mounted) {
+      setState(() {
+        slide.foregroundImage = editedFile;
+        _loadUiImageForSlide(slide);
+      });
+    }
+  }
+
   Future<void> _startEyeDropper(String target) async {
     final slide = _slides[_currentIndex];
     final boundary = slide.previewKey.currentContext?.findRenderObject()
@@ -883,6 +934,21 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     );
   }
 
+  Future<void> _loadUiImageForSlide(CarouselSlide slide) async {
+    if (slide.foregroundImage == null) return;
+    try {
+      final bytes = await slide.foregroundImage!.readAsBytes();
+      final image = await decodeImageFromList(bytes);
+      if (mounted) {
+        setState(() {
+          slide.uiForegroundImage = image;
+        });
+      }
+    } catch (e) {
+      debugPrint("Failed to load ui.Image: $e");
+    }
+  }
+
   Widget _buildSlideWidget(CarouselSlide slide, bool isExport) {
     Widget imageWidget = slide.image != null
         ? ColorFiltered(
@@ -917,161 +983,186 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                     child: imageWidget,
                   ),
           if (slide.maskType != 0) _buildMaskOverlay(slide),
-          if (slide.useWordMode && slide.wordTokens.isNotEmpty)
-            LayoutBuilder(
-              builder: (context, constraints) {
-                // Calculate center of all word tokens for anchor-perfect grouping scale
-                Alignment wordsCenter = Alignment.center;
-                if (slide.wordTokens.isNotEmpty) {
-                  double minX = slide.wordTokens.first.position.x;
-                  double maxX = slide.wordTokens.first.position.x;
-                  double minY = slide.wordTokens.first.position.y;
-                  double maxY = slide.wordTokens.first.position.y;
-                  for (var t in slide.wordTokens) {
-                    minX = math.min(minX, t.position.x);
-                    maxX = math.max(maxX, t.position.x);
-                    minY = math.min(minY, t.position.y);
-                    maxY = math.max(maxY, t.position.y);
-                  }
-                  wordsCenter = Alignment((minX + maxX) / 2, (minY + maxY) / 2);
-                }
 
-                return GestureDetector(
-                  onTap: isExport
-                      ? null
-                      : () => setState(() => _selectedWordIndices.clear()),
-                  behavior: HitTestBehavior.translucent,
-                  child: Transform.scale(
-                    scale: slide.textScale,
-                    alignment: wordsCenter,
-                    child: Stack(
-                      children: List.generate(slide.wordTokens.length, (i) {
-                        final word = slide.wordTokens[i];
-                        final bool isSelected =
-                            !isExport && _selectedWordIndices.contains(i);
-                        return Align(
-                          alignment: word.position,
-                          child: GestureDetector(
-                            onTap: isExport
-                                ? null
-                                : () {
-                                    setState(() {
-                                      if (_multiSelectMode) {
-                                        if (_selectedWordIndices.contains(i)) {
-                                          _selectedWordIndices.remove(i);
-                                        } else {
-                                          _selectedWordIndices.add(i);
-                                        }
-                                      } else {
-                                        if (_selectedWordIndices.contains(i) &&
-                                            _selectedWordIndices.length == 1) {
-                                          _selectedWordIndices.clear();
-                                        } else {
-                                          _selectedWordIndices.clear();
-                                          _selectedWordIndices.add(i);
-                                        }
-                                      }
-                                    });
-                                  },
-                            onPanUpdate: isExport || slide.isLocked
-                                ? null
-                                : (details) {
-                                    setState(() {
-                                      if (!_selectedWordIndices.contains(i)) {
-                                        _selectedWordIndices.clear();
-                                        _selectedWordIndices.add(i);
-                                      }
-                                      final double deltaX = details.delta.dx /
-                                          (constraints.maxWidth / 2);
-                                      final double deltaY = details.delta.dy /
-                                          (constraints.maxHeight / 2);
-                                      for (int index in _selectedWordIndices) {
-                                        final w = slide.wordTokens[index];
-                                        w.position = Alignment(
-                                          (w.position.x + deltaX)
-                                              .clamp(-1.0, 1.0),
-                                          (w.position.y + deltaY)
-                                              .clamp(-1.0, 1.0),
-                                        );
-                                      }
-                                    });
-                                  },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
-                              decoration: isSelected
-                                  ? BoxDecoration(
-                                      border: Border.all(
-                                          color: const Color(0xFF6C63FF)
-                                              .withValues(alpha: 0.5),
-                                          width: 1.5),
-                                      borderRadius: BorderRadius.circular(6),
-                                    )
-                                  : null,
-                              child: Transform.rotate(
-                                angle: word.rotation * math.pi / 180,
-                                child: Text(
-                                  word.text,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: word.color,
-                                    fontSize: word.fontSize,
-                                    fontFamily: word.font?.family ??
-                                        _selectedFont?.family,
-                                    fontWeight: word.font?.weight ??
-                                        _selectedFont?.weight ??
-                                        FontWeight.bold,
-                                    letterSpacing: slide.letterSpacing,
-                                    wordSpacing: slide.wordSpacing,
-                                    height: slide.lineHeight,
-                                    shadows: [
-                                      if (word.enableShadow)
-                                        Shadow(
-                                          color: word.shadowColor,
-                                          offset: word.shadowOffset,
-                                          blurRadius: word.shadowBlur,
-                                        ),
-                                      if (word.enableGlow)
-                                        Shadow(
-                                          color: word.glowColor,
-                                          offset: Offset.zero,
-                                          blurRadius: word.glowRadius,
-                                        ),
-                                    ],
+
+          Builder(builder: (context) {
+            Widget buildTextLayer(bool isMaskLayer) {
+              if (slide.useWordMode && slide.wordTokens.isNotEmpty) {
+                return LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Calculate center of all word tokens for anchor-perfect grouping scale
+                    Alignment wordsCenter = Alignment.center;
+                    if (slide.wordTokens.isNotEmpty) {
+                      double minX = slide.wordTokens.first.position.x;
+                      double maxX = slide.wordTokens.first.position.x;
+                      double minY = slide.wordTokens.first.position.y;
+                      double maxY = slide.wordTokens.first.position.y;
+                      for (var t in slide.wordTokens) {
+                        minX = math.min(minX, t.position.x);
+                        maxX = math.max(maxX, t.position.x);
+                        minY = math.min(minY, t.position.y);
+                        maxY = math.max(maxY, t.position.y);
+                      }
+                      wordsCenter = Alignment((minX + maxX) / 2, (minY + maxY) / 2);
+                    }
+
+                    return GestureDetector(
+                      onTap: isExport
+                          ? null
+                          : () => setState(() => _selectedWordIndices.clear()),
+                      behavior: HitTestBehavior.translucent,
+                      child: Transform.scale(
+                        scale: slide.textScale,
+                        alignment: wordsCenter,
+                        child: Stack(
+                          children: List.generate(slide.wordTokens.length, (i) {
+                            final word = slide.wordTokens[i];
+                            final bool isSelected =
+                                !isExport && _selectedWordIndices.contains(i);
+                            return Align(
+                              alignment: word.position,
+                              child: GestureDetector(
+                                onTap: isExport
+                                    ? null
+                                    : () {
+                                        setState(() {
+                                          if (_multiSelectMode) {
+                                            if (_selectedWordIndices.contains(i)) {
+                                              _selectedWordIndices.remove(i);
+                                            } else {
+                                              _selectedWordIndices.add(i);
+                                            }
+                                          } else {
+                                            if (_selectedWordIndices.contains(i) &&
+                                                _selectedWordIndices.length == 1) {
+                                              _selectedWordIndices.clear();
+                                            } else {
+                                              _selectedWordIndices.clear();
+                                              _selectedWordIndices.add(i);
+                                            }
+                                          }
+                                        });
+                                      },
+                                onPanUpdate: isExport || slide.isLocked || isMaskLayer
+                                    ? null
+                                    : (details) {
+                                        setState(() {
+                                          if (!_selectedWordIndices.contains(i)) {
+                                            _selectedWordIndices.clear();
+                                            _selectedWordIndices.add(i);
+                                          }
+                                          final double deltaX = details.delta.dx /
+                                              (constraints.maxWidth / 2);
+                                          final double deltaY = details.delta.dy /
+                                              (constraints.maxHeight / 2);
+                                          for (int index in _selectedWordIndices) {
+                                            final w = slide.wordTokens[index];
+                                            w.position = Alignment(
+                                              (w.position.x + deltaX).clamp(-1.0, 1.0),
+                                              (w.position.y + deltaY).clamp(-1.0, 1.0),
+                                            );
+                                          }
+                                        });
+                                      },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 2),
+                                  decoration: isSelected && !isMaskLayer
+                                      ? BoxDecoration(
+                                          border: Border.all(
+                                              color: const Color(0xFF6C63FF)
+                                                  .withValues(alpha: 0.5),
+                                              width: 1.5),
+                                          borderRadius: BorderRadius.circular(6),
+                                        )
+                                      : null,
+                                  child: Transform.rotate(
+                                    angle: word.rotation * 3.1415926535897932 / 180,
+                                    child: Stack(
+                                      children: [
+                                        if (word.strokeWidth > 0 && (isMaskLayer ? word.strokeOverForeground : !word.fgStrokeOnly))
+                                          Text(
+                                            word.text,
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: word.fontSize,
+                                              fontFamily: word.font?.family ??
+                                                  _selectedFont?.family,
+                                              fontWeight: word.font?.weight ??
+                                                  _selectedFont?.weight ??
+                                                  FontWeight.bold,
+                                              letterSpacing: slide.letterSpacing,
+                                              wordSpacing: slide.wordSpacing,
+                                              height: slide.lineHeight,
+                                              foreground: Paint()
+                                                ..style = PaintingStyle.stroke
+                                                ..strokeWidth = word.strokeWidth
+                                                ..color = word.strokeColor,
+                                            ),
+                                          ),
+                                        if (!isMaskLayer)
+                                          Text(
+                                            word.text,
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              color: word.textFill ? word.color : Colors.transparent,
+                                              fontSize: word.fontSize,
+                                              fontFamily: word.font?.family ??
+                                                  _selectedFont?.family,
+                                              fontWeight: word.font?.weight ??
+                                                  _selectedFont?.weight ??
+                                                  FontWeight.bold,
+                                              letterSpacing: slide.letterSpacing,
+                                              wordSpacing: slide.wordSpacing,
+                                              height: slide.lineHeight,
+                                              shadows: [
+                                                if (word.enableShadow)
+                                                  Shadow(
+                                                    color: word.shadowColor,
+                                                    offset: word.shadowOffset,
+                                                    blurRadius: word.shadowBlur,
+                                                  ),
+                                                if (word.enableGlow)
+                                                  Shadow(
+                                                    color: word.glowColor,
+                                                    offset: Offset.zero,
+                                                    blurRadius: word.glowRadius,
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
-                        );
-                      }),
-                    ),
-                  ),
+                            );
+                          }),
+                        ),
+                      ),
+                    );
+                  },
                 );
-              },
-            )
-          else if (slide.text.isNotEmpty && !slide.useWordMode)
-            LayoutBuilder(
-              builder: (context, constraints) {
-                _lastPreviewWidth = constraints.maxWidth;
-                _lastPreviewHeight = constraints.maxHeight;
-                return Stack(
-                  children: [
-                    Align(
+              } else if (slide.text.isNotEmpty && !slide.useWordMode) {
+                return LayoutBuilder(
+                  builder: (context, constraints) {
+                    if (!isMaskLayer) {
+                      _lastPreviewWidth = constraints.maxWidth;
+                      _lastPreviewHeight = constraints.maxHeight;
+                    }
+                    return Align(
                       alignment: slide.textAlignment,
                       child: Transform.scale(
                         scale: slide.textScale,
                         child: GestureDetector(
-                          onPanUpdate: isExport || slide.isLocked
+                          onPanUpdate: isExport || slide.isLocked || isMaskLayer
                               ? null
                               : (details) {
                                   setState(() {
                                     double dx = slide.textAlignment.x +
-                                        (details.delta.dx /
-                                            (constraints.maxWidth / 2));
+                                        (details.delta.dx / (constraints.maxWidth / 2));
                                     double dy = slide.textAlignment.y +
-                                        (details.delta.dy /
-                                            (constraints.maxHeight / 2));
+                                        (details.delta.dy / (constraints.maxHeight / 2));
                                     slide.textAlignment = Alignment(
                                         dx.clamp(-1.0, 1.0),
                                         dy.clamp(-1.0, 1.0));
@@ -1079,45 +1170,160 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                                 },
                           child: Padding(
                             padding: const EdgeInsets.all(16.0),
-                            child: Text(
-                              slide.text,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: slide.textColor,
-                                fontSize: slide.slideFontSize,
-                                fontFamily:
-                                    slide.font?.family ?? _selectedFont?.family,
-                                fontWeight: slide.font?.weight ??
-                                    _selectedFont?.weight ??
-                                    FontWeight.bold,
-                                letterSpacing: slide.letterSpacing,
-                                wordSpacing: slide.wordSpacing,
-                                height: slide.lineHeight,
-                                shadows: [
-                                  if (slide.enableShadow)
-                                    Shadow(
-                                      color: slide.shadowColor,
-                                      offset: slide.shadowOffset,
-                                      blurRadius: slide.shadowBlur,
+                            child: Stack(
+                              children: [
+                                if (slide.textStrokeWidth > 0 && (isMaskLayer ? slide.strokeOverForeground : !slide.fgStrokeOnly))
+                                  Text(
+                                    slide.text,
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: slide.slideFontSize,
+                                      fontFamily:
+                                          slide.font?.family ?? _selectedFont?.family,
+                                      fontWeight: slide.font?.weight ??
+                                          _selectedFont?.weight ??
+                                          FontWeight.bold,
+                                      letterSpacing: slide.letterSpacing,
+                                      wordSpacing: slide.wordSpacing,
+                                      height: slide.lineHeight,
+                                      foreground: Paint()
+                                        ..style = PaintingStyle.stroke
+                                        ..strokeWidth = slide.textStrokeWidth
+                                        ..color = slide.textStrokeColor,
                                     ),
-                                  if (slide.enableGlow)
-                                    Shadow(
-                                      color: slide.glowColor,
-                                      offset: Offset.zero,
-                                      blurRadius: slide.glowRadius,
+                                  ),
+                                if (!isMaskLayer)
+                                  Text(
+                                    slide.text,
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: slide.textFill ? slide.textColor : Colors.transparent,
+                                      fontSize: slide.slideFontSize,
+                                      fontFamily:
+                                          slide.font?.family ?? _selectedFont?.family,
+                                      fontWeight: slide.font?.weight ??
+                                          _selectedFont?.weight ??
+                                          FontWeight.bold,
+                                      letterSpacing: slide.letterSpacing,
+                                      wordSpacing: slide.wordSpacing,
+                                      height: slide.lineHeight,
+                                      shadows: [
+                                        if (slide.enableShadow)
+                                          Shadow(
+                                            color: slide.shadowColor,
+                                            offset: slide.shadowOffset,
+                                            blurRadius: slide.shadowBlur,
+                                          ),
+                                        if (slide.enableGlow)
+                                          Shadow(
+                                            color: slide.glowColor,
+                                            offset: Offset.zero,
+                                            blurRadius: slide.glowRadius,
+                                          ),
+                                      ],
                                     ),
-                                ],
-                              ),
+                                  ),
+                              ],
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    );
+                  },
                 );
-              },
-            ),
+              }
+              return const SizedBox.shrink();
+            }
 
+            return Stack(
+              clipBehavior: Clip.none,
+              fit: StackFit.expand,
+              children: [
+                buildTextLayer(false), // Base text layer
+                
+                // Foreground Image Layer
+                if (slide.foregroundImage != null)
+                  Opacity(
+                    opacity: slide.fgOpacity,
+                    child: isExport
+                        ? Center(
+                            child: Transform(
+                              transform: slide.transformationController.value,
+                              alignment: Alignment.center,
+                              child: ColorFiltered(
+                                colorFilter: ui.ColorFilter.matrix(
+                                    _getColorMatrix(slide.fgBrightness, slide.fgSaturation, slide.fgHue)),
+                                child: Image.file(
+                                  slide.foregroundImage!,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                          )
+                        : IgnorePointer(
+                            child: InteractiveViewer(
+                              transformationController: slide.transformationController,
+                              clipBehavior: Clip.none,
+                              minScale: 0.5,
+                              maxScale: 5.0,
+                              child: ColorFiltered(
+                                colorFilter: ui.ColorFilter.matrix(
+                                    _getColorMatrix(slide.fgBrightness, slide.fgSaturation, slide.fgHue)),
+                                child: Image.file(
+                                  slide.foregroundImage!,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                          ),
+                  ),
+
+                // Stroke Mask Layer
+                IgnorePointer(
+                  child: slide.fgStrokeOnly && slide.foregroundImage != null
+                      ? ShaderMask(
+                          blendMode: BlendMode.dstIn,
+                          shaderCallback: (Rect bounds) {
+                            if (slide.uiForegroundImage == null) {
+                              return const LinearGradient(
+                                colors: [Colors.transparent, Colors.transparent],
+                              ).createShader(bounds);
+                            }
+
+                            final imageSize = Size(
+                              slide.uiForegroundImage!.width.toDouble(),
+                              slide.uiForegroundImage!.height.toDouble(),
+                            );
+                            final containerSize = bounds.size;
+
+                            double scale = math.max(
+                              containerSize.width / imageSize.width,
+                              containerSize.height / imageSize.height,
+                            );
+                            double dx = (containerSize.width - imageSize.width * scale) / 2.0;
+                            double dy = (containerSize.height - imageSize.height * scale) / 2.0;
+
+                            final boxFitMatrix = Matrix4.identity()
+                              ..translate(dx, dy)
+                              ..scale(scale, scale);
+
+                            final totalMatrix = slide.transformationController.value.clone()
+                              ..multiply(boxFitMatrix);
+
+                            return ui.ImageShader(
+                              slide.uiForegroundImage!,
+                              ui.TileMode.clamp,
+                              ui.TileMode.clamp,
+                              totalMatrix.storage,
+                            );
+                          },
+                          child: buildTextLayer(true),
+                        )
+                      : buildTextLayer(true),
+                ),
+              ],
+            );
+          }),
           // --- Snapping Guides ---
           if (!isExport && _snapLineX != null)
             IgnorePointer(
@@ -1424,8 +1630,41 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                 label: 'Replace',
                 color: Colors.orange,
               ),
-              if (_slides.length > 1) ...[
+              const SizedBox(width: 8),
+              if (slide.image != null) ...[
+                _isRemovingBg 
+                    ? const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
+                    : (slide.foregroundImage != null
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildSmallImageAction(
+                                onPressed: () => _editForegroundCutout(_currentIndex),
+                                icon: Icons.edit,
+                                label: 'Edit Cutout',
+                                color: Colors.deepOrange,
+                              ),
+                              const SizedBox(width: 8),
+                              _buildSmallImageAction(
+                                onPressed: () => setState(() {
+                                  slide.foregroundImage = null;
+                                  slide.uiForegroundImage = null;
+                                }),
+                                icon: Icons.layers_clear,
+                                label: 'Clear FG',
+                                color: Colors.redAccent,
+                              ),
+                            ],
+                          )
+                        : _buildSmallImageAction(
+                            onPressed: () => _removeBackgroundForSlide(_currentIndex),
+                            icon: Icons.auto_fix_high,
+                            label: 'Remove BG',
+                            color: Colors.deepPurple,
+                          )),
                 const SizedBox(width: 8),
+              ],
+              if (_slides.length > 1) ...[
                 _buildSmallImageAction(
                   onPressed: () => _removeSlide(_currentIndex),
                   icon: Icons.delete_outline,
@@ -1474,30 +1713,90 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          _buildAdjustmentSlider(
-            label: 'Brightness',
-            value: slide.brightness,
-            min: 0.0,
-            max: 2.0,
-            onChanged: (val) => setState(() => slide.brightness = val),
-          ),
-          const SizedBox(height: 8),
-          _buildAdjustmentSlider(
-            label: 'Saturation',
-            value: slide.saturation,
-            min: 0.0,
-            max: 2.0,
-            onChanged: (val) => setState(() => slide.saturation = val),
-          ),
-          const SizedBox(height: 8),
-          _buildAdjustmentSlider(
-            label: 'Hue',
-            value: slide.hue,
-            min: -math.pi,
-            max: math.pi,
-            onChanged: (val) => setState(() => slide.hue = val),
-          ),
+          if (slide.foregroundImage != null) ...[
+            Center(
+              child: SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: false, label: Text('Background')),
+                  ButtonSegment(value: true, label: Text('Foreground')),
+                ],
+                selected: {_editFgAdjustments},
+                onSelectionChanged: (val) {
+                  setState(() => _editFgAdjustments = val.first);
+                },
+                style: SegmentedButton.styleFrom(
+                  textStyle: const TextStyle(fontSize: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (!_editFgAdjustments) ...[
+            _buildAdjustmentSlider(
+              label: 'Brightness',
+              value: slide.brightness,
+              min: 0.0,
+              max: 2.0,
+              onChanged: (val) => setState(() => slide.brightness = val),
+            ),
+            const SizedBox(height: 8),
+            _buildAdjustmentSlider(
+              label: 'Saturation',
+              value: slide.saturation,
+              min: 0.0,
+              max: 2.0,
+              onChanged: (val) => setState(() => slide.saturation = val),
+            ),
+            const SizedBox(height: 8),
+            _buildAdjustmentSlider(
+              label: 'Hue',
+              value: slide.hue,
+              min: -math.pi,
+              max: math.pi,
+              onChanged: (val) => setState(() => slide.hue = val),
+            ),
+          ] else ...[
+            _buildAdjustmentSlider(
+              label: 'FG Brightness',
+              value: slide.fgBrightness,
+              min: 0.0,
+              max: 2.0,
+              onChanged: (val) => setState(() => slide.fgBrightness = val),
+            ),
+            const SizedBox(height: 8),
+            _buildAdjustmentSlider(
+              label: 'FG Saturation',
+              value: slide.fgSaturation,
+              min: 0.0,
+              max: 2.0,
+              onChanged: (val) => setState(() => slide.fgSaturation = val),
+            ),
+            const SizedBox(height: 8),
+            _buildAdjustmentSlider(
+              label: 'FG Hue',
+              value: slide.fgHue,
+              min: -math.pi,
+              max: math.pi,
+              onChanged: (val) => setState(() => slide.fgHue = val),
+            ),
+            const SizedBox(height: 8),
+            _buildAdjustmentSlider(
+              label: 'FG Opacity',
+              value: slide.fgOpacity,
+              min: 0.0,
+              max: 1.0,
+              onChanged: (val) => setState(() => slide.fgOpacity = val),
+            ),
+            const SizedBox(height: 8),
+            _buildAdjustmentSlider(
+              label: 'Feathering (Apply again)',
+              value: slide.feathering,
+              min: 0.0,
+              max: 20.0,
+              onChanged: (val) => setState(() => slide.feathering = val),
+            ),
+          ],
           const SizedBox(height: 8),
           Text(
             'Tip: Drag on the image above to adjust its position.',
@@ -2401,6 +2700,20 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     final double glowRadius = wordMode
         ? current.wordTokens[_selectedWordIndices.first].glowRadius
         : current.glowRadius;
+    final double strokeWidth = wordMode
+        ? current.wordTokens[_selectedWordIndices.first].strokeWidth
+        : current.textStrokeWidth;
+    final bool textFill = wordMode
+        ? current.wordTokens[_selectedWordIndices.first].textFill
+        : current.textFill;
+    final bool strokeOverForeground = wordMode
+        ? current.wordTokens[_selectedWordIndices.first].strokeOverForeground
+        : current.strokeOverForeground;
+    final bool fgStrokeOnly = wordMode
+        ? current.wordTokens[_selectedWordIndices.first].fgStrokeOnly
+        : current.fgStrokeOnly;
+
+
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2412,6 +2725,104 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
         _buildSectionHeader(wordMode
             ? 'Effects for ${_selectedWordIndices.length} words'
             : 'Text Styling'),
+            
+        // --- Stroke & Fill Controls ---
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Text Fill', style: TextStyle(fontSize: 10, color: Colors.grey)),
+            Switch(
+              value: textFill,
+              activeColor: const Color(0xFF6C63FF),
+              onChanged: (v) {
+                setState(() {
+                  if (wordMode) {
+                    for (int idx in _selectedWordIndices) {
+                      current.wordTokens[idx].textFill = v;
+                    }
+                  } else {
+                    current.textFill = v;
+                  }
+                });
+              },
+            ),
+          ],
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Stroke Over Cutout', style: TextStyle(fontSize: 10, color: Colors.grey)),
+            Switch(
+              value: strokeOverForeground,
+              activeColor: const Color(0xFF6C63FF),
+              onChanged: (v) {
+                setState(() {
+                  if (wordMode) {
+                    for (int idx in _selectedWordIndices) {
+                      current.wordTokens[idx].strokeOverForeground = v;
+                    }
+                  } else {
+                    current.strokeOverForeground = v;
+                  }
+                });
+              },
+            ),
+          ],
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Foreground Stroke Only', style: TextStyle(fontSize: 10, color: Colors.grey)),
+            Switch(
+              value: fgStrokeOnly,
+              activeColor: const Color(0xFF6C63FF),
+              onChanged: (v) {
+                setState(() {
+                  if (wordMode) {
+                    for (int idx in _selectedWordIndices) {
+                      current.wordTokens[idx].fgStrokeOnly = v;
+                    }
+                  } else {
+                    current.fgStrokeOnly = v;
+                  }
+                });
+              },
+            ),
+          ],
+        ),
+        _buildEffectSlider(
+            'Stroke Width',
+            strokeWidth,
+            0,
+            10,
+            (v) => setState(() {
+                  if (wordMode) {
+                    for (int idx in _selectedWordIndices) {
+                      current.wordTokens[idx].strokeWidth = v;
+                    }
+                  } else {
+                    current.textStrokeWidth = v;
+                  }
+                })),
+        if (strokeWidth > 0) ...[
+          const SizedBox(height: 12),
+          _buildSectionHeader('Stroke Color'),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildCustomColorButton(isStroke: true),
+                _buildStrokeColorVariant(Colors.black, 'Black'),
+                _buildStrokeColorVariant(Colors.white, 'White'),
+                _buildStrokeColorVariant(const Color(0xFF6C63FF), 'Royal'),
+                _buildStrokeColorVariant(Colors.red.shade900, 'Ruby'),
+                _buildStrokeColorVariant(Colors.green.shade900, 'Forest'),
+              ],
+            ),
+          ),
+          const Divider(),
+        ],
+        // --- Shadow Controls ---
         SwitchListTile(
           title: const Text('Drop Shadow', style: TextStyle(fontSize: 12)),
           value: enableShadow,
@@ -2739,6 +3150,72 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
     );
   }
 
+  Widget _buildStrokeColorVariant(Color color, String label) {
+    final current = _slides[_currentIndex];
+    final bool wordMode =
+        current.useWordMode && _selectedWordIndices.isNotEmpty;
+    final Color activeColor = wordMode
+        ? current.wordTokens[_selectedWordIndices.first].strokeColor
+        : current.textStrokeColor;
+    bool isSel = activeColor == color;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          if (wordMode) {
+            for (int idx in _selectedWordIndices) {
+              current.wordTokens[idx].strokeColor = color;
+            }
+          } else {
+            current.textStrokeColor = color;
+          }
+        });
+      },
+      child: Padding(
+        padding: const EdgeInsets.only(right: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isSel ? const Color(0xFF6C63FF) : Colors.grey[200]!,
+                  width: isSel ? 2 : 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: isSel
+                  ? Icon(Icons.check,
+                      size: 16,
+                      color: color.computeLuminance() > 0.5
+                          ? Colors.black
+                          : Colors.white)
+                  : null,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSel ? const Color(0xFF6C63FF) : Colors.grey[600],
+                fontSize: 10,
+                fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildColorOption(Color bg, Color text, String label, bool isBg) {
     CarouselSlide current = _slides[_currentIndex];
     bool isSel = current.bgColor == bg;
@@ -2803,10 +3280,10 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
   }
 
   Widget _buildCustomColorButton(
-      {bool isBg = false, bool isShadow = false, bool isMask = false}) {
+      {bool isBg = false, bool isShadow = false, bool isMask = false, bool isStroke = false}) {
     return GestureDetector(
       onTap: () =>
-          _showColorPicker(isBg: isBg, isShadow: isShadow, isMask: isMask),
+          _showColorPicker(isBg: isBg, isShadow: isShadow, isMask: isMask, isStroke: isStroke),
       child: Padding(
         padding: const EdgeInsets.only(right: 16),
         child: Column(
@@ -3217,7 +3694,7 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
   }
 
   Future<void> _showColorPicker(
-      {bool isBg = false, bool isShadow = false, bool isMask = false}) async {
+      {bool isBg = false, bool isShadow = false, bool isMask = false, bool isStroke = false}) async {
     final slide = _slides[_currentIndex];
     final bool wordMode = slide.useWordMode && _selectedWordIndices.isNotEmpty;
 
@@ -3225,19 +3702,25 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
         ? slide.bgColor
         : (isMask
             ? slide.maskColor
-            : (isShadow
+            : (isStroke
                 ? (wordMode
-                    ? slide.wordTokens[_selectedWordIndices.first].shadowColor
-                    : slide.shadowColor)
-                : (wordMode
-                    ? slide.wordTokens[_selectedWordIndices.first].color
-                    : slide.textColor)));
+                    ? slide.wordTokens[_selectedWordIndices.first].strokeColor
+                    : slide.textStrokeColor)
+                : (isShadow
+                    ? (wordMode
+                        ? slide.wordTokens[_selectedWordIndices.first].shadowColor
+                        : slide.shadowColor)
+                    : (wordMode
+                        ? slide.wordTokens[_selectedWordIndices.first].color
+                        : slide.textColor))));
 
     Color selectedColor = initialColor;
 
     String title = 'Text Color';
     if (isBg) {
       title = 'Background Color';
+    } else if (isStroke) {
+      title = 'Stroke Color';
     } else if (isShadow) {
       title = 'Shadow Color';
     } else if (isMask) {
@@ -3268,6 +3751,8 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                     String target = 'text';
                     if (isBg) {
                       target = 'bg';
+                    } else if (isStroke) {
+                      target = 'stroke';
                     } else if (isShadow) {
                       target = 'shadow';
                     } else if (isMask) {
@@ -3309,6 +3794,14 @@ class _CarouselPostScreenState extends State<CarouselPostScreen> {
                           }
                         } else {
                           slide.maskColor = selectedColor;
+                        }
+                      } else if (isStroke) {
+                        if (wordMode) {
+                          for (int idx in _selectedWordIndices) {
+                            slide.wordTokens[idx].strokeColor = selectedColor;
+                          }
+                        } else {
+                          slide.textStrokeColor = selectedColor;
                         }
                       } else if (isShadow) {
                         if (wordMode) {

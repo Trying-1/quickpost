@@ -108,6 +108,9 @@ class _TextOverlay {
   double fontSize;
   String color;
   FontInfo? font;
+  double strokeWidth;
+  String strokeColor;
+  bool strokeOnly;
   bool showShadow;
   String shadowColor;
   double shadowBlur;
@@ -121,6 +124,9 @@ class _TextOverlay {
   double wordSpacing;
   double opacity;
   Map<int, String> wordColors;
+  Map<int, double> wordStrokeWidths;
+  Map<int, String> wordStrokeColors;
+  Map<int, bool> wordStrokeOnly;
   bool isLocked;
 
   _TextOverlay({
@@ -130,6 +136,9 @@ class _TextOverlay {
     this.fontSize = 30.0,
     this.color = "#000000",
     this.font,
+    this.strokeWidth = 0.0,
+    this.strokeColor = "#000000",
+    this.strokeOnly = false,
     this.showShadow = false,
     this.shadowColor = "#000000",
     this.shadowBlur = 8.0,
@@ -143,11 +152,17 @@ class _TextOverlay {
     this.wordSpacing = 0.0,
     this.opacity = 1.0,
     Map<int, String>? wordColors,
+    Map<int, double>? wordStrokeWidths,
+    Map<int, String>? wordStrokeColors,
+    Map<int, bool>? wordStrokeOnly,
     this.isLocked = false,
-  }) : wordColors = wordColors ?? {};
+  }) : wordColors = wordColors ?? {},
+       wordStrokeWidths = wordStrokeWidths ?? {},
+       wordStrokeColors = wordStrokeColors ?? {},
+       wordStrokeOnly = wordStrokeOnly ?? {};
 
   List<Map<String, dynamic>> toMaps(double videoWidth, double videoHeight, String resolvedFontPath) {
-    if (wordColors.isEmpty || text.trim().isEmpty) {
+    if ((wordColors.isEmpty && wordStrokeWidths.isEmpty && wordStrokeColors.isEmpty && wordStrokeOnly.isEmpty) || text.trim().isEmpty) {
       return [{
         'text': text,
         'x': x * videoWidth,
@@ -155,6 +170,9 @@ class _TextOverlay {
         'fontSize': fontSize * scale,
         'color': _colorWithAlpha(color, opacity),
         'fontPath': resolvedFontPath,
+        'strokeWidth': strokeWidth,
+        'strokeColor': strokeColor,
+        'strokeOnly': strokeOnly,
         'showShadow': showShadow,
         'shadowColor': shadowColor,
         'shadowBlur': shadowBlur,
@@ -221,6 +239,9 @@ class _TextOverlay {
       final double newY = (wordCenterY / refHeight).clamp(0.0, 1.0);
 
       String wordColor = wordColors[i] ?? color;
+      double wStrokeWidth = wordStrokeWidths[i] ?? strokeWidth;
+      String wStrokeColor = wordStrokeColors[i] ?? strokeColor;
+      bool wStrokeOnly = wordStrokeOnly[i] ?? strokeOnly;
 
       splitOverlays.add({
         'text': wordStr,
@@ -229,6 +250,9 @@ class _TextOverlay {
         'fontSize': fontSize * scale,
         'color': _colorWithAlpha(wordColor, opacity),
         'fontPath': resolvedFontPath,
+        'strokeWidth': wStrokeWidth,
+        'strokeColor': wStrokeColor,
+        'strokeOnly': wStrokeOnly,
         'showShadow': showShadow,
         'shadowColor': shadowColor,
         'shadowBlur': shadowBlur,
@@ -251,6 +275,9 @@ class _TextOverlay {
         'fontSize': fontSize * scale,
         'color': _colorWithAlpha(color, opacity),
         'fontPath': resolvedFontPath,
+        'strokeWidth': strokeWidth,
+        'strokeColor': strokeColor,
+        'strokeOnly': strokeOnly,
         'showShadow': showShadow,
         'shadowColor': shadowColor,
         'shadowBlur': shadowBlur,
@@ -2728,16 +2755,41 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
 
     final wordRegex = RegExp(r'\S+|\s+');
     final matches = wordRegex.allMatches(t.text).toList();
-    List<TextSpan> spans = [];
+    List<TextSpan> fillSpans = [];
+    List<TextSpan> strokeSpans = [];
     int wordIdx = 0;
     
     for (final match in matches) {
       final str = match.group(0)!;
       if (str.trim().isEmpty) {
-        spans.add(TextSpan(text: str));
+        fillSpans.add(TextSpan(text: str));
+        strokeSpans.add(TextSpan(text: str));
       } else {
         final cStr = t.wordColors[wordIdx] ?? t.color;
-        spans.add(TextSpan(text: str, style: TextStyle(color: _parseColor(cStr))));
+        final wStrokeWidth = t.wordStrokeWidths[wordIdx] ?? t.strokeWidth;
+        final wStrokeColor = t.wordStrokeColors[wordIdx] ?? t.strokeColor;
+        final wStrokeOnly = t.wordStrokeOnly[wordIdx] ?? t.strokeOnly;
+
+        if (!wStrokeOnly) {
+          fillSpans.add(TextSpan(text: str, style: TextStyle(color: _parseColor(cStr))));
+        } else {
+          fillSpans.add(TextSpan(text: str, style: const TextStyle(color: Colors.transparent)));
+        }
+
+        if (wStrokeWidth > 0) {
+          strokeSpans.add(TextSpan(
+            text: str,
+            style: TextStyle(
+              foreground: Paint()
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = wStrokeWidth * scale * t.scale
+                ..strokeJoin = StrokeJoin.round
+                ..color = _parseColor(wStrokeColor),
+            )
+          ));
+        } else {
+          strokeSpans.add(TextSpan(text: str));
+        }
         wordIdx++;
       }
     }
@@ -2770,25 +2822,45 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
               decoration: isSelected
                   ? BoxDecoration(border: Border.all(color: AppColors.primary, width: 1.5), borderRadius: BorderRadius.circular(4))
                   : null,
-              child: RichText(
-                textAlign: t.textAlign,
-                text: TextSpan(
-                  style: TextStyle(
-                    fontSize: t.fontSize * scale * t.scale,
-                    fontFamily: t.font?.family,
-                    fontWeight: t.font?.weight,
-                    fontStyle: t.font?.style,
-                    height: t.lineHeight,
-                    letterSpacing: t.letterSpacing,
-                    wordSpacing: t.wordSpacing,
-                    shadows: t.showShadow ? [Shadow(
-                      color: _parseColor(t.shadowColor), 
-                      blurRadius: t.shadowBlur, 
-                      offset: Offset(t.shadowOffsetX, t.shadowOffsetY)
-                    )] : null,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  RichText(
+                    textAlign: t.textAlign,
+                    text: TextSpan(
+                      style: TextStyle(
+                        fontSize: t.fontSize * scale * t.scale,
+                        fontFamily: t.font?.family,
+                        fontWeight: t.font?.weight,
+                        fontStyle: t.font?.style,
+                        height: t.lineHeight,
+                        letterSpacing: t.letterSpacing,
+                        wordSpacing: t.wordSpacing,
+                      ),
+                      children: strokeSpans,
+                    ),
                   ),
-                  children: spans,
-                ),
+                  RichText(
+                    textAlign: t.textAlign,
+                    text: TextSpan(
+                      style: TextStyle(
+                        fontSize: t.fontSize * scale * t.scale,
+                        fontFamily: t.font?.family,
+                        fontWeight: t.font?.weight,
+                        fontStyle: t.font?.style,
+                        height: t.lineHeight,
+                        letterSpacing: t.letterSpacing,
+                        wordSpacing: t.wordSpacing,
+                        shadows: t.showShadow ? [Shadow(
+                          color: _parseColor(t.shadowColor), 
+                          blurRadius: t.shadowBlur, 
+                          offset: Offset(t.shadowOffsetX, t.shadowOffsetY)
+                        )] : null,
+                      ),
+                      children: fillSpans,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -2955,37 +3027,10 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                 const SizedBox(height: 16),
                 const Text("Font Style", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                 const SizedBox(height: 8),
-                SizedBox(
-                   height: 48,
-                   child: ListView.builder(
-                     scrollDirection: Axis.horizontal,
-                     itemCount: getAllFonts().length,
-                     itemBuilder: (context, index) {
-                       final f = getAllFonts()[index];
-                       final bool isSelected = t.font == f;
-                       return Padding(
-                         padding: const EdgeInsets.only(right: 8),
-                         child: ChoiceChip(
-                           label: Text(
-                             f.displayName,
-                             style: TextStyle(
-                               fontFamily: f.family,
-                               fontWeight: f.weight,
-                               fontStyle: f.style,
-                               fontSize: 12,
-                               color: isSelected ? Colors.white : Colors.black87,
-                             ),
-                           ),
-                           selected: isSelected,
-                           showCheckmark: false,
-                           selectedColor: AppColors.primary,
-                           backgroundColor: Colors.grey.shade100,
-                           onSelected: (_) => _updateSelectedTextOverlays((o) => o.font = f),
-                         ),
-                       );
-                     },
-                   ),
-                 ),
+                HorizontalFontSelector(
+                  selectedFont: t.font,
+                  onFontSelected: (f) => _updateSelectedTextOverlays((o) => o.font = f),
+                ),
                 const SizedBox(height: 16),
                 _buildControlSlider(label: "Font Size", value: t.fontSize, min: 10, max: 200, onChanged: (v) => _updateSelectedTextOverlays((o) => o.fontSize = v)),
                 _buildControlSlider(label: "Scale", value: t.scale, min: 0.1, max: 5.0, onChanged: (v) => _updateSelectedTextOverlays((o) => o.scale = v)),
@@ -2993,6 +3038,59 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                 _buildControlSlider(label: "Letter Spacing", value: t.letterSpacing, min: -5.0, max: 20.0, onChanged: (v) => _updateSelectedTextOverlays((o) => o.letterSpacing = v)),
                 _buildControlSlider(label: "Word Spacing", value: t.wordSpacing, min: -10.0, max: 50.0, onChanged: (v) => _updateSelectedTextOverlays((o) => o.wordSpacing = v)),
                 _buildControlSlider(label: "Opacity", value: t.opacity, min: 0.0, max: 1.0, onChanged: (v) => _updateSelectedTextOverlays((o) => o.opacity = v)),
+                _buildControlSlider(
+                  label: "Stroke Width", 
+                  value: _selectedWordIndices.isNotEmpty && _selectedWordIndices.every((i) => t.wordStrokeWidths[i] == t.wordStrokeWidths[_selectedWordIndices.first])
+                     ? (t.wordStrokeWidths[_selectedWordIndices.first] ?? t.strokeWidth)
+                     : t.strokeWidth, 
+                  min: 0.0, max: 20.0, 
+                  onChanged: (v) => setState(() {
+                    if (_selectedWordIndices.isNotEmpty) {
+                      for (final i in _selectedWordIndices) {
+                        t.wordStrokeWidths[i] = v;
+                      }
+                    } else {
+                      t.strokeWidth = v;
+                    }
+                  })
+                ),
+                if (t.strokeWidth > 0 || t.wordStrokeWidths.values.any((w) => w > 0)) ...[
+                  const SizedBox(height: 16),
+                  const Text("Stroke Color", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const SizedBox(height: 8),
+                  _buildColorPicker(
+                    _selectedWordIndices.isNotEmpty && _selectedWordIndices.every((i) => t.wordStrokeColors[i] == t.wordStrokeColors[_selectedWordIndices.first])
+                       ? (t.wordStrokeColors[_selectedWordIndices.first] ?? t.strokeColor)
+                       : t.strokeColor,
+                    (c) => setState(() {
+                      if (_selectedWordIndices.isNotEmpty) {
+                        for (final i in _selectedWordIndices) {
+                          t.wordStrokeColors[i] = c;
+                        }
+                      } else {
+                        t.strokeColor = c;
+                      }
+                    }),
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    title: const Text("Stroke Only", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                    value: _selectedWordIndices.isNotEmpty && _selectedWordIndices.every((i) => t.wordStrokeOnly[i] == t.wordStrokeOnly[_selectedWordIndices.first])
+                       ? (t.wordStrokeOnly[_selectedWordIndices.first] ?? t.strokeOnly)
+                       : t.strokeOnly,
+                    onChanged: (v) => setState(() {
+                      if (_selectedWordIndices.isNotEmpty) {
+                        for (final i in _selectedWordIndices) {
+                          t.wordStrokeOnly[i] = v;
+                        }
+                      } else {
+                        t.strokeOnly = v;
+                      }
+                    }),
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
                 const SizedBox(height: 16),
                const Text("Alignment", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                const SizedBox(height: 8),
@@ -3975,49 +4073,18 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         const SizedBox(height: 16),
         const Text('Font Family', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
         const SizedBox(height: 12),
-        SizedBox(
-          height: 60,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: getAllFonts().length,
-            itemBuilder: (context, index) {
-              final font = getAllFonts()[index];
-              final bool isSelected = _selectedStyleSubTab == 0 
-                  ? _selectedUsernameFont == font
-                  : _selectedHandleFont == font;
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  label: Text(
-                    font.displayName,
-                    style: TextStyle(
-                      fontFamily: font.family,
-                      fontWeight: font.weight,
-                      fontStyle: font.style,
-                      color: isSelected ? Colors.white : Colors.black87,
-                      fontSize: 12,
-                    ),
-                  ),
-                  selected: isSelected,
-                  showCheckmark: false,
-                  onSelected: (val) {
-                    setState(() {
-                      if (_selectedStyleSubTab == 0) {
-                        _selectedUsernameFont = font;
-                      } else {
-                        _selectedHandleFont = font;
-                      }
-                    });
-                    _triggerAutoSave();
-                  },
-                  selectedColor: AppColors.primary,
-                  backgroundColor: Colors.grey.shade100,
-                  checkmarkColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-                ),
-              );
-            },
-          ),
+        HorizontalFontSelector(
+          selectedFont: _selectedStyleSubTab == 0 ? _selectedUsernameFont : _selectedHandleFont,
+          onFontSelected: (font) {
+            setState(() {
+              if (_selectedStyleSubTab == 0) {
+                _selectedUsernameFont = font;
+              } else {
+                _selectedHandleFont = font;
+              }
+            });
+            _triggerAutoSave();
+          },
         ),
       ],
     );

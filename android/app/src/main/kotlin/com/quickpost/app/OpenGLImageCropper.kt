@@ -100,14 +100,14 @@ class OpenGLImageCropper(private val context: Context) {
             buffer.rewind()
             croppedBitmap.copyPixelsFromBuffer(buffer)
             
-            // GLES reads bottom-up, so we need to flip the bitmap vertically
-            val flippedBitmap = flipBitmapVertically(croppedBitmap)
-            croppedBitmap.recycle()
-
+            // GLES reads bottom-up, and our texture mapping (V=0 at bottom-left of screen) 
+            // means bottom of screen is top of image. Thus, buffer row 0 is top of image.
+            // No vertical flip is necessary.
+            
             FileOutputStream(outputPath).use { out ->
-                flippedBitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+                croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
             }
-            flippedBitmap.recycle()
+            croppedBitmap.recycle()
             
             GLES20.glDeleteTextures(1, intArrayOf(textureId), 0)
             return true
@@ -140,7 +140,7 @@ class OpenGLImageCropper(private val context: Context) {
         // Image Y is top-down, GLES Texture is bottom-up (but Bitmaps are often uploaded flipped)
         // For static textures, we calculate normalized UVs.
         val nX = cX.toFloat() / inW.toFloat()
-        val nY = 1.0f - (cY.toFloat() + cH.toFloat()) / inH.toFloat()
+        val nY = cY.toFloat() / inH.toFloat()
         val nW = cW.toFloat() / inW.toFloat()
         val nH = cH.toFloat() / inH.toFloat()
 

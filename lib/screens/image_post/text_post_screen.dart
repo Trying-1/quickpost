@@ -1529,44 +1529,19 @@ class _TextPostScreenState extends State<TextPostScreen> with WidgetsBindingObse
           style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54),
         ),
         const SizedBox(height: 8),
-        SizedBox(
-          height: 40,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: getAllFonts().length,
-            itemBuilder: (context, index) {
-              final font = getAllFonts()[index];
-              final isSelected = _selectedTextIndex == -1 
-                  ? _selectedFont == font 
-                  : (_selectedTextIndex < _textOverlays.length && _textOverlays[_selectedTextIndex].font?.family == font.family);
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  selected: isSelected,
-                  label: Text(
-                    font.displayName,
-                    style: TextStyle(
-                      fontFamily: font.family,
-                      fontWeight: font.weight ?? FontWeight.w400,
-                      fontStyle: font.style ?? FontStyle.normal,
-                      fontSize: 12,
-                    ),
-                  ),
-                  selectedColor: Colors.green[100],
-                  backgroundColor: Colors.grey[100],
-                  onSelected: (_) {
-                    setState(() {
-                      if (_selectedTextIndex == -1) {
-                        _selectedFont = font;
-                      } else {
-                        _textOverlays[_selectedTextIndex].font = font;
-                      }
-                    });
-                  },
-                ),
-              );
-            },
-          ),
+        HorizontalFontSelector(
+          selectedFont: _selectedTextIndex == -1 
+              ? _selectedFont 
+              : (_selectedTextIndex < _textOverlays.length ? _textOverlays[_selectedTextIndex].font : null),
+          onFontSelected: (font) {
+            setState(() {
+              if (_selectedTextIndex == -1) {
+                _selectedFont = font;
+              } else if (_selectedTextIndex < _textOverlays.length) {
+                _textOverlays[_selectedTextIndex].font = font;
+              }
+            });
+          },
         ),
       ],
     );

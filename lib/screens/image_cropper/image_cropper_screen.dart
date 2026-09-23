@@ -16,10 +16,12 @@ import '../../services/ad_service.dart';
 
 class ImageCropperScreen extends StatefulWidget {
   final List<String>? sharedImagePaths;
+  final bool returnResultOnCrop;
 
   const ImageCropperScreen({
     super.key,
     this.sharedImagePaths,
+    this.returnResultOnCrop = false,
   });
 
   @override
@@ -554,7 +556,11 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
 
       if (results != null && results.isNotEmpty) {
         final path = results.first as String;
-        _showSingleCropSuccessDialog(path, duration);
+        if (widget.returnResultOnCrop) {
+          Navigator.pop(context, path);
+        } else {
+          _showSingleCropSuccessDialog(path, duration);
+        }
       }
       
     } catch (e) {

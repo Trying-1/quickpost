@@ -17,6 +17,7 @@ import '../cover_image/cover_image_screen.dart';
 import '../font_library/font_library_screen.dart';
 import '../../config/app_theme.dart';
 import '../../services/analytics_service.dart';
+import '../background_remover/background_remover_screen.dart';
 import 'home_screen.dart';
 class HomeShellScreen extends StatefulWidget {
   final List<String>? sharedImagePaths;
@@ -201,6 +202,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
             const ProfileScreen(),
             ImagePostMakerScreen(sharedImagePaths: _currentBottomNavIndex == 14 ? _currentPaths : null),
             FontLibraryScreen(isActive: _currentBottomNavIndex == 15),
+            BackgroundRemoverScreen(sharedImagePaths: _currentBottomNavIndex == 16 ? _currentPaths : null),
           ],
         ),
         bottomNavigationBar: Column(
@@ -238,6 +240,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
             _buildNavItem(13, Icons.person, 'Profile'),
             _buildNavItem(14, Icons.add_photo_alternate, 'Image Post'),
             _buildNavItem(15, Icons.font_download, 'My Fonts'),
+            _buildNavItem(16, Icons.layers_clear, 'BG Remover'),
                   ],
                 ),
               ),
@@ -281,7 +284,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         final screenNames = [
           'Dashboard', 'Video Cropper', 'Watermark', 'Captions', 'Video Text', 
           'Post Maker', 'My Quotes', 'Image Cropper', 'Image to Video', 
-          'Text Box', 'My Audios', 'Automation', 'Cover Image', 'Profile', 'Image Post Maker', 'My Fonts'
+          'Text Box', 'My Audios', 'Automation', 'Cover Image', 'Profile', 'Image Post Maker', 'My Fonts', 'BG Remover'
         ];
         if (index < screenNames.length) {
           AnalyticsService().setCurrentScreen(screenName: screenNames[index]);

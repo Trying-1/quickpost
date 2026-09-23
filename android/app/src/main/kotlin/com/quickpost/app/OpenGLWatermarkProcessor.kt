@@ -216,7 +216,10 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         val scale: Float,
         val lineHeight: Float,
         val letterSpacing: Float,
-        val wordSpacing: Float
+        val wordSpacing: Float,
+        val strokeWidth: Float,
+        val strokeColor: String,
+        val strokeOnly: Boolean
     )
 
     data class ImageOverlay(
@@ -345,7 +348,10 @@ class OpenGLWatermarkProcessor(private val context: Context) {
                 scale = (t["scale"] as? Number)?.toFloat() ?: 1.0f,
                 lineHeight = (t["lineHeight"] as? Number)?.toFloat() ?: 1.2f,
                 letterSpacing = (t["letterSpacing"] as? Number)?.toFloat() ?: 0.0f,
-                wordSpacing = (t["wordSpacing"] as? Number)?.toFloat() ?: 0.0f
+                wordSpacing = (t["wordSpacing"] as? Number)?.toFloat() ?: 0.0f,
+                strokeWidth = (t["strokeWidth"] as? Number)?.toFloat() ?: 0.0f,
+                strokeColor = t["strokeColor"] as? String ?: "#000000",
+                strokeOnly = t["strokeOnly"] as? Boolean ?: false
             )
         }
 
@@ -1567,7 +1573,39 @@ class OpenGLWatermarkProcessor(private val context: Context) {
             
             canvas.save()
             canvas.translate(t.x + offsetX, t.y + offsetY)
-            staticLayout.draw(canvas)
+            
+            if (t.strokeWidth > 0f) {
+                val prevStyle = textPaint.style
+                val prevColor = textPaint.color
+                val prevStrokeWidth = textPaint.strokeWidth
+                
+                // Draw Stroke
+                textPaint.style = Paint.Style.STROKE
+                textPaint.strokeWidth = t.strokeWidth
+                textPaint.strokeJoin = Paint.Join.ROUND
+                textPaint.color = try { Color.parseColor(t.strokeColor) } catch (_: Exception) { Color.BLACK }
+                textPaint.clearShadowLayer()
+                staticLayout.draw(canvas)
+                
+                if (!t.strokeOnly) {
+                    // Restore Fill and draw
+                    textPaint.style = Paint.Style.FILL
+                    textPaint.color = prevColor
+                    textPaint.strokeWidth = 0f
+                    if (t.showShadow) {
+                       val shadowColorMapped = try { Color.parseColor(t.shadowColor) } catch (_: Exception) { Color.BLACK }
+                       textPaint.setShadowLayer(t.shadowBlur, t.shadowOffsetX, t.shadowOffsetY, shadowColorMapped)
+                    }
+                    staticLayout.draw(canvas)
+                }
+                
+                // Restore original style
+                textPaint.style = prevStyle
+                textPaint.strokeWidth = prevStrokeWidth
+            } else {
+                staticLayout.draw(canvas)
+            }
+            
             canvas.restore()
         }
         

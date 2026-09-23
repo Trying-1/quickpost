@@ -196,3 +196,8 @@ htmlcov/
 windsurf-diagnostics.txt
 ripplelogic_reference.dart
 error.txt
+
+# Scratch and test files
+scratch/
+test.dart
+log.txt

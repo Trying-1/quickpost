@@ -1,9 +1,10 @@
-import '../config/app_theme.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../config/app_theme.dart';
 import 'custom_font_manager.dart';
 
 class FontInfo {
@@ -179,8 +180,34 @@ class FontSelector extends StatefulWidget {
 
 class _FontSelectorState extends State<FontSelector> {
   FontInfo? _hoveredFont;
-
   bool _isImporting = false;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  List<String> _recentFontFamilies = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRecents();
+  }
+
+  Future<void> _loadRecents() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _recentFontFamilies = prefs.getStringList('recent_fonts') ?? [];
+    });
+  }
+
+  Future<void> _saveRecent(FontInfo font) async {
+    final prefs = await SharedPreferences.getInstance();
+    final recents = prefs.getStringList('recent_fonts') ?? [];
+    recents.remove(font.family);
+    recents.insert(0, font.family);
+    if (recents.length > 5) {
+      recents.removeLast();
+    }
+    await prefs.setStringList('recent_fonts', recents);
+  }
 
   Future<void> _importCustomFont() async {
     setState(() => _isImporting = true);
@@ -243,19 +270,42 @@ class _FontSelectorState extends State<FontSelector> {
   @override
   Widget build(BuildContext context) {
     final customFonts = CustomFontManager().fonts;
-    final allFonts = <dynamic>[]; // Mix of FontInfo and section markers
+    final allFonts = <dynamic>[]; 
     
-    // Custom fonts first (if any)
-    if (customFonts.isNotEmpty) {
-      allFonts.add('__custom_header__');
-      for (final entry in customFonts) {
-        allFonts.add(entry);
+    final customFontInfos = customFonts.map((e) => FontInfo(
+      family: e.familyName,
+      displayName: e.displayName,
+      isCustom: true,
+      filePath: e.filePath,
+    )).toList();
+    
+    final allAvailableFonts = [...customFontInfos, ...FontInfo.availableFonts];
+    
+    final filteredFonts = allAvailableFonts.where((f) => 
+        f.displayName.toLowerCase().contains(_searchQuery.toLowerCase()) || 
+        f.family.toLowerCase().contains(_searchQuery.toLowerCase())
+    ).toList();
+
+    if (_searchQuery.isNotEmpty) {
+      allFonts.addAll(filteredFonts);
+    } else {
+      if (_recentFontFamilies.isNotEmpty) {
+        allFonts.add('__recent_header__');
+        for (final family in _recentFontFamilies) {
+          try {
+            allFonts.add(allAvailableFonts.firstWhere((f) => f.family == family));
+          } catch (_) {}
+        }
       }
+      
+      if (customFonts.isNotEmpty) {
+        allFonts.add('__custom_header__');
+        allFonts.addAll(customFonts);
+      }
+      
       allFonts.add('__builtin_header__');
+      allFonts.addAll(FontInfo.availableFonts);
     }
-    // Built-in fonts
-    final fonts = FontInfo.availableFonts;
-    allFonts.addAll(fonts);
 
     final double maxHeight = MediaQuery.of(context).size.height * 0.8;
     return SafeArea(
@@ -318,6 +368,39 @@ class _FontSelectorState extends State<FontSelector> {
                     ],
                   ),
                 ),
+                // Search Bar
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (val) => setState(() => _searchQuery = val),
+                    decoration: InputDecoration(
+                      hintText: 'Search fonts...',
+                      prefixIcon: const Icon(Icons.search, size: 20),
+                      suffixIcon: _searchQuery.isNotEmpty 
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 20), 
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = '');
+                            })
+                        : null,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: AppColors.primary),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                    ),
+                  ),
+                ),
                 // Live Preview
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -374,6 +457,18 @@ class _FontSelectorState extends State<FontSelector> {
                       final item = allFonts[index];
                       
                       // Section headers
+                      if (item == '__recent_header__') {
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                          child: Row(
+                            children: [
+                              Icon(Icons.history, size: 14, color: AppColors.primary),
+                              const SizedBox(width: 6),
+                              Text('RECENT FONTS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primary, letterSpacing: 1)),
+                            ],
+                          ),
+                        );
+                      }
                       if (item == '__custom_header__') {
                         return Padding(
                           padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
@@ -438,6 +533,7 @@ class _FontSelectorState extends State<FontSelector> {
                               ],
                             ),
                             onTap: () {
+                              _saveRecent(font);
                               widget.onFontSelected(font);
                               Navigator.of(context).pop();
                             },
@@ -487,6 +583,7 @@ class _FontSelectorState extends State<FontSelector> {
                                 ? const Icon(Icons.check, color: AppColors.primary)
                                 : null,
                             onTap: () {
+                              _saveRecent(font);
                               widget.onFontSelected(font);
                               Navigator.of(context).pop();
                             },
@@ -572,7 +669,7 @@ class FontSelectorButton extends StatelessWidget {
   }
 }
 
-class HorizontalFontSelector extends StatelessWidget {
+class HorizontalFontSelector extends StatefulWidget {
   final FontInfo? selectedFont;
   final Function(FontInfo) onFontSelected;
 
@@ -583,22 +680,125 @@ class HorizontalFontSelector extends StatelessWidget {
   });
 
   @override
+  State<HorizontalFontSelector> createState() => _HorizontalFontSelectorState();
+}
+
+class _HorizontalFontSelectorState extends State<HorizontalFontSelector> {
+  List<String> _recentFontFamilies = [];
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRecents();
+  }
+
+  Future<void> _loadRecents() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _recentFontFamilies = prefs.getStringList('recent_fonts') ?? [];
+    });
+  }
+
+  Future<void> _saveRecent(FontInfo font) async {
+    final prefs = await SharedPreferences.getInstance();
+    final recents = prefs.getStringList('recent_fonts') ?? [];
+    recents.remove(font.family);
+    recents.insert(0, font.family);
+    if (recents.length > 10) {
+      recents.removeLast();
+    }
+    await prefs.setStringList('recent_fonts', recents);
+    _loadRecents();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final List<FontInfo> allFonts = getAllFonts();
     final customFonts = allFonts.where((f) => f.isCustom).toList();
     final builtinFonts = allFonts.where((f) => !f.isCustom).toList();
+    
+    final recents = <FontInfo>[];
+    for (final family in _recentFontFamilies) {
+      try {
+        recents.add(allFonts.firstWhere((f) => f.family == family));
+      } catch (_) {}
+    }
+
+    final filteredCustomFonts = customFonts.where((f) => 
+        f.displayName.toLowerCase().contains(_searchQuery.toLowerCase()) || 
+        f.family.toLowerCase().contains(_searchQuery.toLowerCase())
+    ).toList();
+    final filteredBuiltinFonts = builtinFonts.where((f) => 
+        f.displayName.toLowerCase().contains(_searchQuery.toLowerCase()) || 
+        f.family.toLowerCase().contains(_searchQuery.toLowerCase())
+    ).toList();
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (customFonts.isNotEmpty) ...[
-          _buildTinyHeader('YOUR FONTS'),
-          _buildRow(customFonts),
-          const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: SizedBox(
+            height: 36,
+            child: TextField(
+              controller: _searchController,
+              onChanged: (val) => setState(() => _searchQuery = val),
+              style: const TextStyle(fontSize: 13),
+              decoration: InputDecoration(
+                hintText: 'Search fonts...',
+                prefixIcon: const Icon(Icons.search, size: 16),
+                suffixIcon: _searchQuery.isNotEmpty 
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, size: 16), 
+                      padding: EdgeInsets.zero,
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      })
+                  : null,
+                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  borderSide: const BorderSide(color: AppColors.primary),
+                ),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+          ),
+        ),
+        if (_searchQuery.isEmpty) ...[
+          _buildTinyHeader('RECENT FONTS'),
+          if (recents.isNotEmpty)
+            _buildRow(recents)
+          else
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Text('No recent fonts yet', style: TextStyle(fontSize: 11, color: Colors.grey[400])),
+            ),
+          const SizedBox(height: 8),
         ],
-        _buildTinyHeader('APP FONTS'),
-        _buildRow(builtinFonts),
+
+        if (filteredCustomFonts.isNotEmpty) ...[
+          _buildTinyHeader(_searchQuery.isEmpty ? 'YOUR FONTS' : 'YOUR FONTS (${filteredCustomFonts.length})'),
+          _buildRow(filteredCustomFonts),
+          const SizedBox(height: 8),
+        ],
+        if (filteredBuiltinFonts.isNotEmpty) ...[
+          _buildTinyHeader(_searchQuery.isEmpty ? 'APP FONTS' : 'APP FONTS (${filteredBuiltinFonts.length})'),
+          _buildRow(filteredBuiltinFonts),
+        ],
       ],
     );
   }
@@ -628,7 +828,7 @@ class HorizontalFontSelector extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10),
         itemBuilder: (context, index) {
           final font = fonts[index];
-          final isSelected = selectedFont == font;
+          final isSelected = widget.selectedFont == font;
           return ChoiceChip(
             label: Text(
               font.displayName,
@@ -641,8 +841,12 @@ class HorizontalFontSelector extends StatelessWidget {
               ),
             ),
             selected: isSelected,
+            showCheckmark: false,
             onSelected: (val) {
-              if (val) onFontSelected(font);
+              if (val) {
+                _saveRecent(font);
+                widget.onFontSelected(font);
+              }
             },
             backgroundColor: Colors.grey[100],
             selectedColor: AppColors.primaryLight,
