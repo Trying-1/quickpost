@@ -131,15 +131,15 @@ class _TutorialsScreenState extends State<TutorialsScreen> with SingleTickerProv
       children: [
         _buildYouTubeHeader(),
         _buildGuideCard(
-          title: '⚡ High-Speed Batch Automation',
+          title: '⚡ High-Speed Batch Media Padding',
           description: 'Process hundreds of social media posts concurrently on GPU.',
           steps: [
-            'Open Batch Automation from the tools dashboard.',
+            'Open Media Padding from the tools dashboard.',
             'Choose your target templates, watermark configs, or text designs.',
             'Queue multiple videos/images simultaneously from your folders.',
             'Tap Execute Pipeline to process all items concurrently.'
           ],
-          ctaText: 'Start Automation ⚡',
+          ctaText: 'Start Media Padding ⚡',
           tabIndex: 10,
           color: primary,
         ),
@@ -193,7 +193,7 @@ class _TutorialsScreenState extends State<TutorialsScreen> with SingleTickerProv
         const SizedBox(height: 16),
         _buildFaqCard(
           q: 'How do I maximize my Reels reach?',
-          a: 'Always use vertical 9:16 aspect ratios. The Instagram and TikTok algorithms heavily deprioritize horizontal views. Keep your hook text visible in the top third of the frame.',
+          a: 'Always use vertical 9:16 aspect ratios. Social feed algorithms heavily prioritize vertical full-screen views over horizontal crops. Keep your hook text visible in the top third of the frame.',
         ),
         const SizedBox(height: 12),
         _buildFaqCard(

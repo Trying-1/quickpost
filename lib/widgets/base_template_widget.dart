@@ -33,7 +33,7 @@ class TemplateViewController {
   }
 }
 
-class InstagramPostTemplate extends StatefulWidget {
+class SocialPostTemplate extends StatefulWidget {
   final String text;
   final File? image;
   final List<File?>? gridImages; // For 2x2 grid layout
@@ -61,7 +61,7 @@ class InstagramPostTemplate extends StatefulWidget {
   final VoidCallback? onImageLoaded;
   final bool showPlaceholder;
 
-  const InstagramPostTemplate({
+  const SocialPostTemplate({
     super.key,
     required this.text,
     this.image,
@@ -92,10 +92,10 @@ class InstagramPostTemplate extends StatefulWidget {
   });
 
   @override
-  State<InstagramPostTemplate> createState() => _InstagramPostTemplateState();
+  State<SocialPostTemplate> createState() => _SocialPostTemplateState();
 }
 
-class _InstagramPostTemplateState extends State<InstagramPostTemplate> {
+class _SocialPostTemplateState extends State<SocialPostTemplate> {
   double _scale = 1.0;
   double _baseScale = 1.0;
   Offset _offset = Offset.zero;
@@ -122,7 +122,7 @@ class _InstagramPostTemplateState extends State<InstagramPostTemplate> {
   }
 
   @override
-  void didUpdateWidget(InstagramPostTemplate oldWidget) {
+  void didUpdateWidget(SocialPostTemplate oldWidget) {
     super.didUpdateWidget(oldWidget);
     
     // Sync with controller if values changed
@@ -529,7 +529,7 @@ class TemplatePreview extends StatelessWidget {
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.all(8.0),
-        child: InstagramPostTemplate(
+        child: SocialPostTemplate(
           text: text,
           image: image,
           width: 200,

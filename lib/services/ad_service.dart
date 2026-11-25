@@ -1,5 +1,6 @@
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../config/ad_config.dart';
 import 'subscription_service.dart';
 
@@ -8,12 +9,15 @@ class AdService {
   factory AdService() => _instance;
   AdService._internal();
 
+  static const String _keyLastAppOpenShownTime = 'last_app_open_shown_ms';
+
   InterstitialAd? _interstitialAd;
   AppOpenAd? _appOpenAd;
   bool _isInterstitialAdLoading = false;
   bool _isAppOpenAdLoading = false;
   DateTime? _appOpenLoadTime;
   DateTime? _lastInterstitialShownTime;
+  DateTime? _lastAppOpenShownTime;
   
   // Track if any ad is currently showing to prevent overlaps/multiple ads showing
   bool isShowingAd = false;
@@ -33,7 +37,37 @@ class AdService {
   String get _interstitialAdUnitId => AdConfig.interstitialAdUnitId;
   String get _appOpenAdUnitId => AdConfig.appOpenAdUnitId;
 
+  /// Checks if the 10-minute cooldown interval for App Open ads is active
+  bool get _isAppOpenCooldownActive {
+    if (_lastAppOpenShownTime == null) return false;
+    final elapsed = DateTime.now().difference(_lastAppOpenShownTime!);
+    if (elapsed.isNegative) return false;
+    return elapsed < AdConfig.appOpenCooldown;
+  }
+
+  /// Persists and updates the last App Open ad shown timestamp
+  void _recordAppOpenAdShown() {
+    final now = DateTime.now();
+    _lastAppOpenShownTime = now;
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setInt(_keyLastAppOpenShownTime, now.millisecondsSinceEpoch);
+    }).catchError((e) {
+      debugPrint('AdService: Failed to persist $_keyLastAppOpenShownTime: $e');
+    });
+  }
+
   Future<void> initialize() async {
+    // Load persisted last App Open ad timestamp to enforce 10-minute limit across app restarts
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastMs = prefs.getInt(_keyLastAppOpenShownTime);
+      if (lastMs != null) {
+        _lastAppOpenShownTime = DateTime.fromMillisecondsSinceEpoch(lastMs);
+      }
+    } catch (e) {
+      debugPrint('AdService: Error reading last app open ad time: $e');
+    }
+
     if (!AdConfig.adsEnabled || SubscriptionService.isProActive) {
       debugPrint('AdService: Ads are globally disabled or Pro subscription is active.');
       return;
@@ -118,7 +152,7 @@ class AdService {
 
   // App Open Ad
   void loadAppOpenAd() {
-    if (!AdConfig.adsEnabled || SubscriptionService.isProActive) return;
+    if (!AdConfig.adsEnabled || !AdConfig.appOpenAdsEnabled || SubscriptionService.isProActive) return;
     if (_isAppOpenAdLoading || _appOpenAd != null) return;
     _isAppOpenAdLoading = true;
     debugPrint('Loading AppOpenAd: $_appOpenAdUnitId');
@@ -136,12 +170,16 @@ class AdService {
           // On cold startup, show as soon as loaded (if requested & startup window is still fresh)
           if (_showAdOnLoad) {
             _showAdOnLoad = false;
-            final timeSinceStartup = DateTime.now().difference(_appStartupTime).inSeconds;
-            if (timeSinceStartup < 7) {
-              debugPrint('Showing AppOpenAd on cold launch ($timeSinceStartup seconds since startup)...');
-              showAppOpenAdIfAvailable();
+            if (_isAppOpenCooldownActive) {
+              debugPrint('AppOpenAd loaded, but 10-minute cooldown limit active. Skipping display.');
+              return;
+            }
+            final elapsed = DateTime.now().difference(_appStartupTime);
+            if (AdConfig.showAppOpenOnColdStart && elapsed < AdConfig.coldStartAdTimeout) {
+              debugPrint('Showing AppOpenAd on cold launch (${elapsed.inSeconds}s since startup)...');
+              showAppOpenAdIfAvailable(isColdStart: true);
             } else {
-              debugPrint('AppOpenAd loaded, but cold launch window expired ($timeSinceStartup seconds since startup).');
+              debugPrint('AppOpenAd loaded, but cold launch window expired (${elapsed.inSeconds}s since startup).');
             }
           }
         },
@@ -162,10 +200,61 @@ class AdService {
     return DateTime.now().difference(_appOpenLoadTime!).inHours < 4;
   }
 
-  void showAppOpenAdIfAvailable() {
-    if (!AdConfig.adsEnabled || SubscriptionService.isProActive) return;
+  /// Triggers App Open ad specifically for fresh app launch (cold start)
+  void showAppOpenAdOnColdStart() {
+    if (!AdConfig.adsEnabled || !AdConfig.appOpenAdsEnabled || !AdConfig.showAppOpenOnColdStart || SubscriptionService.isProActive) {
+      debugPrint('AppOpenAd on cold start skipped: disabled in AdConfig or Pro active.');
+      return;
+    }
+
+    if (_isAppOpenCooldownActive) {
+      final elapsed = DateTime.now().difference(_lastAppOpenShownTime!);
+      final remaining = AdConfig.appOpenCooldown - elapsed;
+      debugPrint('AppOpenAd on cold start skipped: 10-minute limit active (${elapsed.inMinutes}m ${elapsed.inSeconds % 60}s elapsed, ${remaining.inMinutes}m ${remaining.inSeconds % 60}s remaining).');
+      return;
+    }
+
+    if (_isAppOpenAdAvailable) {
+      showAppOpenAdIfAvailable(isColdStart: true);
+    } else {
+      debugPrint('AppOpenAd not loaded yet on cold start. Requesting show on load.');
+      _showAdOnLoad = true;
+      loadAppOpenAd();
+    }
+  }
+
+  /// Triggers App Open ad when resuming from background
+  void showAppOpenAdOnResume() {
+    if (!AdConfig.adsEnabled || !AdConfig.appOpenAdsEnabled || !AdConfig.showAppOpenOnResume || SubscriptionService.isProActive) {
+      debugPrint('AppOpenAd on resume skipped: disabled in AdConfig or Pro active.');
+      return;
+    }
+
+    if (_isAppOpenCooldownActive) {
+      final elapsed = DateTime.now().difference(_lastAppOpenShownTime!);
+      final remaining = AdConfig.appOpenCooldown - elapsed;
+      debugPrint('AppOpenAd on resume skipped: 10-minute limit active (${elapsed.inMinutes}m ${elapsed.inSeconds % 60}s elapsed, ${remaining.inMinutes}m ${remaining.inSeconds % 60}s remaining).');
+      return;
+    }
+
+    showAppOpenAdIfAvailable(isColdStart: false);
+  }
+
+  void showAppOpenAdIfAvailable({bool isColdStart = false}) {
+    if (!AdConfig.adsEnabled || !AdConfig.appOpenAdsEnabled || SubscriptionService.isProActive) return;
+    if (isColdStart && !AdConfig.showAppOpenOnColdStart) return;
+    if (!isColdStart && !AdConfig.showAppOpenOnResume) return;
+
     if (isShowingAd) {
       debugPrint('AppOpenAd skipped: Another ad is currently showing.');
+      return;
+    }
+
+    // 10-minute frequency limit check
+    if (_isAppOpenCooldownActive) {
+      final elapsed = DateTime.now().difference(_lastAppOpenShownTime!);
+      final remaining = AdConfig.appOpenCooldown - elapsed;
+      debugPrint('AppOpenAd skipped: 10-minute limit active (${elapsed.inMinutes}m ${elapsed.inSeconds % 60}s elapsed, ${remaining.inMinutes}m ${remaining.inSeconds % 60}s remaining).');
       return;
     }
     
@@ -178,9 +267,8 @@ class AdService {
       }
     }
 
-    // App Pause Duration Check: Only show App Open if the app was actually in the background for a substantial time (e.g. at least 10 seconds)
-    // This perfectly prevents showing App Open ads when returning from choosing videos/images or simple overlay permissions dialogs!
-    if (_lastPausedTime != null) {
+    // App Pause Duration Check (only relevant for resume, not cold start)
+    if (!isColdStart && _lastPausedTime != null) {
       final timePaused = DateTime.now().difference(_lastPausedTime!);
       _lastPausedTime = null; // Clear to prevent double triggering
       if (timePaused < const Duration(seconds: 10)) {
@@ -191,20 +279,25 @@ class AdService {
 
     if (!_isAppOpenAdAvailable) {
       debugPrint('AppOpenAd not available (null or expired). Requesting show on load.');
-      _showAdOnLoad = true;
+      if (isColdStart) {
+        _showAdOnLoad = true;
+      }
       loadAppOpenAd();
       return;
     }
 
-    debugPrint('Showing AppOpenAd...');
+    debugPrint('Showing AppOpenAd (coldStart: $isColdStart)...');
+    _recordAppOpenAdShown();
     _appOpenAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdShowedFullScreenContent: (ad) {
         isShowingAd = true;
+        _recordAppOpenAdShown();
       },
       onAdDismissedFullScreenContent: (ad) {
         debugPrint('AppOpenAd dismissed');
         isShowingAd = false;
         _lastAdDismissedTime = DateTime.now();
+        _recordAppOpenAdShown();
         _appOpenAd = null;
         loadAppOpenAd();
       },

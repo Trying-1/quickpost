@@ -1,10 +1,10 @@
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../screens/video_cropper/video_cropper_screen.dart';
+import '../models/user_crop_setting.dart';
 
 class VideoCropEditor extends StatefulWidget {
   final File videoFile;
@@ -29,6 +29,10 @@ class VideoCropEditor extends StatefulWidget {
   void fitToFrame(GlobalKey<VideoCropEditorState> key) => key.currentState?.fitToFrame();
   void resetPosition(GlobalKey<VideoCropEditorState> key) => key.currentState?.resetPosition();
   void pauseVideo(GlobalKey<VideoCropEditorState> key) => key.currentState?.pauseVideo();
+  NormalizedCropRect? getCurrentNormalizedCrop(GlobalKey<VideoCropEditorState> key) =>
+      key.currentState?.getCurrentNormalizedCrop();
+  void applyCropSetting(GlobalKey<VideoCropEditorState> key, UserCropSetting setting) =>
+      key.currentState?.applyCropSetting(setting);
 
   @override
   VideoCropEditorState createState() => VideoCropEditorState();
@@ -41,6 +45,14 @@ class VideoCropEditorState extends State<VideoCropEditor> with WidgetsBindingObs
 
   // Aspect ratio presets (matching Image Cropper)
   String? _selectedAspectRatio = 'free';
+  double? _customRatioValue;
+
+  double? get _activeRatioValue {
+    if (_customRatioValue != null) return _customRatioValue;
+    if (_selectedAspectRatio == null || _selectedAspectRatio == 'free') return null;
+    return _aspectRatios[_selectedAspectRatio]?['ratio'] as double?;
+  }
+
   static const Map<String, Map<String, dynamic>> _aspectRatios = {
     'free': {'name': 'Free', 'ratio': null, 'icon': Icons.crop_free},
     '1:1': {'name': '1:1', 'ratio': 1.0, 'icon': Icons.crop_square},
@@ -121,9 +133,7 @@ class VideoCropEditorState extends State<VideoCropEditor> with WidgetsBindingObs
     }
 
     // Initialize crop area to center (~80% of video) and respect aspect ratio
-    final dynamic ratioValue = _selectedAspectRatio == null || _selectedAspectRatio == 'free'
-        ? null
-        : _aspectRatios[_selectedAspectRatio!]!['ratio'];
+    final dynamic ratioValue = _activeRatioValue;
 
     if (ratioValue == null) {
       // Free
@@ -263,9 +273,7 @@ class VideoCropEditorState extends State<VideoCropEditor> with WidgetsBindingObs
         bool isBottomLeft = (startPos.dx - _cropX).abs() < handleSize && (startPos.dy - (_cropY + _cropHeight)).abs() < handleSize;
         bool isBottomRight = (startPos.dx - (_cropX + _cropWidth)).abs() < handleSize && (startPos.dy - (_cropY + _cropHeight)).abs() < handleSize;
 
-        final dynamic ratioValue = _selectedAspectRatio == null || _selectedAspectRatio == 'free'
-            ? null
-            : _aspectRatios[_selectedAspectRatio!]!['ratio'];
+        final dynamic ratioValue = _activeRatioValue;
 
         if (ratioValue == null) {
           // Free resize from any corner
@@ -376,9 +384,7 @@ class VideoCropEditorState extends State<VideoCropEditor> with WidgetsBindingObs
 
   void fitToFrame() {
     setState(() {
-      final dynamic ratioValue = _selectedAspectRatio == null
-          ? 1.0
-          : _aspectRatios[_selectedAspectRatio!]!['ratio'];
+      final dynamic ratioValue = _activeRatioValue;
 
       if (ratioValue == null) {
         // Free: fill entire display
@@ -406,13 +412,14 @@ class VideoCropEditorState extends State<VideoCropEditor> with WidgetsBindingObs
 
   void _applyAspectRatio(String key) {
     setState(() {
+      _customRatioValue = null;
       if (key == 'free') {
         _selectedAspectRatio = 'free';
       } else {
         _selectedAspectRatio = key;
       }
 
-      final dynamic ratioValue = _aspectRatios[_selectedAspectRatio!]!['ratio'];
+      final dynamic ratioValue = _activeRatioValue;
       if (ratioValue == null) {
         // keep current size
         _updateParentCrop();
@@ -436,6 +443,51 @@ class VideoCropEditorState extends State<VideoCropEditor> with WidgetsBindingObs
       _cropX = (centerX - _cropWidth / 2).clamp(0.0, _videoDisplayWidth - _cropWidth);
       _cropY = (centerY - _cropHeight / 2).clamp(0.0, _videoDisplayHeight - _cropHeight);
 
+      _updateParentCrop();
+    });
+  }
+
+  NormalizedCropRect getCurrentNormalizedCrop() {
+    if (_videoDisplayWidth <= 0 || _videoDisplayHeight <= 0) {
+      return const NormalizedCropRect(x: 0.1, y: 0.1, width: 0.8, height: 0.8);
+    }
+    return NormalizedCropRect(
+      x: (_cropX / _videoDisplayWidth).clamp(0.0, 1.0),
+      y: (_cropY / _videoDisplayHeight).clamp(0.0, 1.0),
+      width: (_cropWidth / _videoDisplayWidth).clamp(0.05, 1.0),
+      height: (_cropHeight / _videoDisplayHeight).clamp(0.05, 1.0),
+    );
+  }
+
+  void applyCropSetting(UserCropSetting setting) {
+    if (_videoDisplayWidth <= 0 || _videoDisplayHeight <= 0) return;
+
+    setState(() {
+      _selectedAspectRatio = setting.id;
+      _customRatioValue = setting.aspectRatio;
+
+      if (setting.isExactFraming && setting.normalizedWidth > 0 && setting.normalizedHeight > 0) {
+        double w = (setting.normalizedWidth * _videoDisplayWidth).clamp(50.0, _videoDisplayWidth);
+        double h = (setting.normalizedHeight * _videoDisplayHeight).clamp(50.0, _videoDisplayHeight);
+        double x = (setting.normalizedX * _videoDisplayWidth).clamp(0.0, _videoDisplayWidth - w);
+        double y = (setting.normalizedY * _videoDisplayHeight).clamp(0.0, _videoDisplayHeight - h);
+        _cropWidth = w;
+        _cropHeight = h;
+        _cropX = x;
+        _cropY = y;
+      } else {
+        final double ratio = setting.aspectRatio;
+        double w = _videoDisplayWidth * 0.85;
+        double h = w / ratio;
+        if (h > _videoDisplayHeight * 0.85) {
+          h = _videoDisplayHeight * 0.85;
+          w = h * ratio;
+        }
+        _cropWidth = w.clamp(50.0, _videoDisplayWidth);
+        _cropHeight = h.clamp(50.0, _videoDisplayHeight);
+        _cropX = ((_videoDisplayWidth - _cropWidth) / 2).clamp(0.0, _videoDisplayWidth - _cropWidth);
+        _cropY = ((_videoDisplayHeight - _cropHeight) / 2).clamp(0.0, _videoDisplayHeight - _cropHeight);
+      }
       _updateParentCrop();
     });
   }

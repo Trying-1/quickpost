@@ -4,12 +4,14 @@ import '../video_cropper/video_cropper_screen.dart';
 import '../image_post/post_maker_screen.dart';
 import '../image_post/post_maker_templates_screen.dart';
 import '../image_post/image_post_maker_screen.dart';
+import '../anime_post/anime_post_maker_screen.dart';
+import '../carousel_post/carousel_post_maker_screen.dart';
 import '../image_cropper/image_cropper_screen.dart';
 import '../video_creator/video_creator_screen.dart';
 import '../audio_library/audio_library_screen_with_folders.dart';
 import '../text_box_overlay/text_box_overlay_screen.dart';
 import '../profile/profile_screen.dart';
-import '../arise_automation/arise_automation_screen.dart';
+import '../mediapadding_automation/automation_screen.dart';
 import '../caption_store/caption_store_screen.dart';
 import '../quotes/my_quotes_screen.dart';
 import '../video_watermark/video_watermark_screen.dart';
@@ -18,13 +20,219 @@ import '../font_library/font_library_screen.dart';
 import '../../config/app_theme.dart';
 import '../../services/analytics_service.dart';
 import '../background_remover/background_remover_screen.dart';
+import '../more_tools/more_tools_screen.dart';
 import 'home_screen.dart';
+
+/// Descriptor for tabs hosted inside [HomeShellScreen].
+class HomeShellTab {
+  final String id;
+  final String label;
+  final IconData icon;
+  final List<String> supportedPurposes;
+  final Widget Function(
+    BuildContext context, {
+    List<String>? paths,
+    String? purpose,
+    bool isActive,
+  }) builder;
+
+  const HomeShellTab({
+    required this.id,
+    required this.label,
+    required this.icon,
+    this.supportedPurposes = const [],
+    required this.builder,
+  });
+}
+
 class HomeShellScreen extends StatefulWidget {
   final List<String>? sharedImagePaths;
   final String? sharedPurpose;
   final int initialIndex;
+  final String? initialTabId;
 
   static final GlobalKey<_HomeShellScreenState> shellKey = GlobalKey<_HomeShellScreenState>();
+
+  /// All content creation & editing feature tabs.
+  /// Any new feature added here will automatically appear before the trailing Profile tab.
+  static final List<HomeShellTab> featureTabs = [
+    HomeShellTab(
+      id: 'dashboard',
+      label: 'Dashboard',
+      icon: Icons.dashboard,
+      builder: (context, {paths, purpose, isActive = false}) => const HomeScreen(),
+    ),
+    HomeShellTab(
+      id: 'video_cropper',
+      label: 'Video Cropper',
+      icon: Icons.video_library,
+      supportedPurposes: ['video_cropper'],
+      builder: (context, {paths, purpose, isActive = false}) =>
+          VideoCropperScreen(sharedVideoPaths: paths, isActive: isActive),
+    ),
+    HomeShellTab(
+      id: 'watermark',
+      label: 'Watermark',
+      icon: Icons.branding_watermark,
+      supportedPurposes: ['watermark'],
+      builder: (context, {paths, purpose, isActive = false}) =>
+          VideoWatermarkScreen(sharedVideoPaths: paths, isActive: isActive),
+    ),
+    HomeShellTab(
+      id: 'captions',
+      label: 'Captions',
+      icon: Icons.closed_caption,
+      supportedPurposes: ['captions'],
+      builder: (context, {paths, purpose, isActive = false}) => const CaptionStoreScreen(),
+    ),
+    HomeShellTab(
+      id: 'anime_post_maker',
+      label: 'Anime Post',
+      icon: Icons.auto_awesome_motion,
+      supportedPurposes: ['anime_post_maker'],
+      builder: (context, {paths, purpose, isActive = false}) =>
+          AnimePostMakerScreen(sharedImagePaths: paths),
+    ),
+    HomeShellTab(
+      id: 'video_text',
+      label: 'Video Text',
+      icon: Icons.movie_filter,
+      supportedPurposes: ['video_text'],
+      builder: (context, {paths, purpose, isActive = false}) =>
+          VideoTextOverlayScreen(sharedVideoPaths: paths, isActive: isActive),
+    ),
+    HomeShellTab(
+      id: 'post_maker',
+      label: 'Post Maker',
+      icon: Icons.create,
+      supportedPurposes: ['single_image_post', 'post_maker_templates'],
+      builder: (context, {paths, purpose, isActive = false}) {
+        if (purpose == 'post_maker_templates') {
+          return PostMakerTemplatesScreen(sharedImagePaths: paths);
+        }
+        if (paths != null && paths.isNotEmpty) {
+          return PostMakerScreen(
+            sharedImagePaths: paths,
+            sharedPurpose: purpose,
+          );
+        }
+        return const PostMakerTemplatesScreen();
+      },
+    ),
+    HomeShellTab(
+      id: 'my_quotes',
+      label: 'My Quotes',
+      icon: Icons.format_quote,
+      builder: (context, {paths, purpose, isActive = false}) => const MyQuotesScreen(),
+    ),
+    HomeShellTab(
+      id: 'image_cropper',
+      label: 'Image Cropper',
+      icon: Icons.crop,
+      supportedPurposes: ['cropper'],
+      builder: (context, {paths, purpose, isActive = false}) =>
+          ImageCropperScreen(sharedImagePaths: paths),
+    ),
+    HomeShellTab(
+      id: 'video_creator',
+      label: 'Image to Video',
+      icon: Icons.video_call,
+      supportedPurposes: ['video_fade_in', 'video_zoom_in'],
+      builder: (context, {paths, purpose, isActive = false}) =>
+          VideoCreatorScreen(sharedImagePaths: paths, sharedPurpose: purpose),
+    ),
+    HomeShellTab(
+      id: 'text_box',
+      label: 'Text Box',
+      icon: Icons.text_fields,
+      supportedPurposes: ['text_box'],
+      builder: (context, {paths, purpose, isActive = false}) =>
+          TextBoxOverlayScreen(sharedImagePaths: paths, isActive: isActive),
+    ),
+    HomeShellTab(
+      id: 'audio_library',
+      label: 'My Audios',
+      icon: Icons.library_music,
+      builder: (context, {paths, purpose, isActive = false}) =>
+          AudioLibraryScreenWithFolders(isActive: isActive),
+    ),
+    HomeShellTab(
+      id: 'media_padding',
+      label: 'Media Padding',
+      icon: Icons.auto_awesome,
+      supportedPurposes: ['media_padding', 'automation'],
+      builder: (context, {paths, purpose, isActive = false}) =>
+          AriseAutomationScreen(sharedPaths: paths, sharedPurpose: purpose),
+    ),
+    HomeShellTab(
+      id: 'cover_image',
+      label: 'Cover Image',
+      icon: Icons.image,
+      builder: (context, {paths, purpose, isActive = false}) => const CoverImageScreen(),
+    ),
+    HomeShellTab(
+      id: 'image_post_maker',
+      label: 'Image Post',
+      icon: Icons.add_photo_alternate,
+      supportedPurposes: ['image_post_maker'],
+      builder: (context, {paths, purpose, isActive = false}) =>
+          ImagePostMakerScreen(sharedImagePaths: paths),
+    ),
+    HomeShellTab(
+      id: 'carousel_post_maker',
+      label: 'Carousel Post',
+      icon: Icons.view_carousel_rounded,
+      supportedPurposes: ['carousel_post_maker'],
+      builder: (context, {paths, purpose, isActive = false}) =>
+          CarouselPostMakerScreen(sharedImagePaths: paths, isActive: isActive),
+    ),
+    HomeShellTab(
+      id: 'font_library',
+      label: 'My Fonts',
+      icon: Icons.font_download,
+      builder: (context, {paths, purpose, isActive = false}) =>
+          FontLibraryScreen(isActive: isActive),
+    ),
+    HomeShellTab(
+      id: 'background_remover',
+      label: 'BG Remover',
+      icon: Icons.layers_clear,
+      builder: (context, {paths, purpose, isActive = false}) =>
+          BackgroundRemoverScreen(sharedImagePaths: paths),
+    ),
+  ];
+
+  /// Dedicated More Tools tab for utilities, creative helpers, and misc micro-features.
+  static final HomeShellTab moreToolsTab = HomeShellTab(
+    id: 'more_tools',
+    label: 'More Tools',
+    icon: Icons.grid_view_rounded,
+    supportedPurposes: ['more_tools'],
+    builder: (context, {paths, purpose, isActive = false}) => const MoreToolsScreen(),
+  );
+
+  /// Dedicated Profile tab definition.
+  static final HomeShellTab profileTab = HomeShellTab(
+    id: 'profile',
+    label: 'Profile',
+    icon: Icons.person,
+    builder: (context, {paths, purpose, isActive = false}) => const ProfileScreen(),
+  );
+
+  /// Dynamically assembled tabs.
+  /// GUARANTEE: [moreToolsTab] is placed right before [profileTab], and [profileTab]
+  /// is ALWAYS dynamically anchored as the very last tab.
+  static List<HomeShellTab> get tabs => [
+    ...featureTabs,
+    moreToolsTab,
+    profileTab,
+  ];
+
+  /// Dynamic index of the Profile tab (always guaranteed to be tabs.length - 1).
+  static int get profileTabIndex => tabs.length - 1;
+
+  /// Helper to lookup index by tab id (e.g. 'profile', 'text_box', 'watermark').
+  static int indexOfTab(String id) => tabs.indexWhere((t) => t.id == id);
 
   static void navigateToTab(int index, {List<String>? paths, String? purpose}) {
     debugPrint('[HomeShellScreen] navigateToTab called: index=$index, paths=$paths, purpose=$purpose');
@@ -37,11 +245,19 @@ class HomeShellScreen extends StatefulWidget {
     }
   }
 
+  static void navigateToTabId(String id, {List<String>? paths, String? purpose}) {
+    final idx = indexOfTab(id);
+    if (idx != -1) {
+      navigateToTab(idx, paths: paths, purpose: purpose);
+    }
+  }
+
   HomeShellScreen({
     Key? key,
     this.sharedImagePaths,
     this.sharedPurpose,
     this.initialIndex = 0,
+    this.initialTabId,
   }) : super(key: key ?? shellKey);
 
   @override
@@ -58,7 +274,12 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
   @override
   void initState() {
     super.initState();
-    _currentBottomNavIndex = widget.initialIndex;
+    if (widget.initialTabId != null) {
+      final idx = HomeShellScreen.indexOfTab(widget.initialTabId!);
+      _currentBottomNavIndex = idx != -1 ? idx : widget.initialIndex;
+    } else {
+      _currentBottomNavIndex = widget.initialIndex;
+    }
     _currentPaths = widget.sharedImagePaths;
     _currentPurpose = widget.sharedPurpose;
     if (_currentPaths != null && _currentPaths!.isNotEmpty) {
@@ -93,16 +314,28 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
   }
 
   void navigateToTab(int index, {List<String>? paths, String? purpose}) {
-    debugPrint('[HomeShellScreen] state.navigateToTab called: index=$index, paths=$paths');
+    int targetIndex = index;
+    if (purpose != null) {
+      final matchedIndex = HomeShellScreen.tabs.indexWhere(
+        (t) => t.supportedPurposes.contains(purpose) || t.id == purpose,
+      );
+      if (matchedIndex != -1) {
+        targetIndex = matchedIndex;
+      }
+    }
+
+    if (targetIndex < 0 || targetIndex >= HomeShellScreen.tabs.length) {
+      targetIndex = 0;
+    }
+
+    debugPrint('[HomeShellScreen] state.navigateToTab resolved: index=$targetIndex, paths=$paths');
     setState(() {
-      _currentBottomNavIndex = index;
+      _currentBottomNavIndex = targetIndex;
       if (paths != null) {
         _currentPaths = List.from(paths);
-        debugPrint('[HomeShellScreen] _currentPaths updated to: $_currentPaths');
       }
       if (purpose != null) {
         _currentPurpose = purpose;
-        debugPrint('[HomeShellScreen] _currentPurpose updated to: $_currentPurpose');
       }
       _stackKey = UniqueKey();
       debugPrint('[HomeShellScreen] _stackKey refreshed to force child rebuild');
@@ -115,43 +348,12 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
 
     if (paths == null || paths.isEmpty) return;
 
+    final matchedIndex = HomeShellScreen.tabs.indexWhere(
+      (t) => t.supportedPurposes.contains(purpose) || t.id == purpose,
+    );
+
     setState(() {
-      switch (purpose) {
-        case 'video_cropper':
-          _currentBottomNavIndex = 1;
-          break;
-        case 'watermark':
-          _currentBottomNavIndex = 2;
-          break;
-        case 'captions':
-          _currentBottomNavIndex = 3;
-          break;
-        case 'video_text':
-          _currentBottomNavIndex = 4;
-          break;
-        case 'single_image_post':
-          _currentBottomNavIndex = 5;
-          break;
-        case 'cropper':
-          _currentBottomNavIndex = 7; 
-          break;
-        case 'video_fade_in':
-        case 'video_zoom_in':
-          _currentBottomNavIndex = 8;
-          break;
-        case 'text_box':
-          _currentBottomNavIndex = 9;
-          break;
-        case 'automation':
-          _currentBottomNavIndex = 11;
-          break;
-        case 'image_post_maker':
-          _currentBottomNavIndex = 14;
-          break;
-        default:
-          _currentBottomNavIndex = 0;
-          break;
-      }
+      _currentBottomNavIndex = matchedIndex != -1 ? matchedIndex : 0;
     });
   }
 
@@ -185,25 +387,17 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         body: IndexedStack(
           key: _stackKey,
           index: _currentBottomNavIndex,
-          children: [
-            const HomeScreen(),
-            VideoCropperScreen(sharedVideoPaths: _currentBottomNavIndex == 1 ? _currentPaths : null, isActive: _currentBottomNavIndex == 1),
-            VideoWatermarkScreen(sharedVideoPaths: _currentBottomNavIndex == 2 ? _currentPaths : null, isActive: _currentBottomNavIndex == 2),
-            const CaptionStoreScreen(),
-            VideoTextOverlayScreen(sharedVideoPaths: _currentBottomNavIndex == 4 ? _currentPaths : null, isActive: _currentBottomNavIndex == 4),
-            _buildPostMakerTab(),
-            const MyQuotesScreen(),
-            ImageCropperScreen(sharedImagePaths: _currentBottomNavIndex == 7 ? _currentPaths : null),
-            VideoCreatorScreen(sharedImagePaths: _currentBottomNavIndex == 8 ? _currentPaths : null, sharedPurpose: _currentPurpose),
-            TextBoxOverlayScreen(sharedImagePaths: _currentBottomNavIndex == 9 ? _currentPaths : null, isActive: _currentBottomNavIndex == 9),
-            AudioLibraryScreenWithFolders(isActive: _currentBottomNavIndex == 10),
-            AriseAutomationScreen(sharedPaths: _currentBottomNavIndex == 11 ? _currentPaths : null, sharedPurpose: _currentPurpose),
-            const CoverImageScreen(),
-            const ProfileScreen(),
-            ImagePostMakerScreen(sharedImagePaths: _currentBottomNavIndex == 14 ? _currentPaths : null),
-            FontLibraryScreen(isActive: _currentBottomNavIndex == 15),
-            BackgroundRemoverScreen(sharedImagePaths: _currentBottomNavIndex == 16 ? _currentPaths : null),
-          ],
+          children: HomeShellScreen.tabs.asMap().entries.map((entry) {
+            final index = entry.key;
+            final tab = entry.value;
+            final isActive = _currentBottomNavIndex == index;
+            return tab.builder(
+              context,
+              paths: isActive ? _currentPaths : null,
+              purpose: isActive ? _currentPurpose : null,
+              isActive: isActive,
+            );
+          }).toList(),
         ),
         bottomNavigationBar: Column(
           mainAxisSize: MainAxisSize.min,
@@ -223,25 +417,11 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
-                  children: [
-            _buildNavItem(0, Icons.dashboard, 'Dashboard'),
-            _buildNavItem(1, Icons.video_library, 'Video Cropper'),
-            _buildNavItem(2, Icons.branding_watermark, 'Watermark'),
-            _buildNavItem(3, Icons.closed_caption, 'Captions'),
-            _buildNavItem(4, Icons.movie_filter, 'Video Text'),
-            _buildNavItem(5, Icons.create, 'Post Maker'),
-            _buildNavItem(6, Icons.format_quote, 'My Quotes'),
-            _buildNavItem(7, Icons.crop, 'Image Cropper'),
-            _buildNavItem(8, Icons.video_call, 'Image to Video'),
-            _buildNavItem(9, Icons.text_fields, 'Text Box'),
-            _buildNavItem(10, Icons.library_music, 'My Audios'),
-            _buildNavItem(11, Icons.auto_awesome, 'Automation'),
-            _buildNavItem(12, Icons.image, 'Cover Image'),
-            _buildNavItem(13, Icons.person, 'Profile'),
-            _buildNavItem(14, Icons.add_photo_alternate, 'Image Post'),
-            _buildNavItem(15, Icons.font_download, 'My Fonts'),
-            _buildNavItem(16, Icons.layers_clear, 'BG Remover'),
-                  ],
+                  children: HomeShellScreen.tabs.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final tab = entry.value;
+                    return _buildNavItem(index, tab.icon, tab.label);
+                  }).toList(),
                 ),
               ),
             ),
@@ -249,27 +429,6 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         ),
       ),
     );
-  }
-
-  Widget _buildPostMakerTab() {
-    final paths = _currentBottomNavIndex == 5 ? _currentPaths : null;
-    final purpose = _currentBottomNavIndex == 5 ? _currentPurpose : null;
-
-    // When the app is opened via share intent or deep link with images,
-    // route into the appropriate post maker template via PostMakerScreen.
-    if (purpose == 'post_maker_templates') {
-      return PostMakerTemplatesScreen(sharedImagePaths: paths);
-    }
-
-    if (paths != null && paths.isNotEmpty) {
-      return PostMakerScreen(
-        sharedImagePaths: paths,
-        sharedPurpose: purpose,
-      );
-    }
-
-    // Normal in-app usage: show the template picker grid.
-    return const PostMakerTemplatesScreen();
   }
 
   Widget _buildNavItem(int index, IconData icon, String label) {
@@ -280,15 +439,8 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           _currentBottomNavIndex = index;
         });
         
-        // Log screen view
-        final screenNames = [
-          'Dashboard', 'Video Cropper', 'Watermark', 'Captions', 'Video Text', 
-          'Post Maker', 'My Quotes', 'Image Cropper', 'Image to Video', 
-          'Text Box', 'My Audios', 'Automation', 'Cover Image', 'Profile', 'Image Post Maker', 'My Fonts', 'BG Remover'
-        ];
-        if (index < screenNames.length) {
-          AnalyticsService().setCurrentScreen(screenName: screenNames[index]);
-        }
+        // Log screen view dynamically from label
+        AnalyticsService().setCurrentScreen(screenName: label);
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),

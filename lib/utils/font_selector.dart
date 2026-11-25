@@ -5,6 +5,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_theme.dart';
+import '../services/google_font_service.dart';
+export '../services/google_font_service.dart';
+import '../services/favorite_fonts_manager.dart';
+import '../widgets/google_font_picker_sheet.dart';
 import 'custom_font_manager.dart';
 
 class FontInfo {
@@ -63,41 +67,58 @@ class FontInfo {
   int get hashCode => family.hashCode ^ weight.hashCode ^ style.hashCode;
 
   static FontInfo? getFontByFamily(String family) {
+    if (family.isEmpty) return null;
     try {
-      return getAllFonts().firstWhere((f) => f.family == family);
-    } catch (_) {
-      return null;
+      final all = getAllFonts();
+      for (final f in all) {
+        if (f.family == family || f.displayName == family ||
+            f.family.toLowerCase() == family.toLowerCase() ||
+            f.displayName.toLowerCase() == family.toLowerCase()) {
+          return f;
+        }
+      }
+    } catch (_) {}
+
+    // Fallback direct check in GoogleFontService catalog
+    final gService = GoogleFontService();
+    if (gService.isAsset(family)) {
+      return FontInfo(
+        family: family,
+        displayName: family,
+        isCustom: false,
+        assetPath: gService.getCatalogAssetPath(family),
+      );
     }
+    if (gService.isDownloaded(family)) {
+      return FontInfo(
+        family: family,
+        displayName: family,
+        isCustom: !gService.isAsset(family),
+        filePath: gService.getFilePath(family),
+        assetPath: gService.getCatalogAssetPath(family),
+      );
+    }
+
+    // Direct check in availableFonts
+    for (final f in availableFonts) {
+      if (f.family == family || f.displayName == family ||
+          f.family.toLowerCase() == family.toLowerCase() ||
+          f.displayName.toLowerCase() == family.toLowerCase()) {
+        return f;
+      }
+    }
+
+    return null;
   }
 
   static const List<FontInfo> availableFonts = [
     // Default system fonts
-    FontInfo(family: 'Roboto', displayName: 'Roboto', assetPath: 'assets/fonts/Roboto-Regular.ttf'),
-    FontInfo(family: 'Roboto', displayName: 'Roboto Bold', weight: FontWeight.bold, assetPath: 'assets/fonts/Roboto-Bold.ttf'),
-    FontInfo(family: 'Roboto', displayName: 'Roboto Italic', style: FontStyle.italic, assetPath: 'assets/fonts/Roboto-Italic.ttf'),
-    FontInfo(family: 'Roboto', displayName: 'Roboto Bold Italic', weight: FontWeight.bold, style: FontStyle.italic, assetPath: 'assets/fonts/Roboto-BoldItalic.ttf'),
+    FontInfo(family: 'Roboto', displayName: 'Roboto', assetPath: 'assets/fonts/Roboto.ttf'),
+    FontInfo(family: 'Roboto', displayName: 'Roboto Bold', weight: FontWeight.bold, assetPath: 'assets/fonts/Roboto.ttf'),
+    FontInfo(family: 'Roboto', displayName: 'Roboto Italic', style: FontStyle.italic, assetPath: 'assets/fonts/Roboto.ttf'),
+    FontInfo(family: 'Roboto', displayName: 'Roboto Bold Italic', weight: FontWeight.bold, style: FontStyle.italic, assetPath: 'assets/fonts/Roboto.ttf'),
     
     // Custom fonts
-    FontInfo(family: 'AllertaStencil', displayName: 'Allerta Stencil', assetPath: 'assets/fonts/AllertaStencil-Regular.ttf'),
-    FontInfo(family: 'AlmendraDisplay', displayName: 'Almendra Display', assetPath: 'assets/fonts/AlmendraDisplay-Regular.ttf'),
-    FontInfo(family: 'AlumniSans', displayName: 'Alumni Sans', assetPath: 'assets/fonts/AlumniSans-Regular.ttf'),
-    FontInfo(family: 'AlumniSans-Bold', displayName: 'Alumni Sans Bold', weight: FontWeight.bold, assetPath: 'assets/fonts/AlumniSans-Bold.ttf'),
-    FontInfo(family: 'AlumniSans-Black', displayName: 'Alumni Sans Black', weight: FontWeight.w900, assetPath: 'assets/fonts/AlumniSans-Black.ttf'),
-    FontInfo(family: 'AlumniSans-Light', displayName: 'Alumni Sans Light', weight: FontWeight.w300, assetPath: 'assets/fonts/AlumniSans-Light.ttf'),
-    FontInfo(family: 'AlumniSans-Medium', displayName: 'Alumni Sans Medium', weight: FontWeight.w500, assetPath: 'assets/fonts/AlumniSans-Medium.ttf'),
-    FontInfo(family: 'AlumniSans-SemiBold', displayName: 'Alumni Sans SemiBold', weight: FontWeight.w600, assetPath: 'assets/fonts/AlumniSans-SemiBold.ttf'),
-    FontInfo(family: 'AlumniSans-Thin', displayName: 'Alumni Sans Thin', weight: FontWeight.w100, assetPath: 'assets/fonts/AlumniSans-Thin.ttf'),
-    FontInfo(family: 'AlumniSans-ExtraLight', displayName: 'Alumni Sans ExtraLight', weight: FontWeight.w200, assetPath: 'assets/fonts/AlumniSans-ExtraLight.ttf'),
-    FontInfo(family: 'AlumniSans-ExtraBold', displayName: 'Alumni Sans ExtraBold', weight: FontWeight.w800, assetPath: 'assets/fonts/AlumniSans-ExtraBold.ttf'),
-    FontInfo(family: 'AlumniSans-Italic', displayName: 'Alumni Sans Italic', style: FontStyle.italic, assetPath: 'assets/fonts/AlumniSans-Italic.ttf'),
-    FontInfo(family: 'AlumniSansPinstripe', displayName: 'Alumni Sans Pinstripe', assetPath: 'assets/fonts/AlumniSansPinstripe-Regular.ttf'),
-    FontInfo(family: 'AlumniSansPinstripe-Italic', displayName: 'Alumni Sans Pinstripe Italic', style: FontStyle.italic, assetPath: 'assets/fonts/AlumniSansPinstripe-Italic.ttf'),
-    FontInfo(family: 'Barrio', displayName: 'Barrio', assetPath: 'assets/fonts/Barrio-Regular.ttf'),
-    FontInfo(family: 'Bellota', displayName: 'Bellota', assetPath: 'assets/fonts/Bellota-Regular.ttf'),
-    FontInfo(family: 'Bellota-Bold', displayName: 'Bellota Bold', weight: FontWeight.bold, assetPath: 'assets/fonts/Bellota-Bold.ttf'),
-    FontInfo(family: 'Bellota-Light', displayName: 'Bellota Light', weight: FontWeight.w300, assetPath: 'assets/fonts/Bellota-Light.ttf'),
-    FontInfo(family: 'Bellota-Italic', displayName: 'Bellota Italic', style: FontStyle.italic, assetPath: 'assets/fonts/Bellota-Italic.ttf'),
-    FontInfo(family: 'BhuTukaExpandedOne', displayName: 'BhuTuka Expanded One', assetPath: 'assets/fonts/BhuTukaExpandedOne-Regular.ttf'),
     FontInfo(family: 'Bokor', displayName: 'Bokor', assetPath: 'assets/fonts/Bokor-Regular.ttf'),
     FontInfo(family: 'BungeeHairline', displayName: 'Bungee Hairline', assetPath: 'assets/fonts/BungeeHairline-Regular.ttf'),
     FontInfo(family: 'Caramel', displayName: 'Caramel', assetPath: 'assets/fonts/Caramel-Regular.ttf'),
@@ -124,39 +145,83 @@ class FontInfo {
     FontInfo(family: 'Poppins-Italic', displayName: 'Poppins Italic', style: FontStyle.italic, assetPath: 'assets/fonts/Poppins-Italic.ttf'),
     FontInfo(family: 'ProtestRevolution', displayName: 'Protest Revolution', assetPath: 'assets/fonts/ProtestRevolution-Regular.ttf'),
     FontInfo(family: 'SourGummy', displayName: 'Sour Gummy', assetPath: 'assets/fonts/SourGummy-VariableFont_wdth,wght.ttf'),
+    FontInfo(family: 'KodeMono', displayName: 'Kode Mono', assetPath: 'assets/fonts/KodeMono-Regular.ttf'),
   ];
 
   /// Resolves the font to an absolute file path.
-  /// Copies built-in assets to a temporary file if needed.
+  /// Copies built-in assets to a temporary file if needed, so native C++/Kotlin
+  /// code (OpenGLWatermarkProcessor.kt) can load it via Typeface.createFromFile(fontPath).
   static Future<String> getFontFilePath(FontInfo font) async {
-    // 1. Custom uploaded font: use its absolute file path directly
-    if (font.isCustom && font.filePath != null && font.filePath!.startsWith('/')) {
-      if (await File(font.filePath!).exists()) {
-        return font.filePath!;
+    // 1. Direct file on disk (custom user font or downloaded Google font)
+    if (font.filePath != null && font.filePath!.isNotEmpty) {
+      final f = File(font.filePath!);
+      if (await f.exists() && await f.length() > 0) {
+        return f.path;
       }
     }
 
-    // 2. Built-in font: copy from assets if we have an assetPath
-    final assetPath = font.assetPath;
-    if (assetPath == null) {
-      // Fallback for cases where assetPath wasn't provided (shouldn't happen for regulated items)
-      if (font.family == 'Roboto') return '/system/fonts/Roboto-Regular.ttf';
-      return '/system/fonts/Roboto-Regular.ttf'; 
+    // Also check if GoogleFontService has a downloaded file path for this family
+    final googleFilePath = GoogleFontService().getFilePath(font.family);
+    if (googleFilePath != null && googleFilePath.isNotEmpty) {
+      final f = File(googleFilePath);
+      if (await f.exists() && await f.length() > 0) {
+        return f.path;
+      }
     }
 
+    // 2. Built-in font: copy from assets if we have an assetPath or catalog path
+    String? assetPath = font.assetPath;
+    if (assetPath == null || assetPath.isEmpty) {
+      assetPath = GoogleFontService().getCatalogAssetPath(font.family);
+    }
+    if (assetPath == null || assetPath.isEmpty) {
+      final match = availableFonts.where((f) =>
+        f.family == font.family ||
+        f.displayName == font.displayName ||
+        f.family.toLowerCase() == font.family.toLowerCase()
+      ).firstOrNull;
+      assetPath = match?.assetPath;
+    }
+
+    if (assetPath != null && assetPath.isNotEmpty) {
+      try {
+        final tempDir = await getTemporaryDirectory();
+        final filename = assetPath.split('/').last;
+        final safeFamily = font.family.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+        final targetFile = File('${tempDir.path}/font_${safeFamily}_$filename');
+
+        if (await targetFile.exists() && await targetFile.length() > 0) {
+          return targetFile.path;
+        }
+
+        final normalizedAssetKey = assetPath.startsWith('assets/') ? assetPath : 'assets/$assetPath';
+        final byteData = await rootBundle.load(normalizedAssetKey);
+        await targetFile.writeAsBytes(
+          byteData.buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
+          flush: true,
+        );
+        return targetFile.path;
+      } catch (e) {
+        debugPrint('[FontResolver] Failed to extract asset font "${font.family}" ($assetPath): $e');
+      }
+    }
+
+    // 3. Fallback: try guaranteed default asset KleeOne
     try {
       final tempDir = await getTemporaryDirectory();
-      final filename = assetPath.split('/').last;
-      // Use family-specific name to avoid collisions if multiple fonts share same filename but different subpaths (unlikely but safe)
-      final targetFile = File('${tempDir.path}/font_${font.family}_$filename');
-      
-      if (await targetFile.exists()) return targetFile.path;
-
-      final byteData = await rootBundle.load(assetPath);
-      await targetFile.writeAsBytes(byteData.buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes), flush: true);
-      return targetFile.path;
+      const fallbackAsset = 'assets/fonts/KleeOne-SemiBold.ttf';
+      final fallbackFile = File('${tempDir.path}/font_fallback_KleeOne-SemiBold.ttf');
+      if (await fallbackFile.exists() && await fallbackFile.length() > 0) {
+        return fallbackFile.path;
+      }
+      final byteData = await rootBundle.load(fallbackAsset);
+      await fallbackFile.writeAsBytes(
+        byteData.buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
+        flush: true,
+      );
+      return fallbackFile.path;
     } catch (e) {
-      debugPrint('Font resolution failed for ${font.family}: $e');
+      debugPrint('[FontResolver] Fallback font extraction failed: $e');
       return '/system/fonts/Roboto-Regular.ttf';
     }
   }
@@ -270,6 +335,17 @@ class _FontSelectorState extends State<FontSelector> {
   @override
   Widget build(BuildContext context) {
     final customFonts = CustomFontManager().fonts;
+    final googleService = GoogleFontService();
+    final googleFontInfos = googleService.downloadedFonts.map((item) {
+      final isAsset = googleService.isAsset(item.family);
+      return FontInfo(
+        family: item.family,
+        displayName: item.family,
+        isCustom: !isAsset,
+        filePath: isAsset ? null : googleService.getFilePath(item.family),
+        assetPath: isAsset ? googleService.getCatalogAssetPath(item.family) : null,
+      );
+    }).toList();
     final allFonts = <dynamic>[]; 
     
     final customFontInfos = customFonts.map((e) => FontInfo(
@@ -279,7 +355,7 @@ class _FontSelectorState extends State<FontSelector> {
       filePath: e.filePath,
     )).toList();
     
-    final allAvailableFonts = [...customFontInfos, ...FontInfo.availableFonts];
+    final allAvailableFonts = [...googleFontInfos, ...customFontInfos, ...FontInfo.availableFonts];
     
     final filteredFonts = allAvailableFonts.where((f) => 
         f.displayName.toLowerCase().contains(_searchQuery.toLowerCase()) || 
@@ -289,6 +365,13 @@ class _FontSelectorState extends State<FontSelector> {
     if (_searchQuery.isNotEmpty) {
       allFonts.addAll(filteredFonts);
     } else {
+      final favManager = FavoriteFontsManager();
+      final favFonts = allAvailableFonts.where((f) => favManager.isFavorite(f.family)).toList();
+      if (favFonts.isNotEmpty) {
+        allFonts.add('__favorite_header__');
+        allFonts.addAll(favFonts);
+      }
+
       if (_recentFontFamilies.isNotEmpty) {
         allFonts.add('__recent_header__');
         for (final family in _recentFontFamilies) {
@@ -298,6 +381,11 @@ class _FontSelectorState extends State<FontSelector> {
         }
       }
       
+      if (googleFontInfos.isNotEmpty) {
+        allFonts.add('__google_header__');
+        allFonts.addAll(googleFontInfos);
+      }
+
       if (customFonts.isNotEmpty) {
         allFonts.add('__custom_header__');
         allFonts.addAll(customFonts);
@@ -353,6 +441,28 @@ class _FontSelectorState extends State<FontSelector> {
                         ),
                       ),
                       const Spacer(),
+                      // Google Fonts button
+                      IconButton(
+                        onPressed: () async {
+                          final nav = Navigator.of(context);
+                          final selectedItem = await GoogleFontPickerSheet.show(context, previewText: widget.previewText);
+                          if (selectedItem != null && mounted) {
+                            final isAsset = GoogleFontService().isAsset(selectedItem.family);
+                            final selected = FontInfo(
+                              family: selectedItem.family,
+                              displayName: selectedItem.family,
+                              isCustom: !isAsset,
+                              filePath: isAsset ? null : GoogleFontService().getFilePath(selectedItem.family),
+                              assetPath: isAsset ? GoogleFontService().getCatalogAssetPath(selectedItem.family) : null,
+                            );
+                            _saveRecent(selected);
+                            widget.onFontSelected(selected);
+                            nav.pop();
+                          }
+                        },
+                        icon: const Icon(Icons.cloud_download_outlined, color: AppColors.primary),
+                        tooltip: 'Google Fonts (90+)',
+                      ),
                       // Add Font button
                       _isImporting
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
@@ -457,6 +567,18 @@ class _FontSelectorState extends State<FontSelector> {
                       final item = allFonts[index];
                       
                       // Section headers
+                      if (item == '__favorite_header__') {
+                        return const Padding(
+                          padding: EdgeInsets.fromLTRB(12, 8, 12, 4),
+                          child: Row(
+                            children: [
+                              Icon(Icons.favorite, size: 14, color: Colors.redAccent),
+                              SizedBox(width: 6),
+                              Text('FAVORITE FONTS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.redAccent, letterSpacing: 1)),
+                            ],
+                          ),
+                        );
+                      }
                       if (item == '__recent_header__') {
                         return Padding(
                           padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
@@ -465,6 +587,18 @@ class _FontSelectorState extends State<FontSelector> {
                               Icon(Icons.history, size: 14, color: AppColors.primary),
                               const SizedBox(width: 6),
                               Text('RECENT FONTS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primary, letterSpacing: 1)),
+                            ],
+                          ),
+                        );
+                      }
+                      if (item == '__google_header__') {
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+                          child: Row(
+                            children: [
+                              Icon(Icons.cloud_done_rounded, size: 14, color: Colors.blue[700]),
+                              const SizedBox(width: 6),
+                              Text('GOOGLE FONTS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.blue[800], letterSpacing: 1)),
                             ],
                           ),
                         );
@@ -522,6 +656,23 @@ class _FontSelectorState extends State<FontSelector> {
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                IconButton(
+                                  icon: Icon(
+                                    FavoriteFontsManager().isFavorite(font.family)
+                                        ? Icons.favorite
+                                        : Icons.favorite_border,
+                                    size: 18,
+                                    color: FavoriteFontsManager().isFavorite(font.family)
+                                        ? Colors.redAccent
+                                        : Colors.grey[400],
+                                  ),
+                                  onPressed: () {
+                                    FavoriteFontsManager().toggleFavorite(font.family);
+                                    setState(() {});
+                                  },
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                ),
                                 if (isSelected) const Icon(Icons.check, color: AppColors.primary, size: 20),
                                 const SizedBox(width: 4),
                                 IconButton(
@@ -579,9 +730,30 @@ class _FontSelectorState extends State<FontSelector> {
                                 fontSize: 16,
                               ),
                             ),
-                            trailing: isSelected
-                                ? const Icon(Icons.check, color: AppColors.primary)
-                                : null,
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(
+                                    FavoriteFontsManager().isFavorite(font.family)
+                                        ? Icons.favorite
+                                        : Icons.favorite_border,
+                                    size: 18,
+                                    color: FavoriteFontsManager().isFavorite(font.family)
+                                        ? Colors.redAccent
+                                        : Colors.grey[400],
+                                  ),
+                                  onPressed: () {
+                                    FavoriteFontsManager().toggleFavorite(font.family);
+                                    setState(() {});
+                                  },
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                ),
+                                if (isSelected)
+                                  const Icon(Icons.check, color: AppColors.primary),
+                              ],
+                            ),
                             onTap: () {
                               _saveRecent(font);
                               widget.onFontSelected(font);
@@ -604,14 +776,35 @@ class _FontSelectorState extends State<FontSelector> {
 
 // Public helper to access fonts list outside this file
 List<FontInfo> getAllFonts() {
-  final builtIn = FontInfo.availableFonts;
+  const builtIn = FontInfo.availableFonts;
   final custom = CustomFontManager().fonts.map((e) => FontInfo(
     family: e.familyName,
     displayName: e.displayName,
     isCustom: true,
     filePath: e.filePath,
   )).toList();
-  return [...custom, ...builtIn];
+  final googleService = GoogleFontService();
+  final google = googleService.downloadedFonts.map((item) {
+    final isAsset = googleService.isAsset(item.family);
+    return FontInfo(
+      family: item.family,
+      displayName: item.family,
+      isCustom: !isAsset,
+      filePath: isAsset ? null : googleService.getFilePath(item.family),
+      assetPath: isAsset ? googleService.getCatalogAssetPath(item.family) : null,
+    );
+  }).toList();
+  final Map<String, FontInfo> unique = {};
+  for (final f in google) {
+    unique[f.family] = f;
+  }
+  for (final f in custom) {
+    unique[f.family] = f;
+  }
+  for (final f in builtIn) {
+    unique.putIfAbsent(f.family, () => f);
+  }
+  return unique.values.toList();
 }
 
 class FontSelectorButton extends StatelessWidget {
@@ -716,8 +909,10 @@ class _HorizontalFontSelectorState extends State<HorizontalFontSelector> {
   @override
   Widget build(BuildContext context) {
     final List<FontInfo> allFonts = getAllFonts();
-    final customFonts = allFonts.where((f) => f.isCustom).toList();
-    final builtinFonts = allFonts.where((f) => !f.isCustom).toList();
+    final googleService = GoogleFontService();
+    final googleFonts = allFonts.where((f) => googleService.isDownloaded(f.family)).toList();
+    final customFonts = allFonts.where((f) => f.isCustom && !googleService.isDownloaded(f.family)).toList();
+    final builtinFonts = allFonts.where((f) => !f.isCustom && !googleService.isDownloaded(f.family)).toList();
     
     final recents = <FontInfo>[];
     for (final family in _recentFontFamilies) {
@@ -726,6 +921,10 @@ class _HorizontalFontSelectorState extends State<HorizontalFontSelector> {
       } catch (_) {}
     }
 
+    final filteredGoogleFonts = googleFonts.where((f) => 
+        f.displayName.toLowerCase().contains(_searchQuery.toLowerCase()) || 
+        f.family.toLowerCase().contains(_searchQuery.toLowerCase())
+    ).toList();
     final filteredCustomFonts = customFonts.where((f) => 
         f.displayName.toLowerCase().contains(_searchQuery.toLowerCase()) || 
         f.family.toLowerCase().contains(_searchQuery.toLowerCase())
@@ -741,44 +940,106 @@ class _HorizontalFontSelectorState extends State<HorizontalFontSelector> {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: SizedBox(
-            height: 36,
-            child: TextField(
-              controller: _searchController,
-              onChanged: (val) => setState(() => _searchQuery = val),
-              style: const TextStyle(fontSize: 13),
-              decoration: InputDecoration(
-                hintText: 'Search fonts...',
-                prefixIcon: const Icon(Icons.search, size: 16),
-                suffixIcon: _searchQuery.isNotEmpty 
-                  ? IconButton(
-                      icon: const Icon(Icons.clear, size: 16), 
-                      padding: EdgeInsets.zero,
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() => _searchQuery = '');
-                      })
-                  : null,
-                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: BorderSide(color: Colors.grey[300]!),
+          child: Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 36,
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (val) => setState(() => _searchQuery = val),
+                    style: const TextStyle(fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Search fonts...',
+                      prefixIcon: const Icon(Icons.search, size: 16),
+                      suffixIcon: _searchQuery.isNotEmpty 
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 16), 
+                            padding: EdgeInsets.zero,
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = '');
+                            })
+                        : null,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(18),
+                        borderSide: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(18),
+                        borderSide: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(18),
+                        borderSide: const BorderSide(color: AppColors.primary),
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                    ),
+                  ),
                 ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: BorderSide(color: Colors.grey[300]!),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: const BorderSide(color: AppColors.primary),
-                ),
-                filled: true,
-                fillColor: Colors.white,
               ),
-            ),
+              const SizedBox(width: 8),
+              InkWell(
+                onTap: () async {
+                  final selectedItem = await GoogleFontPickerSheet.show(context);
+                  if (selectedItem != null && mounted) {
+                    final isAsset = GoogleFontService().isAsset(selectedItem.family);
+                    final selected = FontInfo(
+                      family: selectedItem.family,
+                      displayName: selectedItem.family,
+                      isCustom: !isAsset,
+                      filePath: isAsset ? null : GoogleFontService().getFilePath(selectedItem.family),
+                      assetPath: isAsset ? GoogleFontService().getCatalogAssetPath(selectedItem.family) : null,
+                    );
+                    _saveRecent(selected);
+                    widget.onFontSelected(selected);
+                    setState(() {});
+                  }
+                },
+                borderRadius: BorderRadius.circular(18),
+                child: Container(
+                  height: 36,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.cloud_download_outlined, size: 15, color: AppColors.primary),
+                      SizedBox(width: 4),
+                      Text(
+                        'Google Fonts',
+                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.primary),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         if (_searchQuery.isEmpty) ...[
+          AnimatedBuilder(
+            animation: FavoriteFontsManager(),
+            builder: (context, _) {
+              final favManager = FavoriteFontsManager();
+              final favs = allFonts.where((f) => favManager.isFavorite(f.family)).toList();
+              if (favs.isEmpty) return const SizedBox.shrink();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildTinyHeader('FAVORITE FONTS (${favs.length})'),
+                  _buildRow(favs),
+                  const SizedBox(height: 8),
+                ],
+              );
+            },
+          ),
           _buildTinyHeader('RECENT FONTS'),
           if (recents.isNotEmpty)
             _buildRow(recents)
@@ -787,6 +1048,12 @@ class _HorizontalFontSelectorState extends State<HorizontalFontSelector> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: Text('No recent fonts yet', style: TextStyle(fontSize: 11, color: Colors.grey[400])),
             ),
+          const SizedBox(height: 8),
+        ],
+
+        if (filteredGoogleFonts.isNotEmpty) ...[
+          _buildTinyHeader(_searchQuery.isEmpty ? 'GOOGLE FONTS' : 'GOOGLE FONTS (${filteredGoogleFonts.length})'),
+          _buildRow(filteredGoogleFonts),
           const SizedBox(height: 8),
         ],
 

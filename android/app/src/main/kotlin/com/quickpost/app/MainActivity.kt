@@ -127,8 +127,7 @@ class MainActivity : FlutterActivity() {
         
         previewMethodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.quickpost.app/preview")
 
-        methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
-        methodChannel?.setMethodCallHandler { call, result ->
+        val channelHandler = MethodChannel.MethodCallHandler setMethodCallHandler@{ call, result ->
             when (call.method) {
                 "removeBackground" -> {
                     val inputPath = call.argument<String>("inputPath")
@@ -157,22 +156,21 @@ class MainActivity : FlutterActivity() {
 
                     if (inputPath == null || outputPath == null) {
                         result.error("INVALID_ARGUMENTS", "Missing input or output path", null)
-                        return@setMethodCallHandler
-                    }
-                    
-                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
-                        try {
-                            val res = BackgroundRemover.removeBackground(
-                                this@MainActivity, inputPath, outputPath,
-                                smoothing, strokeWidth, strokeColor, bgColor,
-                                edgePadding, scale, offsetX, offsetY, outputWidth, outputHeight,
-                                shadowRadius, shadowColor, shadowDx, shadowDy,
-                                bgImagePath, brightness, contrast, saturation, autoTrim
-                            )
-                            result.success(res)
-                        } catch (e: Exception) {
-                            Log.e("MainActivity", "removeBackground failed", e)
-                            result.error("REMOVE_BG_FAILED", e.message, null)
+                    } else {
+                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                            try {
+                                val res = BackgroundRemover.removeBackground(
+                                    this@MainActivity, inputPath, outputPath,
+                                    smoothing, strokeWidth, strokeColor, bgColor,
+                                    edgePadding, scale, offsetX, offsetY, outputWidth, outputHeight,
+                                    shadowRadius, shadowColor, shadowDx, shadowDy,
+                                    bgImagePath, brightness, contrast, saturation, autoTrim
+                                )
+                                result.success(res)
+                            } catch (e: Exception) {
+                                Log.e("MainActivity", "removeBackground failed", e)
+                                result.error("REMOVE_BG_FAILED", e.message, null)
+                            }
                         }
                     }
                 }
@@ -300,6 +298,38 @@ class MainActivity : FlutterActivity() {
                         result.success(audioPath)
                     } else {
                         result.error("INVALID_ARGUMENT", "Video path is required", null)
+                    }
+                }
+                "extractAudioAdvanced" -> {
+                    val videoPath = call.argument<String>("videoPath")
+                    val format = call.argument<String>("format") ?: "mp3"
+                    val bitrate = call.argument<Int>("bitrate") ?: 192
+                    val folderName = call.argument<String>("folderName") ?: "Quick Post Audios"
+                    val customFileName = call.argument<String>("customFileName")
+
+                    if (videoPath != null) {
+                        Thread {
+                            try {
+                                val extractor = NativeAudioExtractor(this)
+                                val extractResult = extractor.extractAudio(
+                                    videoPath = videoPath,
+                                    targetFormat = format,
+                                    targetBitrate = bitrate,
+                                    folderName = folderName,
+                                    customFileName = customFileName
+                                )
+                                runOnUiThread {
+                                    result.success(extractResult.toMap())
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.e("MainActivity", "Advanced audio extraction failed", e)
+                                runOnUiThread {
+                                    result.error("EXTRACTION_ERROR", e.message, null)
+                                }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "videoPath is required", null)
                     }
                 }
                 "scanMediaFile" -> {
@@ -459,6 +489,7 @@ class MainActivity : FlutterActivity() {
                     val shadowY = call.argument<Int>("shadowY") ?: 2
                     val boxImagePath = call.argument<String>("boxImagePath")
                     val boxOverlap = call.argument<Int>("boxOverlap") ?: 0
+                    val addOutro = call.argument<Boolean>("addOutro") ?: false
 
                     if (inputPath == null || outputPath == null) {
                         result.error("INVALID_ARGUMENTS", "Missing input or output path", null)
@@ -493,30 +524,60 @@ class MainActivity : FlutterActivity() {
                                     boxOverlap
                                 )
 
-                                runOnUiThread {
                                     if (ret == 0) {
                                         scanMediaFile(outputPath)
-                                        if (audioPath.isNullOrEmpty()) {
-                                            result.success(outputPath)
-                                        } else {
+                                        var finalPath = outputPath
+                                        if (!audioPath.isNullOrEmpty()) {
                                             try {
                                                 val mergedPath = getVideoOutputPath("TextBox_Audio_${System.currentTimeMillis()}.mp4")
                                                 val durationSec = ((getVideoMetadata(outputPath)["durationMs"] as? Int) ?: 0) / 1000
                                                 val mergeRet = overlay.nativeMergeAudioVideo(outputPath, audioPath, mergedPath, durationSec)
                                                 if (mergeRet == 0) {
                                                     scanMediaFile(mergedPath)
-                                                    result.success(mergedPath)
+                                                    finalPath = mergedPath
                                                 } else {
-                                                    result.error("FFMPEG_ERROR", "Audio merge failed: $mergeRet", null)
+                                                    runOnUiThread { result.error("FFMPEG_ERROR", "Audio merge failed: $mergeRet", null) }
+                                                    return@Thread
                                                 }
                                             } catch (e: Exception) {
-                                                result.error("PROCESSING_FAILED", e.message, null)
+                                                runOnUiThread { result.error("PROCESSING_FAILED", e.message, null) }
+                                                return@Thread
                                             }
                                         }
+                                        
+                                        if (addOutro) {
+                                            val outroPath = getVideoOutputPath("TextBox_Outro_${System.currentTimeMillis()}.mp4")
+                                            val processor = OpenGLWatermarkProcessor(this@MainActivity)
+                                            val pMap = mapOf<String, Any?>(
+                                                "type" to "none",
+                                                "mode" to "1:1",
+                                                "watermarkPaths" to emptyList<String>(),
+                                                "watermarkScale" to 1.0f
+                                            )
+                                            val cb = object : OpenGLWatermarkProcessor.ProgressCallback {
+                                                override fun onProgress(progress: Double) { }
+                                                override fun onStep(step: String) { }
+                                            }
+                                            try {
+                                                val outroFile = java.io.File(outroPath)
+                                                val outRet = processor.processVideoWithWatermark(finalPath, outroFile, pMap, cb)
+                                                if (outRet > 0 && outroFile.exists() && outroFile.length() > 0) {
+                                                    scanMediaFile(outroPath)
+                                                    finalPath = outroPath
+                                                }
+                                            } catch(e: Exception) {
+                                                Log.e("MainActivity", "Outro append failed", e)
+                                            }
+                                        }
+
+                                        runOnUiThread {
+                                            result.success(finalPath)
+                                        }
                                     } else {
-                                        result.error("FFMPEG_ERROR", "FFmpeg returned error code: $ret", null)
+                                        runOnUiThread {
+                                            result.error("FFMPEG_ERROR", "FFmpeg returned error code: $ret", null)
+                                        }
                                     }
-                                }
                             } catch (e: Exception) {
                                 runOnUiThread {
                                     result.error("PROCESSING_FAILED", e.message, null)
@@ -899,6 +960,7 @@ class MainActivity : FlutterActivity() {
                     val bgBrightness = (call.argument<Number>("bgBrightness"))?.toFloat() ?: 1.0f
                     val bgSaturation = (call.argument<Number>("bgSaturation"))?.toFloat() ?: 1.0f
                     val bgBlur = (call.argument<Number>("bgBlur"))?.toFloat() ?: 0f
+                    val videoX = (call.argument<Number>("videoX"))?.toFloat() ?: 0.5f
                     val videoY = (call.argument<Number>("videoY"))?.toFloat() ?: 0.5f
                     val audioPath = call.argument<String>("audioPath")
                     val patches = call.argument<List<Map<String, Any?>>>("patches") ?: emptyList()
@@ -913,6 +975,7 @@ class MainActivity : FlutterActivity() {
                                 val params = mapOf<String, Any?>(
                                     "type" to type,
                                     "fullScreen" to fullScreen,
+                                    "forceSquareBg" to (call.argument<Boolean>("forceSquareBg") ?: false),
                                     "bgColor" to bgColor,
                                     "showBox" to showBox,
                                     "boxColor" to boxColor,
@@ -956,6 +1019,7 @@ class MainActivity : FlutterActivity() {
                                     "handleShadowOffsetY" to ((call.argument<Number>("handleShadowOffsetY"))?.toFloat() ?: 1f),
                                     "iconShadowOffsetX" to ((call.argument<Number>("iconShadowOffsetX"))?.toFloat() ?: 1.5f),
                                     "iconShadowOffsetY" to ((call.argument<Number>("iconShadowOffsetY"))?.toFloat() ?: 1.5f),
+                                    "videoX" to videoX,
                                     "videoY" to videoY,
                                     "watermarkScale" to ((call.argument<Number>("watermarkScale"))?.toFloat() ?: 1.0f),
                                     "textOverlays" to (call.argument<List<Map<String, Any?>>>("textOverlays") ?: emptyList()),
@@ -978,7 +1042,8 @@ class MainActivity : FlutterActivity() {
                                     "previewScale" to ((call.argument<Number>("previewScale"))?.toFloat() ?: 0.33f),
                                     "wireInset" to ((call.argument<Number>("wireInset"))?.toFloat() ?: 40f),
                                     "wireTextPosition" to (call.argument<String>("wireTextPosition") ?: "bottom"),
-                                    "wireGap" to ((call.argument<Number>("wireGap"))?.toFloat() ?: 16f)
+                                    "wireGap" to ((call.argument<Number>("wireGap"))?.toFloat() ?: 16f),
+                                    "addOutro" to (call.argument<Boolean>("addOutro") ?: false)
                                 )
                                 val outputFile = java.io.File(outputPath)
                                 val callback = object : OpenGLWatermarkProcessor.ProgressCallback {
@@ -1080,18 +1145,13 @@ class MainActivity : FlutterActivity() {
                         result.error("INVALID_ARGUMENT", "videoPath is required", null)
                     }
                 }
-                "saveImageToGallery" -> {
-                    val imagePath = call.argument<String>("imagePath")
-                    if (imagePath != null) {
-                        val galleryPath = moveImageToGallery(imagePath)
-                        result.success(galleryPath)
-                    } else {
-                        result.error("INVALID_ARGUMENT", "imagePath is required", null)
-                    }
-                }
                 else -> result.notImplemented()
             }
         }
+
+        methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+        methodChannel?.setMethodCallHandler(channelHandler)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "arise_video").setMethodCallHandler(channelHandler)
     }
     
     private fun pickAudioFile() {
@@ -1971,12 +2031,32 @@ class MainActivity : FlutterActivity() {
 
     private fun saveImageToGallery(imageBytes: ByteArray, filename: String, folderName: String): String? {
         return try {
+            val mimeType = if (filename.endsWith(".jpg", ignoreCase = true) || filename.endsWith(".jpeg", ignoreCase = true)) {
+                "image/jpeg"
+            } else {
+                "image/png"
+            }
+
+            // Save under DCIM/ or Pictures/ so all Android gallery apps immediately display it in the main Photos/Recents timeline
+            val rawPath = if (folderName.startsWith("DCIM", ignoreCase = true) || folderName.startsWith("Pictures", ignoreCase = true)) {
+                folderName
+            } else {
+                "DCIM/$folderName"
+            }
+            val relativePath = if (rawPath.endsWith("/")) rawPath else "$rawPath/"
+
+            val nowMillis = System.currentTimeMillis()
+            val nowSeconds = nowMillis / 1000
+
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                 // Use MediaStore API for Android 10+
                 val contentValues = android.content.ContentValues().apply {
                     put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, filename)
-                    put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
-                    put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/$folderName")
+                    put(android.provider.MediaStore.Images.Media.MIME_TYPE, mimeType)
+                    put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, relativePath)
+                    put(android.provider.MediaStore.Images.Media.DATE_ADDED, nowSeconds)
+                    put(android.provider.MediaStore.Images.Media.DATE_MODIFIED, nowSeconds)
+                    put(android.provider.MediaStore.Images.Media.DATE_TAKEN, nowMillis)
                     put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
                 }
                 
@@ -1991,29 +2071,61 @@ class MainActivity : FlutterActivity() {
                         outputStream.flush()
                     }
                     
-                    // Mark as not pending anymore
+                    // Mark as not pending anymore so gallery indexers can read it
                     contentValues.clear()
                     contentValues.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
                     contentResolver.update(uri, contentValues, null, null)
                     
-                    // Get the actual file path
-                    val projection = arrayOf(android.provider.MediaStore.Images.Media.DATA)
-                    contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
-                        if (cursor.moveToFirst()) {
-                            val columnIndex = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Images.Media.DATA)
-                            return cursor.getString(columnIndex)
+                    // Query the physical file path to trigger immediate media scanning
+                    var actualPath: String? = null
+                    try {
+                        val projection = arrayOf(android.provider.MediaStore.Images.Media.DATA)
+                        contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                            if (cursor.moveToFirst()) {
+                                val columnIndex = cursor.getColumnIndex(android.provider.MediaStore.Images.Media.DATA)
+                                if (columnIndex >= 0) {
+                                    actualPath = cursor.getString(columnIndex)
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
+
+                    // Fallback to direct external file path if DATA column is restricted on Android 11+
+                    if (actualPath.isNullOrEmpty()) {
+                        val externalRoot = android.os.Environment.getExternalStorageDirectory()
+                        val directFile = java.io.File(externalRoot, "$relativePath$filename")
+                        if (directFile.exists()) {
+                            actualPath = directFile.absolutePath
                         }
                     }
+
+                    if (!actualPath.isNullOrEmpty()) {
+                        scanMediaFile(actualPath!!, mimeType)
+                        try {
+                            val scanIntent = android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).apply {
+                                data = android.net.Uri.fromFile(java.io.File(actualPath!!))
+                            }
+                            sendBroadcast(scanIntent)
+                        } catch (_: Exception) {}
+                        return actualPath
+                    }
+
+                    // Fallback broadcast using URI
+                    try {
+                        val scanIntent = android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).apply {
+                            data = uri
+                        }
+                        sendBroadcast(scanIntent)
+                    } catch (_: Exception) {}
                     
-                    // Return URI as string if path not available
                     return uri.toString()
                 }
             } else {
-                // Legacy method for Android 9 and below
-                val picturesDir = android.os.Environment.getExternalStoragePublicDirectory(
-                    android.os.Environment.DIRECTORY_PICTURES
+                // Legacy method for Android 9 and below: write to DCIM public directory
+                val dcimDir = android.os.Environment.getExternalStoragePublicDirectory(
+                    android.os.Environment.DIRECTORY_DCIM
                 )
-                val appDir = java.io.File(picturesDir, folderName)
+                val appDir = java.io.File(dcimDir, folderName)
                 if (!appDir.exists()) {
                     appDir.mkdirs()
                 }
@@ -2024,13 +2136,14 @@ class MainActivity : FlutterActivity() {
                     outputStream.flush()
                 }
                 
-                // Scan the file so it appears in gallery
-                android.media.MediaScannerConnection.scanFile(
-                    this,
-                    arrayOf(imageFile.absolutePath),
-                    arrayOf("image/png"),
-                    null
-                )
+                // Scan the file so it appears immediately in the gallery
+                scanMediaFile(imageFile.absolutePath, mimeType)
+                try {
+                    val scanIntent = android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).apply {
+                        data = android.net.Uri.fromFile(imageFile)
+                    }
+                    sendBroadcast(scanIntent)
+                } catch (_: Exception) {}
                 
                 return imageFile.absolutePath
             }

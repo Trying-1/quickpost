@@ -201,3 +201,8 @@ error.txt
 scratch/
 test.dart
 log.txt
+
+# Fonts: Exclude all fonts except those used in the UI
+assets/fonts/*
+!assets/fonts/Poppins*.ttf
+!assets/fonts/OFL.txt

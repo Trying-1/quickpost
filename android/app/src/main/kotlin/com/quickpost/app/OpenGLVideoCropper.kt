@@ -193,10 +193,28 @@ class OpenGLVideoCropper(private val context: Context) {
             // Align to 2 for H264
             val finalW = if (outputWidth % 2 != 0) outputWidth - 1 else outputWidth
             val finalH = if (outputHeight % 2 != 0) outputHeight - 1 else outputHeight
+            
+            // Calculate dynamic bitrate based on resolution (BPP = 0.10)
+            var targetBitrate = (0.10 * FRAME_RATE * finalW * finalH).toInt()
+            
+            // Cap bitrate to 1.5x the original file's average bitrate to prevent huge size inflations
+            val fileLength = java.io.File(inputPath).length()
+            val durationSecs = duration / 1000000.0
+            if (durationSecs > 0) {
+                val inputBitrate = (fileLength * 8.0 / durationSecs).toInt()
+                val maxAllowed = (inputBitrate * 1.5).toInt()
+                if (targetBitrate > maxAllowed && maxAllowed > 500_000) {
+                    targetBitrate = maxAllowed
+                }
+            }
+            
+            // Hard caps for safety
+            if (targetBitrate > 8_000_000) targetBitrate = 8_000_000
+            if (targetBitrate < 500_000) targetBitrate = 500_000
 
             val outFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, finalW, finalH)
             outFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-            outFormat.setInteger(MediaFormat.KEY_BIT_RATE, DEFAULT_BITRATE)
+            outFormat.setInteger(MediaFormat.KEY_BIT_RATE, targetBitrate)
             outFormat.setInteger(MediaFormat.KEY_FRAME_RATE, FRAME_RATE)
             outFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, I_FRAME_INTERVAL)
 

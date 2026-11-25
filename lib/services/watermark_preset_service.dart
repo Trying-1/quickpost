@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/watermark_preset.dart';
@@ -20,6 +21,40 @@ class WatermarkPresetService {
 
   static List<WatermarkPreset> getAllPresets() {
     return _box.values.toList();
+  }
+
+  static Future<Directory> getBackupDirectory() async {
+    if (Platform.isAndroid) {
+      final dir = Directory('/storage/emulated/0/Download/Quick Post Backup');
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      return dir;
+    }
+
+    final dir = Directory('${Directory.current.path}/Quick Post Backup');
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
+  }
+
+  static Future<String> exportPresetsToFile({String? customFileName}) async {
+    final jsonStr = await exportPresetsJson();
+    final backupDir = await getBackupDirectory();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final fileName = customFileName ?? 'watermark_presets_$timestamp.json';
+    final file = File('${backupDir.path}/$fileName');
+    await file.writeAsString(jsonStr);
+
+    try {
+      const MethodChannel('com.quickpost.app/processor').invokeMethod('scanMediaFile', {
+        'filePath': file.path,
+        'mimeType': 'application/json',
+      });
+    } catch (_) {}
+
+    return file.path;
   }
 
   static Future<String> exportPresetsJson() async {

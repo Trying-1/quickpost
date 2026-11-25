@@ -8,12 +8,14 @@ import 'package:image_picker/image_picker.dart';
 import 'package:open_file/open_file.dart';
 
 import '../home/home_shell_screen.dart';
-import '../../services/app_review_service.dart';
 import '../../services/video_perf_service.dart';
 import '../../services/analytics_service.dart';
 import '../../utils/video_crop_editor.dart';
 import '../../widgets/advanced_color_picker.dart';
 import '../../services/ad_service.dart';
+import '../../models/user_crop_setting.dart';
+import '../../services/user_crop_settings_service.dart';
+import '../../widgets/user_crop_preset_sheet.dart';
 
 class VideoCropperScreen extends StatefulWidget {
   final List<String>? sharedVideoPaths;
@@ -68,6 +70,7 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
   @override
   void initState() {
     super.initState();
+    UserCropSettingsService.instance.init();
     _avgRatio = VideoPerfService.getAvgRatio();
     _setupMethodCallHandler();
     _loadInitialVideos();
@@ -241,6 +244,26 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
     });
   }
 
+  void _applyUserCropSetting(UserCropSetting preset) {
+    setState(() {
+      _selectedAspectRatio = preset.id;
+    });
+    _editorKey.currentState?.applyCropSetting(preset);
+  }
+
+  void _openSavePresetSheet() {
+    final rect = _editorKey.currentState?.getCurrentNormalizedCrop() ??
+        const NormalizedCropRect(x: 0.1, y: 0.1, width: 0.8, height: 0.8);
+
+    UserCropPresetSheet.show(
+      context,
+      currentCropRect: rect,
+      onPresetSelected: (preset) {
+        _applyUserCropSetting(preset);
+      },
+    );
+  }
+
   Future<void> _processAll({bool fillEnabled = false}) async {
     if (_selectedVideos.isEmpty) return;
     AnalyticsService().logSaveAction(feature: 'video_cropper', type: 'video_batch');
@@ -364,191 +387,262 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         backgroundColor: Colors.transparent,
         child: Container(
-          width: 340,
-          padding: const EdgeInsets.all(24),
+          width: 350,
+          constraints: BoxConstraints(
+            maxWidth: 380,
+            maxHeight: MediaQuery.of(context).size.height * 0.90,
+          ),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(28),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
-                  shape: BoxShape.circle,
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 58,
+                  height: 58,
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.check_circle, color: Colors.green, size: 36),
                 ),
-                child: const Icon(Icons.check_circle, color: Colors.green, size: 40),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Processing Complete!',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Processed ${outputPaths.length} videoclip${outputPaths.length == 1 ? '' : 's'} in ${durationInSeconds.toStringAsFixed(1)}s',
-                style: const TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 24),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.grey[200]!),
+                const SizedBox(height: 14),
+                const Text(
+                  'Processing Complete!',
+                  style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
                 ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Total Input Size', style: TextStyle(color: Colors.grey, fontSize: 11)),
-                        Text(_formatSize(_totalInputSize), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 11)),
-                      ],
+                const SizedBox(height: 6),
+                Text(
+                  'Processed ${outputPaths.length} videoclip${outputPaths.length == 1 ? '' : 's'} in ${durationInSeconds.toStringAsFixed(1)}s',
+                  style: const TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Total Input Size', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                          Text(_formatSize(_totalInputSize), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 11)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Total Output Size', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                          Text(_formatSize(_totalOutputSize), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.primary)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                // Action: Save to Device
+                StatefulBuilder(
+                  builder: (context, setDialogState) {
+                    bool isSaved = false;
+                    return SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: isSaved ? null : () async {
+                          try {
+                            final List<String> newPaths = [];
+                            for (var path in outputPaths) {
+                              final result = await _channel.invokeMethod<String>('saveVideoToGallery', {'videoPath': path});
+                              if (result != null) newPaths.add(result);
+                            }
+                            
+                            // Update outputPaths so subsequent actions use the gallery paths
+                            outputPaths.clear();
+                            outputPaths.addAll(newPaths);
+                            
+                            setDialogState(() => isSaved = true);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Videos saved to Gallery!')),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Save failed: $e')),
+                              );
+                            }
+                          }
+                        },
+                        icon: Icon(isSaved ? Icons.check : Icons.download_rounded, size: 18),
+                        label: Text(isSaved ? 'Saved to Gallery' : 'Save to Gallery', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isSaved ? Colors.grey[400] : Colors.blueAccent,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Section Title: Process Redirects (Clean, no lines/dividers)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Continue to Next Process',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey[700],
                     ),
-                    const SizedBox(height: 4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Total Output Size', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                        Text(_formatSize(_totalOutputSize), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.primary)),
-                      ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // Row 1: Video Text & Watermark
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildProcessRedirectButton(
+                        icon: Icons.movie_filter_rounded,
+                        label: 'Video Text',
+                        color: const Color(0xFF6C63FF),
+                        onTap: () {
+                          Navigator.pop(context);
+                          HomeShellScreen.navigateToTab(4, paths: outputPaths, purpose: 'video_text');
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildProcessRedirectButton(
+                        icon: Icons.branding_watermark_rounded,
+                        label: 'Watermark',
+                        color: Colors.teal,
+                        onTap: () {
+                          Navigator.pop(context);
+                          HomeShellScreen.navigateToTab(2, paths: outputPaths, purpose: 'watermark');
+                        },
+                      ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 24),
-              
-              // New Action: Save to Device
-              StatefulBuilder(
-                builder: (context, setDialogState) {
-                  bool isSaved = false;
-                  return SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: isSaved ? null : () async {
-                        try {
-                          final List<String> newPaths = [];
-                          for (var path in outputPaths) {
-                            final result = await _channel.invokeMethod<String>('saveVideoToGallery', {'videoPath': path});
-                            if (result != null) newPaths.add(result);
-                          }
-                          
-                          // Update outputPaths so subsequent actions use the gallery paths
-                          outputPaths.clear();
-                          outputPaths.addAll(newPaths);
-                          
-                          setDialogState(() => isSaved = true);
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Videos saved to Gallery!')),
-                            );
-                          }
-                        } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Save failed: $e')),
-                            );
-                          }
-                        }
-                      },
-                      icon: Icon(isSaved ? Icons.check : Icons.download_rounded, size: 20),
-                      label: Text(isSaved ? 'Saved to Gallery' : 'Save to Gallery', style: const TextStyle(fontWeight: FontWeight.bold)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: isSaved ? Colors.grey[400] : Colors.blueAccent,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
+                const SizedBox(height: 8),
 
-              // Primary Action: Designer
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () async {
-                    final String path = outputPaths.first;
-                    Navigator.pop(context);
-                    HomeShellScreen.navigateToTab(4, paths: [path], purpose: 'video_text');
-                  },
-                  icon: const Icon(Icons.auto_fix_high_rounded, size: 20),
-                  label: const Text('Send to Designer', style: TextStyle(fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF6C63FF),
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Secondary Action: Watermark
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () async {
-                    final String path = outputPaths.first;
-                    Navigator.pop(context);
-                    HomeShellScreen.navigateToTab(2, paths: [path], purpose: 'watermark');
-                  },
-                  icon: const Icon(Icons.branding_watermark_rounded, size: 20),
-                  label: const Text('Send to Watermark', style: TextStyle(fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.teal,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              
-              Row(
-                children: [
-                   Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        OpenFile.open(outputPaths.first);
-                      },
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: BorderSide(color: Colors.grey[300]!),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                // Row 2: Text Box & Media Padding
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildProcessRedirectButton(
+                        icon: Icons.text_fields_rounded,
+                        label: 'Text Box',
+                        color: const Color(0xFFE11D48),
+                        onTap: () {
+                          Navigator.pop(context);
+                          HomeShellScreen.navigateToTab(9, paths: outputPaths, purpose: 'text_box');
+                        },
                       ),
-                      child: const Text('Preview', style: TextStyle(color: Colors.black87)),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: BorderSide(color: Colors.grey[300]!),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildProcessRedirectButton(
+                        icon: Icons.auto_awesome_rounded,
+                        label: 'Media Padding',
+                        color: const Color(0xFFF59E0B),
+                        onTap: () {
+                          Navigator.pop(context);
+                          HomeShellScreen.navigateToTab(11, paths: outputPaths, purpose: 'media_padding');
+                        },
                       ),
-                      child: const Text('Close', style: TextStyle(color: Colors.black87)),
                     ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+                const SizedBox(height: 16),
+                
+                // Bottom Row: Preview & Close
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          OpenFile.open(outputPaths.first);
+                        },
+                        icon: const Icon(Icons.play_circle_outline_rounded, size: 16, color: Colors.black87),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.grey[100],
+                          foregroundColor: Colors.black87,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        label: const Text('Preview', style: TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.grey[100],
+                          foregroundColor: Colors.black87,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: const Text('Close', style: TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildProcessRedirectButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return ElevatedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 17),
+      label: Text(
+        label,
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 12.5,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     );
   }
@@ -605,17 +699,64 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
         ),
       );
     }
-    return KeyedSubtree(
-      key: ValueKey(currentVideo.path),
-      child: VideoCropEditor(
-        key: _editorKey,
-        videoFile: currentVideo,
-        initialCrop: currentCrop,
-        onCropChanged: _onCropUpdated,
-        isMuted: _isMuted,
-        onMuteToggle: () => setState(() => _isMuted = !_isMuted),
-        forcedAspectRatio: _selectedAspectRatio,
-      ),
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: KeyedSubtree(
+            key: ValueKey(currentVideo.path),
+            child: VideoCropEditor(
+              key: _editorKey,
+              videoFile: currentVideo,
+              initialCrop: currentCrop,
+              onCropChanged: _onCropUpdated,
+              isMuted: _isMuted,
+              onMuteToggle: () => setState(() => _isMuted = !_isMuted),
+              forcedAspectRatio: _selectedAspectRatio,
+            ),
+          ),
+        ),
+        // Quick Save Crop Preset button
+        Positioned(
+          top: 12,
+          right: 12,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _openSavePresetSheet,
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.65),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withOpacity(0.3)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.bookmark_add_outlined, size: 14, color: Colors.white),
+                    SizedBox(width: 5),
+                    Text(
+                      'Save Crop',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -744,38 +885,111 @@ class _VideoCropperScreenState extends State<VideoCropperScreen> {
       '9:16': {'name': '9:16', 'ratio': 9 / 16, 'icon': Icons.crop_portrait},
     };
 
-    return Column(
-      children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: aspectRatios.entries.map((e) {
-              final key = e.key;
-              final name = e.value['name'] as String;
-              final selected = _selectedAspectRatio == key;
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  label: Text(name),
-                  selected: selected,
-                  onSelected: (_) => _applyAspectRatio(key),
-                  selectedColor: Colors.blueAccent,
-                  labelStyle: TextStyle(color: selected ? Colors.white : Colors.black87),
-                  backgroundColor: Colors.grey[100],
-                ),
-              );
-            }).toList(),
+    return ValueListenableBuilder<List<UserCropSetting>>(
+      valueListenable: UserCropSettingsService.instance.presetsNotifier,
+      builder: (context, userPresets, _) {
+        return Column(
+          children: [
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  // Standard aspect ratios
+                  ...aspectRatios.entries.map((e) {
+                    final key = e.key;
+                    final name = e.value['name'] as String;
+                    final selected = _selectedAspectRatio == key;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(name),
+                        selected: selected,
+                        onSelected: (_) => _applyAspectRatio(key),
+                        selectedColor: Colors.blueAccent,
+                        labelStyle: TextStyle(color: selected ? Colors.white : Colors.black87),
+                        backgroundColor: Colors.grey[100],
+                      ),
+                    );
+                  }),
+
+                  // User-saved crop settings (if any)
+                  ...userPresets.map((preset) {
+                    final selected = _selectedAspectRatio == preset.id;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: GestureDetector(
+                        onLongPress: () => _showPresetOptions(preset),
+                        child: ChoiceChip(
+                          avatar: const Icon(Icons.bookmark, size: 14),
+                          label: Text(preset.name),
+                          selected: selected,
+                          onSelected: (_) => _applyUserCropSetting(preset),
+                          selectedColor: AppColors.primary,
+                          labelStyle: TextStyle(color: selected ? Colors.white : Colors.black87),
+                          backgroundColor: Colors.grey[100],
+                        ),
+                      ),
+                    );
+                  }),
+
+                  // Save current crop as preset button
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ActionChip(
+                      avatar: const Icon(Icons.bookmark_add_outlined, size: 15, color: AppColors.primary),
+                      label: const Text('+ Save Crop', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary)),
+                      backgroundColor: AppColors.primarySurface,
+                      side: BorderSide(color: AppColors.primary.withValues(alpha: 0.4)),
+                      onPressed: _openSavePresetSheet,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+              child: Text(
+                'Selected ratio or custom crop setting will be applied to the current video.',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showPresetOptions(UserCropSetting preset) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.check_circle_outline, color: AppColors.primary),
+                title: Text('Apply "${preset.name}"'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _applyUserCropSetting(preset);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                title: const Text('Delete Preset', style: TextStyle(color: Colors.redAccent)),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await UserCropSettingsService.instance.deletePreset(preset.id);
+                },
+              ),
+            ],
           ),
         ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          child: Text(
-            'Selected ratio will be applied to the current video.',
-            style: TextStyle(color: Colors.grey, fontSize: 12),
-          ),
-        ),
-      ],
+      ),
     );
   }
 

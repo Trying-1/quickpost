@@ -192,12 +192,25 @@ class OpenGLTextOverlayProcessor(private val context: Context) {
         decoder.configure(inputFormat, decoderSurface, null, 0)
         decoder.start()
 
-        // 3. Encoder (HW, Surface input)
+        var targetBitrate = (0.10 * FRAME_RATE * inputWidth * inputHeight).toInt()
+        val fileLength = java.io.File(videoPath).length()
+        val durationSecs = videoDurationUs / 1000000.0
+        if (durationSecs > 0) {
+            val inputBitrate = (fileLength * 8.0 / durationSecs).toInt()
+            val maxAllowed = (inputBitrate * 1.5).toInt().coerceAtLeast(500_000)
+            if (targetBitrate > maxAllowed) {
+                targetBitrate = maxAllowed
+            }
+        }
+        if (targetBitrate > 8_000_000) targetBitrate = 8_000_000
+        if (targetBitrate < 500_000) targetBitrate = 500_000
+
         val encoderFormat = MediaFormat.createVideoFormat(
             MediaFormat.MIMETYPE_VIDEO_AVC, inputWidth, inputHeight
         ).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-            setInteger(MediaFormat.KEY_BIT_RATE, DEFAULT_BITRATE)
+            setInteger(MediaFormat.KEY_BIT_RATE, targetBitrate)
+            setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
             setInteger(MediaFormat.KEY_FRAME_RATE, FRAME_RATE)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, I_FRAME_INTERVAL)
         }

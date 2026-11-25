@@ -63,6 +63,9 @@ class AnalyticsService {
     }
   }
 
+  /// Alias for convenient screen tracking
+  Future<void> logScreen(String screenName) => setCurrentScreen(screenName: screenName);
+
   // --- Specific Events ---
 
   Future<void> logAppOpen() async {

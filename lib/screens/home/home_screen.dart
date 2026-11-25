@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../config/app_theme.dart';
 import '../../services/onboarding_service.dart';
 import '../../services/analytics_service.dart';
+import '../../services/watermark_preset_service.dart';
+import '../../services/caption_backup_service.dart';
 import 'home_shell_screen.dart';
 import '../tutorials/tutorials_screen.dart';
 import '../subscription/subscription_screen.dart';
@@ -15,8 +19,10 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static const MethodChannel _platform = MethodChannel('com.quickpost.app/processor');
+
   String? _goal;
-  String? _platform;
+  String? _targetPlatform;
   String? _experience;
   String? _style;
   bool _isLoading = true;
@@ -31,14 +37,14 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadPersonalizationData() async {
     try {
       final goal = await OnboardingService.getGoal();
-      final platform = await OnboardingService.getPlatform();
+      final plat = await OnboardingService.getPlatform();
       final exp = await OnboardingService.getExperience();
       final style = await OnboardingService.getStyle();
 
       if (mounted) {
         setState(() {
           _goal = goal;
-          _platform = platform;
+          _targetPlatform = plat;
           _experience = exp;
           _style = style;
           _isLoading = false;
@@ -82,8 +88,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
                 // ─── Creative Tips Carousel ───
                 _buildTipsSection(primary),
-                const SizedBox(height: 28),
+                const SizedBox(height: 24),
 
+                // ─── Quick Import Shortcuts ───
+                _buildQuickImportButtons(),
                 const SizedBox(height: 16),
               ],
             ),
@@ -185,7 +193,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   context,
                   MaterialPageRoute(
                     builder: (context) => HomeShellScreen(
-                      initialIndex: 11, // profile tab index
+                      initialTabId: 'profile',
                     ),
                   ),
                 );
@@ -219,8 +227,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildPersonalizationBadges(Color primary) {
     final badges = <String>[];
-    if (_platform != null) {
-      badges.add('📱 ${_platform!.replaceAll('📱 ', '').replaceAll('📸 ', '').replaceAll('💼 ', '').replaceAll('🌐 ', '')}');
+    if (_targetPlatform != null) {
+      badges.add('📱 ${_targetPlatform!.replaceAll('📱 ', '').replaceAll('📸 ', '').replaceAll('💼 ', '').replaceAll('🌐 ', '')}');
     }
     if (_style != null) {
       badges.add('🎨 ${_style!.replaceAll('💥 ', '').replaceAll('🎨 ', '').replaceAll('💡 ', '').replaceAll('📊 ', '')}');
@@ -470,6 +478,71 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  // ─── Simple Quick Import Buttons ───
+
+  Widget _buildQuickImportButtons() {
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: _quickImportCaptions,
+            icon: const Icon(Icons.subtitles_rounded, size: 16),
+            label: const Text('Import Captions', style: TextStyle(fontSize: 12, fontFamily: 'Poppins')),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.primary,
+              side: const BorderSide(color: AppColors.divider),
+              backgroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: _quickImportWatermarkPresets,
+            icon: const Icon(Icons.branding_watermark_rounded, size: 16),
+            label: const Text('Import Watermarks', style: TextStyle(fontSize: 12, fontFamily: 'Poppins')),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.primary,
+              side: const BorderSide(color: AppColors.divider),
+              backgroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _quickImportCaptions() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['json']);
+      if (result == null || result.files.isEmpty || result.files.single.path == null) return;
+      final res = await CaptionBackupService.importCaptionStoreFromFile(result.files.single.path!, replaceExisting: false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Imported ${res.importedCount} captions!')));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Import failed: $e')));
+    }
+  }
+
+  Future<void> _quickImportWatermarkPresets() async {
+    try {
+      final String? json = await _platform.invokeMethod('importPresets');
+      if (json != null && json.isNotEmpty) {
+        final int count = await WatermarkPresetService.importPresetsJson(json);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Imported $count watermark presets!')));
+        }
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Import failed: $e')));
+    }
   }
 
 

@@ -9,6 +9,9 @@ import android.view.Surface
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ScaleXSpan
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -139,6 +142,30 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         }
     """.trimIndent()
 
+    private val FRAGMENT_SHADER_MASKED_SHINE = """
+        precision mediump float;
+        varying vec2 vTexCoord;
+        uniform sampler2D sMaskTexture;
+        uniform float uBeamPos;
+        uniform float uBeamWidth;
+        uniform float uAlpha;
+
+        void main() {
+            vec4 mask = texture2D(sMaskTexture, vTexCoord);
+            if (mask.a <= 0.01) {
+                discard;
+            }
+            // Angle ~ 24 degrees: cos=0.91, sin=0.41
+            float lineCoord = vTexCoord.x * 0.91 + (1.0 - vTexCoord.y) * 0.41;
+            float dist = abs(lineCoord - uBeamPos);
+            float t = clamp(1.0 - (dist / uBeamWidth), 0.0, 1.0);
+            float broad = t * t * (3.0 - 2.0 * t);
+            float core = pow(t, 5.0);
+            float shine = (broad * 0.40 + core * 0.85) * uAlpha;
+            gl_FragColor = vec4(vec3(shine), shine) * mask.a;
+        }
+    """.trimIndent()
+
 
     // ── Geometry ─────────────────────────────────────────────────────
 
@@ -166,6 +193,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
     private var program2D = 0
     private var programBlurH = 0
     private var programBlurV = 0
+    private var programMaskedShine = 0
 
     private var fboA = 0
     private var fboTexA = 0
@@ -245,6 +273,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         
         // Extract basic params
         val fullScreen = params["fullScreen"] as? Boolean ?: false
+        val forceSquare = params["forceSquareBg"] as? Boolean ?: false
         val type = params["type"] as? String ?: "profile"
         val bgColorStr = params["bgColor"] as? String ?: "#000000"
         val bgColor = try { Color.parseColor(bgColorStr) } catch (e: Exception) { Color.BLACK }
@@ -256,6 +285,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         val bgBrightness = (params["bgBrightness"] as? Number)?.toFloat() ?: 1.0f
         val bgSaturation = (params["bgSaturation"] as? Number)?.toFloat() ?: 1.0f
         val bgBlur = (params["bgBlur"] as? Number)?.toFloat() ?: 0f
+        val videoX = (params["videoX"] as? Number)?.toFloat() ?: 0.5f
         val videoY = (params["videoY"] as? Number)?.toFloat() ?: 0.5f
         val videoScale = (params["videoScale"] as? Number)?.toFloat() ?: 1.0f
         
@@ -297,12 +327,12 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         Log.d(TAG, "Input Dimensions: $inputWidth x $inputHeight")
 
         // Output dimensions: Must be multiples of 16 for some hardware encoders (like MTK) to avoid silent failures
-        var outW = if (fullScreen) 1080 else inputWidth
-        var outH = if (fullScreen) 1920 else inputHeight
+        var outW = if (fullScreen) 1080 else if (forceSquare) 1080 else inputWidth
+        var outH = if (fullScreen) 1920 else if (forceSquare) 1080 else inputHeight
         
-        // Align to 16
-        outW = (outW + 15) / 16 * 16
-        outH = (outH + 15) / 16 * 16
+        // Align to 2 for modern AVC encoders (16-alignment breaks 1080p by forcing 1088)
+        outW = (outW / 2) * 2
+        outH = (outH / 2) * 2
         
         val outWidth = outW
         val outHeight = outH
@@ -379,9 +409,26 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         // 2. Encoder Setup
         Log.d(TAG, "Phase 2: Encoder Setup")
         callback.onStep("Configuring encoder...")
+        var targetBitrate = (0.10 * FRAME_RATE * outWidth * outHeight).toInt()
+        val fileLength = java.io.File(videoPath).length()
+        val durationSecs = videoDurationUs / 1000000.0
+        if (durationSecs > 0) {
+            val inputBitrate = (fileLength * 8.0 / durationSecs).toInt()
+            // A detailed background image adds spatial complexity; keep a tight cap near the input bitrate.
+            val factor = if (bgImagePath.isNotEmpty()) 1.2 else 1.5
+            val maxAllowed = (inputBitrate * factor).toInt().coerceAtLeast(500_000)
+            if (targetBitrate > maxAllowed) {
+                targetBitrate = maxAllowed
+            }
+        }
+        if (targetBitrate > 8_000_000) targetBitrate = 8_000_000
+        if (targetBitrate < 500_000) targetBitrate = 500_000
+        Log.d(TAG, "Target bitrate: $targetBitrate")
+
         val encoderFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, outWidth, outHeight).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-            setInteger(MediaFormat.KEY_BIT_RATE, DEFAULT_BITRATE)
+            setInteger(MediaFormat.KEY_BIT_RATE, targetBitrate)
+            setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
             setInteger(MediaFormat.KEY_FRAME_RATE, FRAME_RATE)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, I_FRAME_INTERVAL)
         }
@@ -457,13 +504,14 @@ class OpenGLWatermarkProcessor(private val context: Context) {
             android.opengl.Matrix.setIdentityM(videoShadowMvp, 0)
             
             // Initial translation for video centering
-            val glVideoY = (0.5f - videoY) * 2f * (1.0f - sY)
+            val glVideoX = (videoX - 0.5f) * 2f * (1.0f - sX * videoScale)
+            val glVideoY = (0.5f - videoY) * 2f * (1.0f - sY * videoScale)
             
             // Apply User Offsets (convert pixels to NDC)
             val glShadowOffsetX = (videoShadowOffsetX / outWidth.toFloat()) * 2f
             val glShadowOffsetY = -(videoShadowOffsetY / outHeight.toFloat()) * 2f
             
-            android.opengl.Matrix.translateM(videoShadowMvp, 0, glShadowOffsetX, glVideoY + glShadowOffsetY, 0f)
+            android.opengl.Matrix.translateM(videoShadowMvp, 0, glVideoX + glShadowOffsetX, glVideoY + glShadowOffsetY, 0f)
             android.opengl.Matrix.scaleM(videoShadowMvp, 0, (shadowBmpW / outWidth.toFloat()) * videoScale, (shadowBmpH / outHeight.toFloat()) * videoScale, 1.0f)
             
             shadowResult.bitmap.recycle()
@@ -505,6 +553,181 @@ class OpenGLWatermarkProcessor(private val context: Context) {
                 }
             }
         }
+
+        // --- App Watermark Outro Texture ---
+        val addOutro = params["addOutro"] as? Boolean ?: false
+        var appWatermarkTexId = 0
+        var outroMaskTexId = 0
+        if (addOutro) {
+            try {
+                val appWatermarkBmp = Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.ARGB_8888)
+                val appC = Canvas(appWatermarkBmp)
+                val minDim = kotlin.math.min(outWidth, outHeight).toFloat()
+                val centerX = outWidth / 2f
+                
+                // Deep dark premium studio background
+                val bgGradient = android.graphics.LinearGradient(
+                    0f, 0f, outWidth.toFloat(), outHeight.toFloat(),
+                    intArrayOf(android.graphics.Color.parseColor("#12131C"), android.graphics.Color.parseColor("#06070A")),
+                    null, android.graphics.Shader.TileMode.CLAMP
+                )
+                val bgPaint = Paint().apply { shader = bgGradient }
+                appC.drawRect(0f, 0f, outWidth.toFloat(), outHeight.toFloat(), bgPaint)
+
+                // Layout measurements
+                val badgeW = minDim * 0.52f
+                val badgeH = badgeW * 0.21f
+                val contentTotalH = (minDim * 0.470f) + badgeH
+                val contentStartY = (outHeight - contentTotalH) / 2f
+
+                // 1. App Logo
+                val logoSize = minDim * 0.28f
+                val logoLeft = centerX - (logoSize / 2f)
+                val logoTop = contentStartY
+                val logoRect = RectF(logoLeft, logoTop, logoLeft + logoSize, logoTop + logoSize)
+                val logoCornerRadius = logoSize * 0.22f
+
+                // Ambient backlight glow centered on logo
+                val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    shader = RadialGradient(
+                        centerX, logoRect.centerY(), minDim * 0.50f,
+                        intArrayOf(Color.parseColor("#354A5568"), Color.parseColor("#186C63FF"), Color.TRANSPARENT),
+                        floatArrayOf(0f, 0.45f, 1f),
+                        Shader.TileMode.CLAMP
+                    )
+                }
+                appC.drawCircle(centerX, logoRect.centerY(), minDim * 0.50f, glowPaint)
+
+                try {
+                    val stream = context.assets.open("flutter_assets/assets/images/app_icon.png")
+                    val logo = BitmapFactory.decodeStream(stream)
+                    stream.close()
+                    if (logo != null) {
+                        val scaledLogo = Bitmap.createScaledBitmap(logo, logoSize.toInt(), logoSize.toInt(), true)
+                        val shader = BitmapShader(scaledLogo, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+                        
+                        val matrix = android.graphics.Matrix()
+                        matrix.setTranslate(logoRect.left, logoRect.top)
+                        shader.setLocalMatrix(matrix)
+
+                        // Outer drop shadow
+                        val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            color = Color.BLACK
+                            setShadowLayer(35f, 0f, 18f, Color.parseColor("#99000000"))
+                        }
+                        appC.drawRoundRect(logoRect, logoCornerRadius, logoCornerRadius, shadowPaint)
+
+                        // Logo itself
+                        val logoPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            this.shader = shader
+                        }
+                        appC.drawRoundRect(logoRect, logoCornerRadius, logoCornerRadius, logoPaint)
+
+                        // Glassy border
+                        val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            style = Paint.Style.STROKE
+                            strokeWidth = minDim * 0.003f
+                            color = Color.parseColor("#35FFFFFF")
+                        }
+                        appC.drawRoundRect(logoRect, logoCornerRadius, logoCornerRadius, strokePaint)
+
+                        scaledLogo.recycle()
+                        logo.recycle()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to load app logo", e)
+                }
+
+                // 2. App Title: "Quick Post"
+                val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                    textSize = minDim * 0.078f
+                    typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+                    textAlign = Paint.Align.CENTER
+                    letterSpacing = 0.03f
+                    setShadowLayer(14f, 0f, 6f, Color.parseColor("#90000000"))
+                }
+                val titleY = logoRect.bottom + (minDim * 0.085f)
+                appC.drawText("Quick Post", centerX, titleY, titlePaint)
+
+                // 3. Tagline: "Made with Quick Post"
+                val taglinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.parseColor("#9AA0A6")
+                    textSize = minDim * 0.034f
+                    typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+                    textAlign = Paint.Align.CENTER
+                    letterSpacing = 0.04f
+                }
+                val taglineY = titleY + (minDim * 0.05f)
+                appC.drawText("Made with Quick Post", centerX, taglineY, taglinePaint)
+
+                // 4. "GET IT ON Google Play" Store Badge
+                val badgeTop = taglineY + (minDim * 0.055f)
+                val badgeRect = RectF(centerX - badgeW / 2f, badgeTop, centerX + badgeW / 2f, badgeTop + badgeH)
+                val badgeCornerRadius = badgeH * 0.24f
+
+                // Badge background
+                val badgeBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.parseColor("#12131E")
+                    style = Paint.Style.FILL
+                    setShadowLayer(25f, 0f, 10f, Color.parseColor("#80000000"))
+                }
+                appC.drawRoundRect(badgeRect, badgeCornerRadius, badgeCornerRadius, badgeBgPaint)
+
+                // Badge border
+                val badgeBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.parseColor("#40FFFFFF")
+                    style = Paint.Style.STROKE
+                    strokeWidth = minDim * 0.003f
+                }
+                appC.drawRoundRect(badgeRect, badgeCornerRadius, badgeCornerRadius, badgeBorderPaint)
+
+                // Google Play Icon inside badge
+                val iconH = badgeH * 0.60f
+                val iconW = iconH * 0.88f
+                val iconLeft = badgeRect.left + (badgeH * 0.32f)
+                val iconTop = badgeRect.centerY() - (iconH / 2f)
+                val iconRect = RectF(iconLeft, iconTop, iconLeft + iconW, iconTop + iconH)
+                drawGooglePlayIcon(appC, iconRect)
+
+                // Badge text: "GET IT ON" & "Google Play"
+                val textLeft = iconLeft + iconW + (badgeH * 0.22f)
+
+                val getItOnPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.parseColor("#B0B4BA")
+                    textSize = badgeH * 0.22f
+                    typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+                    letterSpacing = 0.10f
+                }
+                appC.drawText("GET IT ON", textLeft, badgeRect.top + badgeH * 0.36f, getItOnPaint)
+
+                val googlePlayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                    textSize = badgeH * 0.40f
+                    typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+                    letterSpacing = 0.02f
+                }
+                appC.drawText("Google Play", textLeft, badgeRect.top + badgeH * 0.78f, googlePlayPaint)
+
+                appWatermarkTexId = loadBitmapTexture(flipBitmapVertically(appWatermarkBmp))
+                appWatermarkBmp.recycle()
+
+                // Generate exact pixel-aligned mask strictly for Logo Card & Play Store Badge Card
+                val outroMaskBmp = Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.ARGB_8888)
+                val maskCanvas = Canvas(outroMaskBmp)
+                val maskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                    style = Paint.Style.FILL
+                }
+                maskCanvas.drawRoundRect(logoRect, logoCornerRadius, logoCornerRadius, maskPaint)
+                maskCanvas.drawRoundRect(badgeRect, badgeCornerRadius, badgeCornerRadius, maskPaint)
+                outroMaskTexId = loadBitmapTexture(flipBitmapVertically(outroMaskBmp))
+                outroMaskBmp.recycle()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed creating app watermark or outro mask", e)
+            }
+        }
+        // -----------------------------------
 
         var bgTexId = 0
         val bgMvp = FloatArray(16)
@@ -555,26 +778,20 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         // Calculate Centering for Video
         val videoMvp = FloatArray(16)
         android.opengl.Matrix.setIdentityM(videoMvp, 0)
-        if (fullScreen) {
-             val aspectIn = inputWidth.toFloat() / inputHeight.toFloat()
-             val aspectOut = outWidth.toFloat() / outHeight.toFloat()
-             
-             // 1. Calculate Scales
-             val sY = if (aspectIn > aspectOut) aspectOut / aspectIn else 1.0f
-             val sX = if (aspectIn < aspectOut) aspectIn / aspectOut else 1.0f
+        val aspectIn = inputWidth.toFloat() / inputHeight.toFloat()
+        val aspectOut = outWidth.toFloat() / outHeight.toFloat()
+        
+        // 1. Calculate Scales
+        val sY = if (aspectIn > aspectOut) aspectOut / aspectIn else 1.0f
+        val sX = if (aspectIn < aspectOut) aspectIn / aspectOut else 1.0f
 
-             // 2. Calculate Vertical Position (videoY: 0.0 top, 0.5 center, 1.0 bottom)
-             // Math: (0.5 - videoY) * 2 matches Flutter Alignment. We multiply by (1 - sY) 
-             // to restrict translation within the available "slack" space.
-             val glVideoY = (0.5f - videoY) * 2f * (1.0f - sY)
+        // 2. Calculate Position (videoX: 0.0 left, 0.5 center, 1.0 right; videoY: 0.0 top, 0.5 center, 1.0 bottom)
+        val glVideoX = (videoX - 0.5f) * 2f * (1.0f - sX * videoScale)
+        val glVideoY = (0.5f - videoY) * 2f * (1.0f - sY * videoScale)
 
-             // 3. Apply Transformations: Translate FIRST, then Scale
-             // This ensures translation is in NDC space relative to the canvas, not the video's fitted size.
-             android.opengl.Matrix.translateM(videoMvp, 0, 0f, glVideoY, 0f)
-             android.opengl.Matrix.scaleM(videoMvp, 0, sX * videoScale, sY * videoScale, 1.0f)
-        } else {
-             android.opengl.Matrix.scaleM(videoMvp, 0, videoScale, videoScale, 1.0f)
-        }
+        // 3. Apply Transformations: Translate FIRST, then Scale
+        android.opengl.Matrix.translateM(videoMvp, 0, glVideoX, glVideoY, 0f)
+        android.opengl.Matrix.scaleM(videoMvp, 0, sX * videoScale, sY * videoScale, 1.0f)
 
         val identityMvp = FloatArray(16)
         android.opengl.Matrix.setIdentityM(identityMvp, 0)
@@ -597,14 +814,19 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         var lastStepTime = 0L
         isCanceled = false // Reset for new run
 
+        var outroFramesRemaining = if (addOutro) (FRAME_RATE * 1.5f).toInt() else 0
+        var lastPtsUs = 0L
+
         try {
-            while (!decoderDone) {
+            while (!decoderDone || outroFramesRemaining > 0) {
                 if (isCanceled) {
                     Log.d(TAG, "Processing loop CANCELED by user")
                     throw Exception("Processing Canceled")
                 }
-                if (!inputDone) {
-                    val idx = decoder.dequeueInputBuffer(TIMEOUT_US)
+                
+                if (!decoderDone) {
+                    if (!inputDone) {
+                        val idx = decoder.dequeueInputBuffer(TIMEOUT_US)
                     if (idx >= 0) {
                         val buf = decoder.getInputBuffer(idx) ?: continue
                         val size = extractor.readSampleData(buf, 0)
@@ -733,6 +955,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
 
                         GLES20.glDisable(GLES20.GL_BLEND)
 
+                        lastPtsUs = bufferInfo.presentationTimeUs
                         val pts = bufferInfo.presentationTimeUs * 1000L
                         EGLExt.eglPresentationTimeANDROID(eglDisplay, eglSurface, pts)
                         val swapOk = EGL14.eglSwapBuffers(eglDisplay, eglSurface)
@@ -751,10 +974,49 @@ class OpenGLWatermarkProcessor(private val context: Context) {
                             }
                         }
                     }
+                    }
                     if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
                         Log.d(TAG, "Decoder EOS reached")
                         decoderDone = true
                     }
+                } else if (outroFramesRemaining > 0) {
+                    lastPtsUs += (1000000L / FRAME_RATE)
+                    
+                    GLES20.glClearColor(0.04f, 0.04f, 0.06f, 1f)
+                    GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+                    
+                    if (appWatermarkTexId != 0) {
+                        GLES20.glEnable(GLES20.GL_BLEND)
+                        GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA)
+                        draw2DTexture(appWatermarkTexId, identityMvp, 1.0f)
+                        GLES20.glDisable(GLES20.GL_BLEND)
+                    }
+
+                    // Dynamic glimmer shine sweep (strictly masked to logo card and Play Store card)
+                    if (outroMaskTexId != 0) {
+                        val totalOutro = (FRAME_RATE * 1.5f).toInt()
+                        val currentFrame = totalOutro - outroFramesRemaining
+                        val sweepStart = 6
+                        val sweepEnd = 38
+                        if (currentFrame in sweepStart..sweepEnd) {
+                            val progress = (currentFrame - sweepStart).toFloat() / (sweepEnd - sweepStart).toFloat()
+                            val smoothT = progress * progress * (3f - 2f * progress)
+                            val beamPos = 0.20f + (smoothT * 0.95f)
+                            val beamAlpha = (0.90f * kotlin.math.sin(progress * Math.PI)).toFloat().coerceIn(0f, 1f)
+                            drawMaskedShine(outroMaskTexId, beamPos, 0.22f, beamAlpha)
+                        }
+                    }
+                    
+                    val pts = lastPtsUs * 1000L
+                    encoderBufferInfo.presentationTimeUs = lastPtsUs
+                    EGLExt.eglPresentationTimeANDROID(eglDisplay, eglSurface, pts)
+                    val swapOk = EGL14.eglSwapBuffers(eglDisplay, eglSurface)
+                    if (!swapOk) {
+                        Log.e(TAG, "eglSwapBuffers failed in outro! err: ${EGL14.eglGetError()} at frame $frameIndex")
+                    }
+                    drainEncoder(encoder, muxer, encoderBufferInfo, false)
+                    frameIndex++
+                    outroFramesRemaining--
                 }
             }
             callback.onStep("Muxing video tracks...")
@@ -767,7 +1029,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
             throw e
         } finally {
             val overlayTexIds = overlayRuntimes.map { it.texId }.toIntArray()
-            cleanup(encoder, encoderSurface, extractor, decoder, decoderSurface, muxer, oesTexId, watermarkTexId, bgTexId, patchTopTexId, patchBottomTexId, videoShadowTexId, *overlayTexIds)
+            cleanup(encoder, encoderSurface, extractor, decoder, decoderSurface, muxer, oesTexId, watermarkTexId, bgTexId, patchTopTexId, patchBottomTexId, videoShadowTexId, appWatermarkTexId, outroMaskTexId, *overlayTexIds)
             releaseEGL()
             surfaceTexture.release()
         }
@@ -787,7 +1049,8 @@ class OpenGLWatermarkProcessor(private val context: Context) {
             
             var mergeRet = -1
             try {
-                mergeRet = FFmpegTextOverlay(context).nativeMergeAudioVideo(tempFile.absolutePath, videoPath, outputFile.absolutePath, effectiveDuration)
+                val finalDurationMs = (effectiveDuration + 500).toInt()
+                mergeRet = FFmpegTextOverlay(context).nativeMergeAudioVideo(tempFile.absolutePath, videoPath, outputFile.absolutePath, finalDurationMs)
                 Log.d(TAG, "Audio merge returned code: $mergeRet")
             } catch (e: Exception) {
                 Log.e(TAG, "Audio merge exception: ${e.message}")
@@ -802,7 +1065,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
             }
         }
         Log.d(TAG, "═══ processVideoWithWatermark FINISHED ═══")
-        return effectiveDuration
+        return effectiveDuration + 500
     }
 
     // ── Watermark Drawing ───────────────────────────────────────────
@@ -1532,9 +1795,32 @@ class OpenGLWatermarkProcessor(private val context: Context) {
                 textPaint.typeface = Typeface.DEFAULT
             }
             
-            textPaint.letterSpacing = t.letterSpacing
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                textPaint.wordSpacing = t.wordSpacing
+            // Convert pixel letter spacing from Flutter to EM units for Android Paint (Paint.setLetterSpacing expects EM units: px / fontSize)
+            val letterSpacingEm = if (t.fontSize > 0f) t.letterSpacing / t.fontSize else 0f
+            textPaint.letterSpacing = letterSpacingEm
+            
+            // Apply word spacing: expand space characters using ScaleXSpan so it works reliably on all Android versions and in StaticLayout
+            val textToRender: CharSequence = if (t.wordSpacing != 0f && t.text.contains(' ')) {
+                val spaceWidth = textPaint.measureText(" ")
+                if (spaceWidth > 0f) {
+                    val scaleX = maxOf(0.01f, (spaceWidth + t.wordSpacing) / spaceWidth)
+                    val spannable = SpannableString(t.text)
+                    for (i in 0 until t.text.length) {
+                        if (t.text[i] == ' ') {
+                            spannable.setSpan(
+                                ScaleXSpan(scaleX),
+                                i,
+                                i + 1,
+                                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                            )
+                        }
+                    }
+                    spannable
+                } else {
+                    t.text
+                }
+            } else {
+                t.text
             }
             
             val alignment = when (t.textAlign.lowercase()) {
@@ -1543,7 +1829,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
                 else -> Layout.Alignment.ALIGN_CENTER
             }
 
-            val builder = StaticLayout.Builder.obtain(t.text, 0, t.text.length, textPaint, t.maxWidth.toInt())
+            val builder = StaticLayout.Builder.obtain(textToRender, 0, textToRender.length, textPaint, t.maxWidth.toInt())
                 .setAlignment(alignment)
                 .setLineSpacing(0f, t.lineHeight)
                 .setIncludePad(false)
@@ -1658,6 +1944,64 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         canvas.drawPath(tick, p)
     }
 
+    private fun drawGooglePlayIcon(canvas: Canvas, rect: RectF) {
+        val l = rect.left
+        val t = rect.top
+        val r = rect.right
+        val b = rect.bottom
+        val cy = rect.centerY()
+        val w = rect.width()
+        val h = rect.height()
+
+        val path = Path()
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+        }
+
+        val midX = l + w * 0.58f
+        val urX = r - w * 0.22f
+        val urY = t + h * 0.30f
+        val lrX = r - w * 0.22f
+        val lrY = b - h * 0.30f
+
+        // 1. Blue segment (Left)
+        paint.color = Color.parseColor("#00D2FF")
+        path.reset()
+        path.moveTo(l, t + h * 0.05f)
+        path.lineTo(midX, cy)
+        path.lineTo(l, b - h * 0.05f)
+        path.close()
+        canvas.drawPath(path, paint)
+
+        // 2. Green segment (Top)
+        paint.color = Color.parseColor("#00F076")
+        path.reset()
+        path.moveTo(l, t + h * 0.05f)
+        path.lineTo(midX, cy)
+        path.lineTo(urX, urY)
+        path.close()
+        canvas.drawPath(path, paint)
+
+        // 3. Red segment (Bottom)
+        paint.color = Color.parseColor("#FF334B")
+        path.reset()
+        path.moveTo(l, b - h * 0.05f)
+        path.lineTo(midX, cy)
+        path.lineTo(lrX, lrY)
+        path.close()
+        canvas.drawPath(path, paint)
+
+        // 4. Yellow segment (Right tip)
+        paint.color = Color.parseColor("#FFD000")
+        path.reset()
+        path.moveTo(r, cy)
+        path.lineTo(urX, urY)
+        path.lineTo(midX, cy)
+        path.lineTo(lrX, lrY)
+        path.close()
+        canvas.drawPath(path, paint)
+    }
+
     private fun createOESTexture(): Int {
         val tex = IntArray(1); GLES20.glGenTextures(1, tex, 0)
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, tex[0])
@@ -1680,6 +2024,7 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         program2D = createProgram(VERTEX_SHADER, FRAGMENT_SHADER_2D)
         programBlurH = createProgram(VERTEX_SHADER, FRAGMENT_SHADER_BLUR_H)
         programBlurV = createProgram(VERTEX_SHADER, FRAGMENT_SHADER_BLUR_V)
+        programMaskedShine = createProgram(VERTEX_SHADER, FRAGMENT_SHADER_MASKED_SHINE)
         createFBOs(w, h)
     }
 
@@ -1734,6 +2079,27 @@ class OpenGLWatermarkProcessor(private val context: Context) {
         GLES20.glUniform1f(GLES20.glGetUniformLocation(program2D, "uSaturation"), saturation)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0); GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texId)
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+    }
+
+    private fun drawMaskedShine(maskTexId: Int, beamPos: Float, beamWidth: Float, alpha: Float) {
+        if (maskTexId == 0 || alpha <= 0.001f) return
+        GLES20.glUseProgram(programMaskedShine)
+        val pos = GLES20.glGetAttribLocation(programMaskedShine, "aPosition")
+        val tex = GLES20.glGetAttribLocation(programMaskedShine, "aTexCoord")
+        GLES20.glEnableVertexAttribArray(pos); GLES20.glVertexAttribPointer(pos, 3, GLES20.GL_FLOAT, false, 0, vertexBuffer)
+        GLES20.glEnableVertexAttribArray(tex); GLES20.glVertexAttribPointer(tex, 2, GLES20.GL_FLOAT, false, 0, texCoordBuffer)
+        val iden = FloatArray(16); android.opengl.Matrix.setIdentityM(iden, 0)
+        GLES20.glUniformMatrix4fv(GLES20.glGetUniformLocation(programMaskedShine, "uMVPMatrix"), 1, false, iden, 0)
+        GLES20.glUniformMatrix4fv(GLES20.glGetUniformLocation(programMaskedShine, "uTexMatrix"), 1, false, iden, 0)
+        GLES20.glUniform1f(GLES20.glGetUniformLocation(programMaskedShine, "uBeamPos"), beamPos)
+        GLES20.glUniform1f(GLES20.glGetUniformLocation(programMaskedShine, "uBeamWidth"), beamWidth)
+        GLES20.glUniform1f(GLES20.glGetUniformLocation(programMaskedShine, "uAlpha"), alpha)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0); GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, maskTexId)
+        GLES20.glUniform1i(GLES20.glGetUniformLocation(programMaskedShine, "sMaskTexture"), 0)
+        GLES20.glEnable(GLES20.GL_BLEND)
+        GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE)
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        GLES20.glDisable(GLES20.GL_BLEND)
     }
 
     private fun drawBlurH(texId: Int, scale: Float, width: Int) {

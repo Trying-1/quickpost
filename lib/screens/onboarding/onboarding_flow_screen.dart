@@ -45,9 +45,9 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> with Ticker
   ];
 
   final List<Map<String, String>> _platforms = [
-    {'icon': '📱', 'title': 'TikTok & Shorts', 'desc': 'Optimized for high-energy 9:16 vertical feeds.'},
-    {'icon': '📸', 'title': 'Instagram Reels & Grid', 'desc': 'Focus on beautiful layouts, feeds and stories.'},
-    {'icon': '💼', 'title': 'LinkedIn & Business Posts', 'desc': 'Minimalist, clear educational text and posts.'},
+    {'icon': '📱', 'title': 'Short-Form Vertical Feeds', 'desc': 'Optimized for high-energy 9:16 vertical feeds.'},
+    {'icon': '📸', 'title': 'Social Reels & Grid', 'desc': 'Focus on beautiful layouts, feeds and stories.'},
+    {'icon': '💼', 'title': 'Business & Editorial Posts', 'desc': 'Minimalist, clear educational text and posts.'},
     {'icon': '🌐', 'title': 'Multi-channel syndication', 'desc': 'Adaptive sizes for all social networks.'},
   ];
 
@@ -705,7 +705,7 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> with Ticker
                 ),
                 const SizedBox(height: 16),
                 _buildSummaryLine('Goal Style', _selectedGoal ?? 'Visual Asset Designs'),
-                _buildSummaryLine('Primary Platform', _selectedPlatform ?? 'Instagram & Reels'),
+                _buildSummaryLine('Primary Platform', _selectedPlatform ?? 'Social Reels & Grid'),
                 _buildSummaryLine('Workflow speed', _selectedExperience ?? 'Intermediate Workflows'),
                 _buildSummaryLine('Selected theme preset', _selectedStyle ?? 'Aesthetic & Minimal'),
               ],

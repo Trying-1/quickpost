@@ -81,13 +81,14 @@ class WatermarkPresetAdapter extends TypeAdapter<WatermarkPreset> {
       wireInset: fields[60] == null ? 40.0 : fields[60] as double,
       wireTextPosition: fields[61] == null ? 'bottom' : fields[61] as String,
       wireGap: fields[62] == null ? 16.0 : fields[62] as double,
+      videoX: fields[63] == null ? 0.5 : fields[63] as double,
     );
   }
 
   @override
   void write(BinaryWriter writer, WatermarkPreset obj) {
     writer
-      ..writeByte(63)
+      ..writeByte(64)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -213,7 +214,9 @@ class WatermarkPresetAdapter extends TypeAdapter<WatermarkPreset> {
       ..writeByte(61)
       ..write(obj.wireTextPosition)
       ..writeByte(62)
-      ..write(obj.wireGap);
+      ..write(obj.wireGap)
+      ..writeByte(63)
+      ..write(obj.videoX);
   }
 
   @override

@@ -707,23 +707,163 @@ class _VideoTextOverlayScreenState extends State<VideoTextOverlayScreen> with Wi
     }
   }
 
+  void _showToast(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 2),
+        backgroundColor: isError ? Colors.red.shade700 : const Color(0xFF1E293B),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  String _getFormattedDate(bool includeWeekday) {
+    final now = DateTime.now();
+    final months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    final weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    
+    final month = months[now.month - 1];
+    final date = now.day;
+    final year = now.year;
+    
+    if (includeWeekday) {
+      final weekday = weekdays[now.weekday - 1];
+      return '$month $date, $year\n$weekday';
+    } else {
+      return '$month $date, $year';
+    }
+  }
+
+  Widget _buildQuickActionBtn({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 14, color: color),
+                const SizedBox(width: 4.5),
+                Flexible(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTextTab() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Text Content', style: TextStyle(fontWeight: FontWeight.bold)),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Text Content', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            if (_textContent.isNotEmpty)
+              Text(
+                '${_textContent.length} chars',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
+              ),
+          ],
+        ),
         const SizedBox(height: 8),
+        Row(
+          children: [
+            _buildQuickActionBtn(
+              icon: Icons.calendar_today_rounded,
+              label: 'Date',
+              color: const Color(0xFF6C63FF),
+              onTap: () {
+                final text = _getFormattedDate(false);
+                _textController.text = text;
+                setState(() => _textContent = text);
+              },
+            ),
+            const SizedBox(width: 6),
+            _buildQuickActionBtn(
+              icon: Icons.event_note_rounded,
+              label: '+ Day',
+              color: Colors.indigo,
+              onTap: () {
+                final text = _getFormattedDate(true);
+                _textController.text = text;
+                setState(() => _textContent = text);
+              },
+            ),
+            const SizedBox(width: 6),
+            _buildQuickActionBtn(
+              icon: Icons.copy_rounded,
+              label: 'Copy',
+              color: Colors.teal.shade700,
+              onTap: () {
+                if (_textContent.isNotEmpty) {
+                  Clipboard.setData(ClipboardData(text: _textContent));
+                  _showToast('Text copied to clipboard');
+                } else {
+                  _showToast('Nothing to copy', isError: true);
+                }
+              },
+            ),
+            const SizedBox(width: 6),
+            _buildQuickActionBtn(
+              icon: Icons.clear_rounded,
+              label: 'Clear',
+              color: Colors.deepOrange.shade600,
+              onTap: () {
+                _textController.clear();
+                setState(() => _textContent = '');
+                _showToast('Text cleared');
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
         TextField(
           controller: _textController,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             hintText: 'Enter text to overlay',
-            border: OutlineInputBorder(),
+            filled: true,
+            fillColor: Colors.grey.shade100,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           ),
           maxLines: 3,
           onChanged: (v) => setState(() => _textContent = v),
         ),
         const SizedBox(height: 16),
-        Text('Font Size: ${_fontSize.toInt()}px'),
+        Text('Font Size: ${_fontSize.toInt()}px', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
         Slider(
           value: _fontSize,
           min: 20,

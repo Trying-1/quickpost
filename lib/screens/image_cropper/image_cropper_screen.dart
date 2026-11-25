@@ -5,14 +5,13 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import '../../services/analytics_service.dart';
-import '../../config/app_theme.dart';
-import 'package:image/image.dart' as img;
-import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:open_file/open_file.dart';
 import '../home/home_shell_screen.dart';
-import '../../services/app_review_service.dart';
 import '../../services/ad_service.dart';
+import '../../models/user_crop_setting.dart';
+import '../../services/user_crop_settings_service.dart';
+import '../../widgets/user_crop_preset_sheet.dart';
 
 class ImageCropperScreen extends StatefulWidget {
   final List<String>? sharedImagePaths;
@@ -52,6 +51,7 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
   
   // Aspect ratio presets
   String? _selectedAspectRatio;
+  UserCropSetting? _selectedUserPreset;
   static const Map<String, Map<String, dynamic>> _aspectRatios = {
     'free': {'name': 'Free', 'ratio': null, 'icon': Icons.crop_free},
     '1:1': {'name': 'Square', 'ratio': 1.0, 'icon': Icons.crop_square},
@@ -76,6 +76,7 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
   @override
   void initState() {
     super.initState();
+    UserCropSettingsService.instance.init();
     _requestPermissions();
     _loadSharedImages();
     AnalyticsService().setCurrentScreen(screenName: 'Image Cropper');
@@ -318,23 +319,27 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
         
         // Apply aspect ratio constraint if selected
         if (_selectedAspectRatio != null && _selectedAspectRatio != 'free') {
-          final aspectRatio = _aspectRatios[_selectedAspectRatio!]!['ratio'] as double;
-          final double currentRatio = _cropWidth / _cropHeight;
-          
-          if (currentRatio > aspectRatio) {
-            // Current crop is wider than target ratio, adjust width
-            _cropWidth = _cropHeight * aspectRatio;
-          } else {
-            // Current crop is taller than target ratio, adjust height
-            _cropHeight = _cropWidth / aspectRatio;
-          }
-          
-          // Ensure crop area stays within image bounds
-          if (_cropX + _cropWidth > _imageDisplayWidth) {
-            _cropX = _imageDisplayWidth - _cropWidth;
-          }
-          if (_cropY + _cropHeight > _imageDisplayHeight) {
-            _cropY = _imageDisplayHeight - _cropHeight;
+          final double? aspectRatio = _selectedUserPreset?.aspectRatio ??
+              (_aspectRatios[_selectedAspectRatio!]?['ratio'] as double?);
+
+          if (aspectRatio != null) {
+            final double currentRatio = _cropWidth / _cropHeight;
+            
+            if (currentRatio > aspectRatio) {
+              // Current crop is wider than target ratio, adjust width
+              _cropWidth = _cropHeight * aspectRatio;
+            } else {
+              // Current crop is taller than target ratio, adjust height
+              _cropHeight = _cropWidth / aspectRatio;
+            }
+            
+            // Ensure crop area stays within image bounds
+            if (_cropX + _cropWidth > _imageDisplayWidth) {
+              _cropX = _imageDisplayWidth - _cropWidth;
+            }
+            if (_cropY + _cropHeight > _imageDisplayHeight) {
+              _cropY = _imageDisplayHeight - _cropHeight;
+            }
           }
         }
       });
@@ -352,9 +357,11 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
   }
 
   void _applyAspectRatio(String aspectRatioKey) {
+    _selectedUserPreset = null;
     if (aspectRatioKey == 'free') {
       setState(() {
         _selectedAspectRatio = null;
+      _selectedUserPreset = null;
       });
       return;
     }
@@ -386,6 +393,131 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
       _cropWidth = _cropWidth.clamp(50.0, _imageDisplayWidth - _cropX);
       _cropHeight = _cropHeight.clamp(50.0, _imageDisplayHeight - _cropY);
     });
+  }
+
+  NormalizedCropRect getCurrentNormalizedCrop() {
+    if (_imageDisplayWidth <= 0 || _imageDisplayHeight <= 0) {
+      return const NormalizedCropRect(x: 0.1, y: 0.1, width: 0.8, height: 0.8);
+    }
+    return NormalizedCropRect(
+      x: (_cropX / _imageDisplayWidth).clamp(0.0, 1.0),
+      y: (_cropY / _imageDisplayHeight).clamp(0.0, 1.0),
+      width: (_cropWidth / _imageDisplayWidth).clamp(0.05, 1.0),
+      height: (_cropHeight / _imageDisplayHeight).clamp(0.05, 1.0),
+    );
+  }
+
+  void _applyUserCropSetting(UserCropSetting preset, {bool applyToAll = false}) {
+    setState(() {
+      _selectedUserPreset = preset;
+      _selectedAspectRatio = preset.id;
+
+      void applyToDimensions(
+        double dispW,
+        double dispH,
+        void Function(double x, double y, double w, double h) setCoords,
+      ) {
+        if (preset.isExactFraming && preset.normalizedWidth > 0 && preset.normalizedHeight > 0) {
+          final double w = (preset.normalizedWidth * dispW).clamp(50.0, dispW);
+          final double h = (preset.normalizedHeight * dispH).clamp(50.0, dispH);
+          final double x = (preset.normalizedX * dispW).clamp(0.0, dispW - w);
+          final double y = (preset.normalizedY * dispH).clamp(0.0, dispH - h);
+          setCoords(x, y, w, h);
+        } else {
+          final double ratio = preset.aspectRatio;
+          double w = dispW * 0.8;
+          double h = w / ratio;
+          if (h > dispH * 0.8) {
+            h = dispH * 0.8;
+            w = h * ratio;
+          }
+          final double clampedW = w.clamp(50.0, dispW);
+          final double clampedH = h.clamp(50.0, dispH);
+          final double x = ((dispW - clampedW) / 2).clamp(0.0, dispW - clampedW);
+          final double y = ((dispH - clampedH) / 2).clamp(0.0, dispH - clampedH);
+          setCoords(x, y, clampedW, clampedH);
+        }
+      }
+
+      applyToDimensions(_imageDisplayWidth, _imageDisplayHeight, (x, y, w, h) {
+        _cropX = x;
+        _cropY = y;
+        _cropWidth = w;
+        _cropHeight = h;
+      });
+
+      _saveCurrentCropSettings();
+
+      if (applyToAll && _selectedImages.length > 1) {
+        for (int i = 0; i < _croppedImages.length; i++) {
+          final data = _croppedImages[i];
+          final dW = data.displayImageWidth > 0 ? data.displayImageWidth : _imageDisplayWidth;
+          final dH = data.displayImageHeight > 0 ? data.displayImageHeight : _imageDisplayHeight;
+          applyToDimensions(dW, dH, (x, y, w, h) {
+            data.displayCropX = x;
+            data.displayCropY = y;
+            data.displayCropWidth = w;
+            data.displayCropHeight = h;
+            data.displayImageWidth = dW;
+            data.displayImageHeight = dH;
+          });
+        }
+      }
+    });
+  }
+
+  void _openSavePresetSheet() {
+    final rect = getCurrentNormalizedCrop();
+    UserCropPresetSheet.show(
+      context,
+      currentCropRect: rect,
+      onPresetSelected: (preset) {
+        _applyUserCropSetting(preset);
+      },
+    );
+  }
+
+  void _showPresetOptions(UserCropSetting preset) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.check_circle_outline, color: Colors.purple),
+                title: Text('Apply "${preset.name}" (Current Image)'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _applyUserCropSetting(preset);
+                },
+              ),
+              if (_selectedImages.length > 1)
+                ListTile(
+                  leading: const Icon(Icons.copy_all_rounded, color: Colors.deepPurple),
+                  title: Text('Apply "${preset.name}" to All Images (${_selectedImages.length})'),
+                  subtitle: const Text('Sets this crop on all selected images at once'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _applyUserCropSetting(preset, applyToAll: true);
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                title: const Text('Delete Preset', style: TextStyle(color: Colors.redAccent)),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await UserCropSettingsService.instance.deletePreset(preset.id);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _saveCurrentCropSettings() {
@@ -497,6 +629,7 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
       _flipHorizontal = false;
       _flipVertical = false;
       _selectedAspectRatio = null;
+      _selectedUserPreset = null;
     });
   }
 
@@ -1324,57 +1457,142 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
                         padding: const EdgeInsets.all(8),
                         constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                       ),
+                      IconButton(
+                        onPressed: _openSavePresetSheet,
+                        icon: const Icon(Icons.bookmark_add_outlined, size: 20, color: Colors.purple),
+                        tooltip: 'Save crop preset',
+                        padding: const EdgeInsets.all(8),
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      ),
                     ],
                   ),
                 ],
               ),
               const SizedBox(height: 8),
-              // Bottom row: Aspect ratio selector
+              // Bottom row: User presets & aspect ratio selector
               SizedBox(
                 height: 35,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _aspectRatios.length,
-                  itemBuilder: (context, index) {
-                    final aspectRatioKey = _aspectRatios.keys.elementAt(index);
-                    final aspectRatioData = _aspectRatios[aspectRatioKey]!;
-                    final isSelected = _selectedAspectRatio == aspectRatioKey;
-                    
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: GestureDetector(
-                        onTap: () => _applyAspectRatio(aspectRatioKey),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: isSelected ? Colors.purple : Colors.white,
-                            borderRadius: BorderRadius.circular(15),
-                            border: Border.all(
-                              color: isSelected ? Colors.purple : Colors.grey[300]!,
-                              width: 1,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                aspectRatioData['icon'] as IconData,
-                                size: 14,
-                                color: isSelected ? Colors.white : Colors.grey[600],
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                aspectRatioData['name'] as String,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                  color: isSelected ? Colors.white : Colors.grey[600],
+                child: ValueListenableBuilder<List<UserCropSetting>>(
+                  valueListenable: UserCropSettingsService.instance.presetsNotifier,
+                  builder: (context, userPresets, _) {
+                    return ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        // Standard aspect ratios
+                        ..._aspectRatios.entries.map((entry) {
+                          final aspectRatioKey = entry.key;
+                          final aspectRatioData = entry.value;
+                          final isSelected = _selectedAspectRatio == aspectRatioKey;
+
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: GestureDetector(
+                              onTap: () => _applyAspectRatio(aspectRatioKey),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: isSelected ? Colors.purple : Colors.white,
+                                  borderRadius: BorderRadius.circular(15),
+                                  border: Border.all(
+                                    color: isSelected ? Colors.purple : Colors.grey[300]!,
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      aspectRatioData['icon'] as IconData,
+                                      size: 14,
+                                      color: isSelected ? Colors.white : Colors.grey[600],
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      aspectRatioData['name'] as String,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w500,
+                                        color: isSelected ? Colors.white : Colors.grey[600],
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
+                            ),
+                          );
+                        }),
+
+                        // User-saved crop presets (if any)
+                        ...userPresets.map((preset) {
+                          final isSelected = _selectedAspectRatio == preset.id;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: GestureDetector(
+                              onTap: () => _applyUserCropSetting(preset),
+                              onLongPress: () => _showPresetOptions(preset),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: isSelected ? Colors.purple : Colors.white,
+                                  borderRadius: BorderRadius.circular(15),
+                                  border: Border.all(
+                                    color: isSelected ? Colors.purple : Colors.purple.shade200,
+                                    width: isSelected ? 1.5 : 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.bookmark,
+                                      size: 13,
+                                      color: isSelected ? Colors.white : Colors.purple,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      preset.name,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                        color: isSelected ? Colors.white : Colors.black87,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+
+                        // Save / Add Preset Button
+                        GestureDetector(
+                          onTap: _openSavePresetSheet,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            margin: const EdgeInsets.only(right: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.purple.shade50,
+                              borderRadius: BorderRadius.circular(15),
+                              border: Border.all(color: Colors.purple.shade200),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.bookmark_add_outlined, size: 14, color: Colors.purple),
+                                SizedBox(width: 4),
+                                Text(
+                                  '+ Save Crop',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.purple,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     );
                   },
                 ),

@@ -40,6 +40,7 @@ class ImagePostPreset {
   final double videoBorderWidth;
   final String videoBorderColor;
   final double videoScale;
+  final double videoX;
   final double videoY;
   final double usernameOpacity;
   final double handleOpacity;
@@ -128,6 +129,7 @@ class ImagePostPreset {
     this.videoBorderWidth = 0.0,
     this.videoBorderColor = '#000000',
     this.videoScale = 1.0,
+    this.videoX = 0.5,
     this.videoY = 0.5,
     this.usernameOpacity = 1.0,
     this.handleOpacity = 1.0,
@@ -212,6 +214,7 @@ class ImagePostPreset {
       'videoBorderWidth': videoBorderWidth,
       'videoBorderColor': videoBorderColor,
       'videoScale': videoScale,
+      'videoX': videoX,
       'videoY': videoY,
       'usernameOpacity': usernameOpacity,
       'handleOpacity': handleOpacity,
@@ -297,6 +300,7 @@ class ImagePostPreset {
       videoBorderWidth: (map['videoBorderWidth'] as num?)?.toDouble() ?? 0.0,
       videoBorderColor: map['videoBorderColor'] ?? '#000000',
       videoScale: (map['videoScale'] as num?)?.toDouble() ?? 1.0,
+      videoX: (map['videoX'] as num?)?.toDouble() ?? 0.5,
       videoY: (map['videoY'] as num?)?.toDouble() ?? 0.5,
       usernameOpacity: (map['usernameOpacity'] as num?)?.toDouble() ?? 1.0,
       handleOpacity: (map['handleOpacity'] as num?)?.toDouble() ?? 1.0,

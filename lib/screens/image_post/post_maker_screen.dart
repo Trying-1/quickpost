@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'single_image_post_screen.dart';
-import 'grid_post_screen.dart';
 import 'carousel_post_screen.dart';
+import 'textbox_image_screen.dart';
 
 class PostMakerScreen extends StatefulWidget {
   final List<String>? sharedImagePaths;
@@ -122,14 +121,16 @@ class _PostMakerScreenState extends State<PostMakerScreen> {
     }
 
     if (_selectedTemplate == 'grid_post') {
-      return GridPostScreen(
+      return TextboxImageScreen(
+        isGridMode: true,
         sharedImagePaths: widget.sharedImagePaths,
         sharedPurpose: widget.sharedPurpose,
       );
     }
 
     // Default and single image case
-    return SingleImagePostScreen(
+    return TextboxImageScreen(
+      isGridMode: false,
       sharedImagePaths: widget.sharedImagePaths,
       sharedPurpose: widget.sharedPurpose,
     );

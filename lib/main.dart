@@ -7,12 +7,17 @@ import 'services/subscription_service.dart';
 import 'services/audio_library_service.dart';
 import 'services/watermark_preset_service.dart';
 import 'services/image_post_preset_service.dart';
+import 'services/anime_post_preset_service.dart';
+import 'services/carousel_post_preset_service.dart';
 import 'services/app_update_service.dart';
 import 'services/app_review_service.dart';
 import 'services/onboarding_service.dart';
 import 'services/video_perf_service.dart';
 import 'widgets/share_intent_handler.dart';
 import 'utils/custom_font_manager.dart';
+import 'services/google_font_service.dart';
+import 'services/favorite_fonts_manager.dart';
+import 'utils/watermark_settings.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'services/analytics_service.dart';
 import 'services/ad_service.dart';
@@ -54,9 +59,18 @@ void main() async {
  
   // Initialize Watermark Preset
   await WatermarkPresetService.init();
+
+  // Initialize Watermark Settings
+  await WatermarkSettings.init();
  
   // Initialize Image Post Preset
   await ImagePostPresetService.init();
+
+  // Initialize Anime Post Preset
+  await AnimePostPresetService.init();
+
+  // Initialize Carousel Post Preset
+  await CarouselPostPresetService.init();
  
   // Initialize Video Perf Service
   await VideoPerfService.init();
@@ -65,7 +79,25 @@ void main() async {
   await SubscriptionService.init();
  
   // Initialize Custom Font Manager (register user-uploaded fonts)
-  await CustomFontManager().init();
+  try {
+    await CustomFontManager().init();
+  } catch (e) {
+    print('CustomFontManager init error: $e');
+  }
+ 
+  // Initialize Google Font Service (register downloaded Google fonts)
+  try {
+    await GoogleFontService().init();
+  } catch (e) {
+    print('GoogleFontService init error: $e');
+  }
+
+  // Initialize Favorite Fonts Manager
+  try {
+    await FavoriteFontsManager().init();
+  } catch (e) {
+    print('FavoriteFontsManager init error: $e');
+  }
  
   
   // Initialize App Review Service
@@ -120,9 +152,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _onboardingCompletedFuture = OnboardingService.isCompleted();
     
-    // Show App Open Ad on first launch
+    // Show App Open Ad on first launch (cold start)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      AdService().showAppOpenAdIfAvailable();
+      AdService().showAppOpenAdOnColdStart();
     });
   }
  
@@ -137,7 +169,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused) {
       AdService().setLastPausedTime(DateTime.now());
     } else if (state == AppLifecycleState.resumed) {
-      AdService().showAppOpenAdIfAvailable();
+      AdService().showAppOpenAdOnResume();
     }
   }
  

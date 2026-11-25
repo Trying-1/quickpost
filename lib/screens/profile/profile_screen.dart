@@ -24,11 +24,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late PackageInfo _packageInfo;
   bool _isLoading = true;
   bool _showWatermark = WatermarkSettings.showWatermark;
+  bool _enableOutro = WatermarkSettings.enableOutro;
 
   @override
   void initState() {
     super.initState();
     _loadPackageInfo();
+    WatermarkSettings.init().then((_) {
+      if (mounted) {
+        setState(() {
+          _showWatermark = WatermarkSettings.showWatermark;
+          _enableOutro = WatermarkSettings.enableOutro;
+        });
+      }
+    });
     AnalyticsService().setCurrentScreen(screenName: 'Profile Settings');
   }
 
@@ -188,6 +197,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         secondary: const Icon(Icons.water_drop_outlined),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                       ),
+                      SwitchListTile(
+                        value: _enableOutro,
+                        onChanged: (value) {
+                          setState(() {
+                            _enableOutro = value;
+                            WatermarkSettings.setEnableOutro(value);
+                            AnalyticsService().logEvent(
+                              name: 'outro_watermark_toggled',
+                              parameters: {'enabled': value},
+                            );
+                          });
+                        },
+                        title: const Text('Add App Outro (Logo)'),
+                        subtitle: const Text('Appends 1.5s logo watermark at the end of videos'),
+                        secondary: const Icon(Icons.movie_filter_outlined),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                      ),
                       _buildListTile(
                         icon: Icons.language,
                         title: 'Language',
@@ -307,12 +333,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: Column(
                         children: [
                           Text(
-                            'Meme Flow v${_packageInfo.version}',
+                            'Quick Post v${_packageInfo.version}',
                             style: TextStyle(color: Colors.grey[600], fontSize: 12),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '© 2024 Meme Flow. All rights reserved.',
+                            '© 2024 Quick Post. All rights reserved.',
                             style: TextStyle(color: Colors.grey[600], fontSize: 12),
                             textAlign: TextAlign.center,
                           ),
@@ -393,7 +419,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 20),
           const Text(
-            'Meme Flow User',
+            'Quick Post User',
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w800,
@@ -403,7 +429,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            'user@memeflow.app',
+            'user@quickpost.app',
             style: TextStyle(
               fontSize: 14,
               color: Colors.grey[600],
@@ -722,7 +748,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       scheme: 'mailto',
       path: 'arisesoloapp@gmail.com',
       queryParameters: {
-        'subject': 'Meme Flow Feedback - v${_packageInfo.version}',
+        'subject': 'Quick Post Feedback - v${_packageInfo.version}',
         'body': 'User Feedback:\n\n$feedback\n\nApp Version: ${_packageInfo.version}\nBuild: ${_packageInfo.buildNumber}',
       },
     );
@@ -742,8 +768,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _shareApp() async {
     await Share.share(
-      'Check out Meme Flow - Create stunning social media posts, videos, and more!\n\nhttps://play.google.com/store/apps/details?id=com.quickpost.app',
-      subject: 'Download Meme Flow - Social Media Creator',
+      'Check out Quick Post - Create stunning social media posts, videos, and more!\n\nhttps://play.google.com/store/apps/details?id=com.quickpost.app',
+      subject: 'Download Quick Post - Social Media Creator',
     );
     AnalyticsService().logEvent(name: 'app_shared');
   }
@@ -754,8 +780,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       scheme: 'mailto',
       path: 'arisesoloapp@gmail.com',
       queryParameters: {
-        'subject': 'Meme Flow Support - v${_packageInfo.version}',
-        'body': 'Hello,\n\nI need help with Meme Flow.\n\nApp Version: ${_packageInfo.version}\nBuild: ${_packageInfo.buildNumber}\n\nPlease describe your issue:\n',
+        'subject': 'Quick Post Support - v${_packageInfo.version}',
+        'body': 'Hello,\n\nI need help with Quick Post.\n\nApp Version: ${_packageInfo.version}\nBuild: ${_packageInfo.buildNumber}\n\nPlease describe your issue:\n',
       },
     );
     

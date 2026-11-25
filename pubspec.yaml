@@ -2,7 +2,7 @@ name: quickpost
 description: Create stunning social posts, crop images in bulk, and make videos easily.
 publish_to: 'none'
 
-version: 1.0.17+23
+version: 1.0.19+25
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -32,8 +32,7 @@ dependencies:
   hive_flutter: ^1.1.0
   
   # Video thumbnail
-  video_thumbnail: ^0.5.3
-  
+  get_thumbnail_video: ^0.7.3
   # In-app updates and reviews
   in_app_update: ^4.2.3
   in_app_review: ^2.0.9
@@ -62,76 +61,10 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/images/post_template_images/qp_preview1.jpeg
-    - assets/images/post_template_images/qp_preview2.jpeg
-    - assets/images/post_template_images/qp_preview3.jpeg
-    - assets/images/post_template_images/single_image_post.jpg
-    - assets/images/post_template_images/grid_image_post.jpg
-    - assets/images/post_template_images/simple_text_post.jpg
+    - assets/images/app_icon.png
+    - assets/images/app_icon_foreground.png
+    - assets/fonts/
   fonts:
-    - family: AllertaStencil
-      fonts:
-        - asset: assets/fonts/AllertaStencil-Regular.ttf
-    - family: AlmendraDisplay
-      fonts:
-        - asset: assets/fonts/AlmendraDisplay-Regular.ttf
-    - family: AlumniSans
-      fonts:
-        - asset: assets/fonts/AlumniSans-Regular.ttf
-    - family: AlumniSans-Bold
-      fonts:
-        - asset: assets/fonts/AlumniSans-Bold.ttf
-    - family: AlumniSans-Black
-      fonts:
-        - asset: assets/fonts/AlumniSans-Black.ttf
-    - family: AlumniSans-Light
-      fonts:
-        - asset: assets/fonts/AlumniSans-Light.ttf
-    - family: AlumniSans-Medium
-      fonts:
-        - asset: assets/fonts/AlumniSans-Medium.ttf
-    - family: AlumniSans-SemiBold
-      fonts:
-        - asset: assets/fonts/AlumniSans-SemiBold.ttf
-    - family: AlumniSans-Thin
-      fonts:
-        - asset: assets/fonts/AlumniSans-Thin.ttf
-    - family: AlumniSans-ExtraLight
-      fonts:
-        - asset: assets/fonts/AlumniSans-ExtraLight.ttf
-    - family: AlumniSans-ExtraBold
-      fonts:
-        - asset: assets/fonts/AlumniSans-ExtraBold.ttf
-    - family: AlumniSans-Italic
-      fonts:
-        - asset: assets/fonts/AlumniSans-Italic.ttf
-          style: italic
-    - family: AlumniSansPinstripe
-      fonts:
-        - asset: assets/fonts/AlumniSansPinstripe-Regular.ttf
-    - family: AlumniSansPinstripe-Italic
-      fonts:
-        - asset: assets/fonts/AlumniSansPinstripe-Italic.ttf
-          style: italic
-    - family: Barrio
-      fonts:
-        - asset: assets/fonts/Barrio-Regular.ttf
-    - family: Bellota
-      fonts:
-        - asset: assets/fonts/Bellota-Regular.ttf
-    - family: Bellota-Bold
-      fonts:
-        - asset: assets/fonts/Bellota-Bold.ttf
-    - family: Bellota-Light
-      fonts:
-        - asset: assets/fonts/Bellota-Light.ttf
-    - family: Bellota-Italic
-      fonts:
-        - asset: assets/fonts/Bellota-Italic.ttf
-          style: italic
-    - family: BhuTukaExpandedOne
-      fonts:
-        - asset: assets/fonts/BhuTukaExpandedOne-Regular.ttf
     - family: Bokor
       fonts:
         - asset: assets/fonts/Bokor-Regular.ttf
@@ -211,10 +144,13 @@ flutter:
     - family: SourGummy
       fonts:
         - asset: assets/fonts/SourGummy-VariableFont_wdth,wght.ttf
+    - family: KodeMono
+      fonts:
+        - asset: assets/fonts/KodeMono-Regular.ttf
 
 flutter_launcher_icons:
   android: true
   ios: false
-  image_path: "assets/images/memeflow_logo.png"
+  image_path: "assets/images/app_icon.png"
   adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/images/memeflow_logo.png"
+  adaptive_icon_foreground: "assets/images/app_icon_foreground.png"

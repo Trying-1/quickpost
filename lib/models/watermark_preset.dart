@@ -184,6 +184,9 @@ class WatermarkPreset extends HiveObject {
   @HiveField(62, defaultValue: 16.0)
   double wireGap;
 
+  @HiveField(63, defaultValue: 0.5)
+  double videoX;
+
   WatermarkPreset({
     required this.id,
     required this.name,
@@ -222,6 +225,7 @@ class WatermarkPreset extends HiveObject {
     this.handleShadowOffsetY = 1.0,
     this.iconShadowOffsetX = 1.0,
     this.iconShadowOffsetY = 1.0,
+    this.videoX = 0.5,
     this.videoY = 0.5,
     this.storyRingWidth = 5.0,
     this.storyRingColor = '#FF4081',
@@ -289,6 +293,7 @@ class WatermarkPreset extends HiveObject {
       'handleShadowOffsetY': handleShadowOffsetY,
       'iconShadowOffsetX': iconShadowOffsetX,
       'iconShadowOffsetY': iconShadowOffsetY,
+      'videoX': videoX,
       'videoY': videoY,
       'storyRingWidth': storyRingWidth,
       'storyRingColor': storyRingColor,
@@ -357,6 +362,7 @@ class WatermarkPreset extends HiveObject {
       handleShadowOffsetY: (map['handleShadowOffsetY'] as num?)?.toDouble() ?? 1.0,
       iconShadowOffsetX: (map['iconShadowOffsetX'] as num?)?.toDouble() ?? 1.0,
       iconShadowOffsetY: (map['iconShadowOffsetY'] as num?)?.toDouble() ?? 1.0,
+      videoX: (map['videoX'] as num?)?.toDouble() ?? 0.5,
       videoY: (map['videoY'] as num?)?.toDouble() ?? 0.5,
       storyRingWidth: (map['storyRingWidth'] as num?)?.toDouble() ?? 5.0,
       storyRingColor: map['storyRingColor'] ?? '#FF4081',

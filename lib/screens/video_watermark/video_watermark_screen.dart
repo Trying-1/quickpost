@@ -2,6 +2,7 @@ import '../../config/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -17,8 +18,8 @@ import '../../services/watermark_preset_service.dart';
 import '../../config/app_config.dart';
 import '../../widgets/advanced_color_picker.dart';
 import '../../services/ad_service.dart';
-import 'package:toastification/toastification.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../utils/watermark_settings.dart';
 
 class VideoWatermarkScreen extends StatefulWidget {
   final List<String>? sharedVideoPaths;
@@ -124,6 +125,7 @@ class _TextOverlay {
   double wordSpacing;
   double opacity;
   Map<int, String> wordColors;
+  Map<int, String> wordBgColors;
   Map<int, double> wordStrokeWidths;
   Map<int, String> wordStrokeColors;
   Map<int, bool> wordStrokeOnly;
@@ -152,17 +154,23 @@ class _TextOverlay {
     this.wordSpacing = 0.0,
     this.opacity = 1.0,
     Map<int, String>? wordColors,
+    Map<int, String>? wordBgColors,
     Map<int, double>? wordStrokeWidths,
     Map<int, String>? wordStrokeColors,
     Map<int, bool>? wordStrokeOnly,
     this.isLocked = false,
   }) : wordColors = wordColors ?? {},
+       wordBgColors = wordBgColors ?? {},
        wordStrokeWidths = wordStrokeWidths ?? {},
        wordStrokeColors = wordStrokeColors ?? {},
        wordStrokeOnly = wordStrokeOnly ?? {};
 
-  List<Map<String, dynamic>> toMaps(double videoWidth, double videoHeight, String resolvedFontPath) {
-    if ((wordColors.isEmpty && wordStrokeWidths.isEmpty && wordStrokeColors.isEmpty && wordStrokeOnly.isEmpty) || text.trim().isEmpty) {
+  List<Map<String, dynamic>> toMaps(double videoWidth, double videoHeight, String resolvedFontPath, {double previewWidth = 360.0}) {
+    final double exportScale = videoWidth / (previewWidth > 0 ? previewWidth : 360.0);
+    final double scaledLetterSpacing = letterSpacing * exportScale;
+    final double scaledWordSpacing = wordSpacing * exportScale;
+
+    if ((wordColors.isEmpty && wordBgColors.isEmpty && wordStrokeWidths.isEmpty && wordStrokeColors.isEmpty && wordStrokeOnly.isEmpty) || text.trim().isEmpty) {
       return [{
         'text': text,
         'x': x * videoWidth,
@@ -183,8 +191,8 @@ class _TextOverlay {
         'anchor': anchor,
         'scale': scale,
         'lineHeight': lineHeight,
-        'letterSpacing': letterSpacing,
-        'wordSpacing': wordSpacing,
+        'letterSpacing': scaledLetterSpacing,
+        'wordSpacing': scaledWordSpacing,
       }];
     }
 
@@ -196,8 +204,8 @@ class _TextOverlay {
       fontSize: fontSize * scale,
       fontFamily: font?.family,
       height: lineHeight,
-      letterSpacing: letterSpacing,
-      wordSpacing: wordSpacing,
+      letterSpacing: scaledLetterSpacing,
+      wordSpacing: scaledWordSpacing,
     );
 
     final fullPainter = TextPainter(
@@ -263,8 +271,8 @@ class _TextOverlay {
         'anchor': anchor,
         'scale': scale,
         'lineHeight': lineHeight,
-        'letterSpacing': letterSpacing,
-        'wordSpacing': wordSpacing,
+        'letterSpacing': scaledLetterSpacing,
+        'wordSpacing': scaledWordSpacing,
       });
     }
 
@@ -288,9 +296,78 @@ class _TextOverlay {
         'anchor': anchor,
         'scale': scale,
         'lineHeight': lineHeight,
-        'letterSpacing': letterSpacing,
-        'wordSpacing': wordSpacing,
+        'letterSpacing': scaledLetterSpacing,
+        'wordSpacing': scaledWordSpacing,
       }];
+  }
+
+  List<Map<String, dynamic>> getMarkerPatches(double videoWidth, double videoHeight, {double previewWidth = 360.0}) {
+    if (wordBgColors.isEmpty || text.trim().isEmpty) return [];
+
+    final double exportScale = videoWidth / (previewWidth > 0 ? previewWidth : 360.0);
+    final double scaledLetterSpacing = letterSpacing * exportScale;
+    final double scaledWordSpacing = wordSpacing * exportScale;
+
+    final double refWidth = videoWidth;
+    final double refHeight = videoHeight;
+    final double maxTextWidth = refWidth * 0.92 * scale;
+
+    final TextStyle style = TextStyle(
+      fontSize: fontSize * scale,
+      fontFamily: font?.family,
+      height: lineHeight,
+      letterSpacing: scaledLetterSpacing,
+      wordSpacing: scaledWordSpacing,
+    );
+
+    final fullPainter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: ui.TextDirection.ltr,
+      textAlign: textAlign,
+    )..layout(maxWidth: maxTextWidth.clamp(0.0, double.infinity));
+
+    final double fullTextWidth = fullPainter.width;
+    final double fullTextHeight = fullPainter.height;
+
+    final double centerX = x * refWidth;
+    final double centerY = y * refHeight;
+    final double blockLeft = centerX - fullTextWidth / 2;
+    final double blockTop = centerY - fullTextHeight / 2;
+
+    final wordRegex = RegExp(r'\S+');
+    final matches = wordRegex.allMatches(text).toList();
+    final List<Map<String, dynamic>> markerPatches = [];
+
+    for (int i = 0; i < matches.length; i++) {
+      final bgHex = wordBgColors[i];
+      if (bgHex == null) continue;
+
+      final match = matches[i];
+      final range = TextSelection(baseOffset: match.start, extentOffset: match.end);
+      final boxes = fullPainter.getBoxesForSelection(range);
+      if (boxes.isEmpty) continue;
+
+      for (final box in boxes) {
+        final double padH = 4.0 * scale;
+        final double padV = 2.0 * scale;
+        final double pLeft = (blockLeft + box.left - padH).clamp(0.0, refWidth);
+        final double pTop = (blockTop + box.top - padV).clamp(0.0, refHeight);
+        final double pWidth = (box.right - box.left + padH * 2).clamp(0.0, refWidth);
+        final double pHeight = (box.bottom - box.top + padV * 2).clamp(0.0, refHeight);
+
+        markerPatches.add({
+          'x': pLeft,
+          'y': pTop,
+          'width': pWidth,
+          'height': pHeight,
+          'color': bgHex,
+          'opacity': 0.85 * opacity,
+          'radius': 4.0 * scale,
+          'isTop': true,
+        });
+      }
+    }
+    return markerPatches;
   }
 }
 
@@ -325,7 +402,17 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
 
   List<_TextOverlay> _textOverlays = [];
   int? _selectedTextOverlayIndex;
-  final Set<int> _selectedWordIndices = {};
+  Set<int> _selectedWordIndices = {};
+  String _overlayHighlightType = 'marker'; // 'marker' (background) or 'text' (foreground)
+
+  static const List<Map<String, String>> _bookMarkerPresets = [
+    {'name': 'Yellow', 'hex': '#FFEE58', 'dot': '#FBC02D'},
+    {'name': 'Green', 'hex': '#A7F3D0', 'dot': '#10B981'},
+    {'name': 'Blue', 'hex': '#BAE6FD', 'dot': '#0EA5E9'},
+    {'name': 'Pink', 'hex': '#FBCFE8', 'dot': '#EC4899'},
+    {'name': 'Orange', 'hex': '#FED7AA', 'dot': '#F97316'},
+    {'name': 'Purple', 'hex': '#E9D5FF', 'dot': '#A855F7'},
+  ];
 
   List<_ImageOverlay> _imageOverlays = [];
   int? _selectedImageOverlayIndex;
@@ -335,6 +422,12 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
   String _handle = "@userhandle";
   File? _profileImage;
   File? _bgImage;
+  List<XFile> _gridImages = [];
+  int _gridColumns = 2;
+  double _gridGap = 0.0;
+  String _gridGapColor = "#FFFFFF";
+  List<String> _gridHistory = [];
+  Map<String, Map<String, dynamic>> _bgLayoutConfigs = {};
   double _watermarkX = 0.5; // Normalized
   double _watermarkY = 0.15; // Normalized (TOP)
   double _fontSize = 36.0;
@@ -349,6 +442,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
   
   String _watermarkType = "profile_vertical"; // Vertical type as default
   bool _fullScreen = true; // Canvas on by default
+  bool _forceSquare = false;
   String _bgColor = "#FFFFFF";
   
    bool _showBox = false;
@@ -367,6 +461,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
    double _bgBrightness = 1.0;
    double _bgSaturation = 1.0;
    double _bgBlur = 0.0;
+   double _videoX = 0.5;
    double _videoY = 0.5;
 
    // Formatting Helpers
@@ -410,7 +505,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     double _videoShadowOffsetY = 0.0;
     double _videoRadius = 0.0;
     double _videoBorderWidth = 0.0;
-    String _videoBorderColor = "#000000";
+    String _videoBorderColor = "#FFFFFF";
     double _videoScale = 1.0;
     bool _showControls = true;
     double _wireRadius = 12.0;
@@ -427,6 +522,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
 
   int _selectedTabIndex = 1;
   int _selectedStyleSubTab = 0; // 0: Username, 1: Handle, 2: Icon
+  int _settingsSubTab = 0; // 0: Background, 1: Video
   bool _isTabContentExpanded = true;
   String _status = "Initializing...";
   String _currentStep = "";
@@ -444,9 +540,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     if (family == null || family.isEmpty) {
       return const FontInfo(family: 'KleeOne', displayName: 'Klee One SemiBold', weight: FontWeight.w600, assetPath: 'assets/fonts/KleeOne-SemiBold.ttf');
     }
-    final allFonts = getAllFonts();
-    try {
-      final font = allFonts.firstWhere((f) => f.family == family);
+    final font = FontInfo.getFontByFamily(family);
+    if (font != null) {
       if (font.isCustom) {
         if (font.filePath != null && File(font.filePath!).existsSync()) {
           return font;
@@ -454,7 +549,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
       } else {
         return font;
       }
-    } catch (_) {}
+    }
     return const FontInfo(family: 'KleeOne', displayName: 'Klee One SemiBold', weight: FontWeight.w600, assetPath: 'assets/fonts/KleeOne-SemiBold.ttf');
   }
 
@@ -486,8 +581,62 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
       } else {
         await prefs.remove('watermark_profile_image_path');
       }
+
+      // Persist Canvas & Background Grid settings
+      if (_bgImage != null) {
+        await prefs.setString('watermark_bg_image_path', _bgImage!.path);
+      } else {
+        await prefs.remove('watermark_bg_image_path');
+      }
+      await prefs.setBool('watermark_force_square', _forceSquare);
+      await prefs.setDouble('watermark_bg_brightness', _bgBrightness);
+      await prefs.setDouble('watermark_bg_saturation', _bgSaturation);
+      await prefs.setDouble('watermark_bg_blur', _bgBlur);
+      await prefs.setDouble('watermark_video_scale', _videoScale);
+      await prefs.setDouble('watermark_video_radius', _videoRadius);
+      await prefs.setDouble('watermark_video_border_width', _videoBorderWidth);
+      await prefs.setString('watermark_video_border_color', _videoBorderColor);
+      await prefs.setBool('watermark_show_video_shadow', _showVideoShadow);
+      await prefs.setString('watermark_video_shadow_color', _videoShadowColor);
+      await prefs.setDouble('watermark_video_shadow_blur', _videoShadowBlur);
+      await prefs.setDouble('watermark_video_shadow_spread', _videoShadowSpread);
+      await prefs.setDouble('watermark_video_shadow_offset_x', _videoShadowOffsetX);
+      await prefs.setDouble('watermark_video_shadow_offset_y', _videoShadowOffsetY);
+      await prefs.setInt('watermark_grid_columns', _gridColumns);
+      await prefs.setDouble('watermark_grid_gap', _gridGap);
+      await prefs.setString('watermark_grid_gap_color', _gridGapColor);
+      final gridPaths = _gridImages.map((e) => e.path).toList();
+      await prefs.setStringList('watermark_grid_image_paths', gridPaths);
+
+      _saveCurrentBgLayout();
+      await prefs.setString('watermark_bg_layout_configs', json.encode(_bgLayoutConfigs));
     } catch (e) {
       debugPrint('Error auto-saving settings: $e');
+    }
+  }
+
+  void _saveCurrentBgLayout() {
+    if (_bgImage != null) {
+      _bgLayoutConfigs[_bgImage!.path] = {
+        'videoScale': _videoScale,
+        'videoX': _videoX,
+        'videoY': _videoY,
+        'videoRadius': _videoRadius,
+        'videoBorderWidth': _videoBorderWidth,
+        'videoBorderColor': _videoBorderColor,
+      };
+    }
+  }
+
+  void _applyBgLayoutForImage(String imagePath) {
+    final config = _bgLayoutConfigs[imagePath];
+    if (config != null) {
+      if (config['videoScale'] != null) _videoScale = (config['videoScale'] as num).toDouble();
+      if (config['videoX'] != null) _videoX = (config['videoX'] as num).toDouble();
+      if (config['videoY'] != null) _videoY = (config['videoY'] as num).toDouble();
+      if (config['videoRadius'] != null) _videoRadius = (config['videoRadius'] as num).toDouble();
+      if (config['videoBorderWidth'] != null) _videoBorderWidth = (config['videoBorderWidth'] as num).toDouble();
+      if (config['videoBorderColor'] != null) _videoBorderColor = config['videoBorderColor'] as String;
     }
   }
 
@@ -496,6 +645,27 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     _autoSaveTimer = Timer(const Duration(milliseconds: 500), () {
       _autoSaveCurrentSettings();
     });
+  }
+
+  Future<void> _loadGridHistory() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final gridsDir = Directory('${dir.path}/grids');
+      if (await gridsDir.exists()) {
+        final List<FileSystemEntity> entities = gridsDir.listSync().toList();
+        entities.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
+        if (mounted) {
+          setState(() {
+            _gridHistory = entities
+                .where((e) => e is File && (e.path.endsWith('.png') || e.path.endsWith('.jpg') || e.path.endsWith('.jpeg')))
+                .map((e) => e.path)
+                .toList();
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading grid history: $e');
+    }
   }
 
   Future<void> _loadAutoSavedSettings() async {
@@ -529,6 +699,43 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
           final pPath = prefs.getString('watermark_profile_image_path');
           if (pPath != null && File(pPath).existsSync()) {
             _profileImage = File(pPath);
+          }
+
+          final bgConfigsStr = prefs.getString('watermark_bg_layout_configs');
+          if (bgConfigsStr != null) {
+            try {
+              final Map<String, dynamic> decoded = json.decode(bgConfigsStr);
+              _bgLayoutConfigs = decoded.map((k, v) => MapEntry(k, Map<String, dynamic>.from(v as Map)));
+            } catch (_) {}
+          }
+
+          _forceSquare = prefs.getBool('watermark_force_square') ?? false;
+          _bgBrightness = prefs.getDouble('watermark_bg_brightness') ?? 1.0;
+          _bgSaturation = prefs.getDouble('watermark_bg_saturation') ?? 1.0;
+          _bgBlur = prefs.getDouble('watermark_bg_blur') ?? 0.0;
+          _videoScale = prefs.getDouble('watermark_video_scale') ?? 1.0;
+          _videoRadius = prefs.getDouble('watermark_video_radius') ?? 0.0;
+          _videoBorderWidth = prefs.getDouble('watermark_video_border_width') ?? 0.0;
+          _videoBorderColor = prefs.getString('watermark_video_border_color') ?? "#FFFFFF";
+          _showVideoShadow = prefs.getBool('watermark_show_video_shadow') ?? false;
+          _videoShadowColor = prefs.getString('watermark_video_shadow_color') ?? "#000000";
+          _videoShadowBlur = prefs.getDouble('watermark_video_shadow_blur') ?? 10.0;
+          _videoShadowSpread = prefs.getDouble('watermark_video_shadow_spread') ?? 0.0;
+          _videoShadowOffsetX = prefs.getDouble('watermark_video_shadow_offset_x') ?? 0.0;
+          _videoShadowOffsetY = prefs.getDouble('watermark_video_shadow_offset_y') ?? 0.0;
+          _gridColumns = prefs.getInt('watermark_grid_columns') ?? 2;
+          _gridGap = prefs.getDouble('watermark_grid_gap') ?? 0.0;
+          _gridGapColor = prefs.getString('watermark_grid_gap_color') ?? "#FFFFFF";
+
+          final bgPath = prefs.getString('watermark_bg_image_path');
+          if (bgPath != null && File(bgPath).existsSync()) {
+            _bgImage = File(bgPath);
+            _applyBgLayoutForImage(bgPath);
+          }
+          final gridPaths = prefs.getStringList('watermark_grid_image_paths');
+          if (gridPaths != null && gridPaths.isNotEmpty) {
+            final valid = gridPaths.where((p) => File(p).existsSync()).toList();
+            _gridImages = valid.map((p) => XFile(p)).toList();
           }
           
           _usernameController.text = _username;
@@ -634,6 +841,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
       _selectedHandleFont = _getAvailableFontOrFallback(target.handleFontFamily ?? target.fontFamily);
       _showStoryRing = target.showStoryRing;
       _isVerified = target.isVerified;
+      _videoX = target.videoX;
       _videoY = target.videoY;
 
       // New design properties
@@ -761,6 +969,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
       handleShadowOffsetY: _handleShadowOffsetY,
       iconShadowOffsetX: _iconShadowOffsetX,
       iconShadowOffsetY: _iconShadowOffsetY,
+      videoX: _videoX,
       videoY: _videoY,
       storyRingWidth: _storyRingWidth,
       storyRingColor: _storyRingColor,
@@ -828,6 +1037,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     preset.handleShadowOffsetY = _handleShadowOffsetY;
     preset.iconShadowOffsetX = _iconShadowOffsetX;
     preset.iconShadowOffsetY = _iconShadowOffsetY;
+    preset.videoX = _videoX;
     preset.videoY = _videoY;
     preset.storyRingWidth = _storyRingWidth;
     preset.storyRingColor = _storyRingColor;
@@ -908,11 +1118,10 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
   }
 
   void _exportPresets() async {
-    final json = await WatermarkPresetService.exportPresetsJson();
     try {
-      final dynamic success = await platform.invokeMethod('exportPresets', {'json': json});
-      if (success == true && mounted) {
-        _showToast('Presets exported successfully!');
+      final filePath = await WatermarkPresetService.exportPresetsToFile();
+      if (mounted) {
+        _showToast('Exported to Downloads/Quick Post Backup');
       }
     } catch (e) {
       if (mounted) {
@@ -984,6 +1193,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     WidgetsBinding.instance.addObserver(this);
     _avgRatio = VideoPerfService.getAvgRatio();
     _loadAutoSavedSettings();
+    _loadGridHistory();
     _setupMethodCallHandler();
     AnalyticsService().setCurrentScreen(screenName: 'Video Watermark');
     if (widget.sharedVideoPaths != null && widget.sharedVideoPaths!.isNotEmpty) {
@@ -998,15 +1208,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
   }
 
   void _showToast(String message, {bool isError = false}) {
-    toastification.show(
-      context: context,
-      type: isError ? ToastificationType.error : ToastificationType.success,
-      style: ToastificationStyle.flat,
-      title: Text(message),
-      alignment: Alignment.topRight,
-      autoCloseDuration: const Duration(seconds: 3),
-      showProgressBar: false,
-    );
+    // All snackbar and toast notifications removed per user request
   }
 
   void _setupMethodCallHandler() {
@@ -1113,6 +1315,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
       iconShadowBlur: _iconShadowBlur,
       iconShadowOffsetX: _iconShadowOffsetX,
       iconShadowOffsetY: _iconShadowOffsetY,
+      videoX: _videoX,
       videoY: _videoY,
       storyRingWidth: _storyRingWidth,
       storyRingColor: _storyRingColor,
@@ -1164,18 +1367,35 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
       final outPath = await platform.invokeMethod<String>('getVideoOutputPath', {'filename': filename});
 
       
-      final usernameFontPath = await _getFontPath(_selectedUsernameFont?.family ?? 'Roboto', _selectedUsernameFont?.displayName ?? 'Roboto', filePath: _selectedUsernameFont?.filePath);
-      final handleFontPath = await _getFontPath(_selectedHandleFont?.family ?? _selectedUsernameFont?.family ?? 'Roboto', _selectedHandleFont?.displayName ?? _selectedUsernameFont?.displayName ?? 'Roboto', filePath: _selectedHandleFont?.filePath ?? _selectedUsernameFont?.filePath);
+      final usernameFontPath = await _getFontPath(
+        _selectedUsernameFont?.family ?? 'Roboto',
+        _selectedUsernameFont?.displayName ?? 'Roboto',
+        filePath: _selectedUsernameFont?.filePath,
+        fontInfo: _selectedUsernameFont,
+      );
+      final handleFontPath = await _getFontPath(
+        _selectedHandleFont?.family ?? _selectedUsernameFont?.family ?? 'Roboto',
+        _selectedHandleFont?.displayName ?? _selectedUsernameFont?.displayName ?? 'Roboto',
+        filePath: _selectedHandleFont?.filePath ?? _selectedUsernameFont?.filePath,
+        fontInfo: _selectedHandleFont ?? _selectedUsernameFont,
+      );
 
+      final double finalOutW = _fullScreen ? 1080.0 : (_forceSquare ? 1080.0 : _videoWidth.toDouble());
+      final double finalOutH = _fullScreen ? 1920.0 : (_forceSquare ? 1080.0 : _videoHeight.toDouble());
+
+      final double previewW = _lastPreviewWidth > 0 ? _lastPreviewWidth : 360.0;
       final List<Map<String, dynamic>> resolvedTextOverlays = [];
+      final List<Map<String, dynamic>> resolvedPatches = _patches.map((p) => p.toMap(finalOutW, finalOutH)).toList();
       for (final t in _textOverlays) {
         final path = await _getFontPath(t.font?.family ?? 'Roboto', t.font?.displayName ?? 'Roboto', filePath: t.font?.filePath, fontInfo: t.font);
-        resolvedTextOverlays.addAll(t.toMaps((_fullScreen ? 1080 : _videoWidth).toDouble(), (_fullScreen ? 1920 : _videoHeight).toDouble(), path));
+        resolvedTextOverlays.addAll(t.toMaps(finalOutW, finalOutH, path, previewWidth: previewW));
+        resolvedPatches.addAll(t.getMarkerPatches(finalOutW, finalOutH, previewWidth: previewW));
       }
 
       final params = {
         'type': _watermarkType,
         'fullScreen': _fullScreen,
+        'forceSquareBg': _forceSquare,
         'bgColor': _bgColor,
         'showBox': _showBox,
         'boxColor': _boxColor,
@@ -1187,8 +1407,8 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         'handle': _handle,
         'profileImagePath': _profileImage?.path ?? "",
         'bgImagePath': _bgImage?.path ?? "",
-        'x': (_watermarkType == 'wire' ? 0 : (_watermarkX * (_fullScreen ? 1080 : _videoWidth)).toInt()),
-        'y': (_watermarkType == 'wire' ? 0 : (_watermarkY * (_fullScreen ? 1920 : _videoHeight)).toInt()),
+        'x': (_watermarkType == 'wire' ? 0 : (_watermarkX * finalOutW).toInt()),
+        'y': (_watermarkType == 'wire' ? 0 : (_watermarkY * finalOutH).toInt()),
         'wireRadius': _wireRadius,
         'wireWidth': _wireWidth,
         'wireColor': _wireColor,
@@ -1230,10 +1450,11 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         'handleShadowOffsetY': _handleShadowOffsetY,
         'iconShadowOffsetX': _iconShadowOffsetX,
         'iconShadowOffsetY': _iconShadowOffsetY,
+        'videoX': _videoX,
         'videoY': _videoY,
-        'patches': _patches.map((p) => p.toMap((_fullScreen ? 1080 : _videoWidth).toDouble(), (_fullScreen ? 1920 : _videoHeight).toDouble())).toList(),
+        'patches': resolvedPatches,
         'textOverlays': resolvedTextOverlays,
-        'imageOverlays': _imageOverlays.map((o) => o.toMap((_fullScreen ? 1080 : _videoWidth).toDouble(), (_fullScreen ? 1920 : _videoHeight).toDouble())).toList(),
+        'imageOverlays': _imageOverlays.map((o) => o.toMap(finalOutW, finalOutH)).toList(),
         'showVideoShadow': _showVideoShadow,
         'videoShadowColor': _videoShadowColor,
         'videoShadowBlur': _videoShadowBlur,
@@ -1244,6 +1465,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         'videoBorderWidth': _videoBorderWidth,
         'videoBorderColor': _videoBorderColor,
         'videoScale': _videoScale,
+        'addOutro': WatermarkSettings.enableOutro,
       };
 
       final result = await platform.invokeMethod<String>('addWatermarkToVideo', params);
@@ -1354,28 +1576,37 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
   }
 
   Future<String> _getFontPath(String family, String displayName, {String? filePath, FontInfo? fontInfo}) async {
-    // Check if the font is available in our library
-    FontInfo font = fontInfo ?? 
-                 FontInfo.getFontByFamily(family) ?? 
-                 FontInfo(family: family, displayName: displayName, isCustom: filePath != null, filePath: filePath);
-                 
-    bool isAvailable = true;
-    if (font.isCustom) {
-      if (font.filePath == null || !File(font.filePath!).existsSync()) {
-        isAvailable = false;
-      }
-    } else {
-      if (FontInfo.getFontByFamily(font.family) == null) {
-        isAvailable = false;
+    // 1. Resolve FontInfo instance
+    FontInfo? font = fontInfo ?? FontInfo.getFontByFamily(family);
+    if (font == null) {
+      final googleService = GoogleFontService();
+      if (googleService.isAsset(family)) {
+        font = FontInfo(
+          family: family,
+          displayName: displayName.isNotEmpty ? displayName : family,
+          isCustom: false,
+          assetPath: googleService.getCatalogAssetPath(family),
+        );
+      } else if (googleService.isDownloaded(family)) {
+        font = FontInfo(
+          family: family,
+          displayName: displayName.isNotEmpty ? displayName : family,
+          isCustom: true,
+          filePath: googleService.getFilePath(family),
+        );
+      } else {
+        font = FontInfo(
+          family: family,
+          displayName: displayName,
+          isCustom: filePath != null && filePath.isNotEmpty,
+          filePath: filePath,
+        );
       }
     }
-    
-    if (!isAvailable) {
-      // Fallback default font KleeOne
-      font = const FontInfo(family: 'KleeOne', displayName: 'Klee One SemiBold', weight: FontWeight.w600, assetPath: 'assets/fonts/KleeOne-SemiBold.ttf');
-    }
-    
-    return await FontInfo.getFontFilePath(font);
+
+    final resolvedPath = await FontInfo.getFontFilePath(font);
+    debugPrint('[WatermarkExport] Resolved font for "$family" -> $resolvedPath (exists: ${File(resolvedPath).existsSync()})');
+    return resolvedPath;
   }
 
   void _showSuccess() {
@@ -1695,7 +1926,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
       );
     }
 
-    final outAspect = _fullScreen ? 9 / 16 : _videoAspectRatio;
+    final outAspect = _fullScreen ? 9 / 16 : (_forceSquare ? 1.0 : _videoAspectRatio);
 
     return Center(
       child: SingleChildScrollView(
@@ -1712,7 +1943,21 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
               aspectRatio: outAspect,
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  return GestureDetector(
+                    final double unscaledW;
+                    final double unscaledH;
+                    if (constraints.maxWidth / _videoAspectRatio <= constraints.maxHeight) {
+                      unscaledW = constraints.maxWidth;
+                      unscaledH = constraints.maxWidth / _videoAspectRatio;
+                    } else {
+                      unscaledH = constraints.maxHeight;
+                      unscaledW = constraints.maxHeight * _videoAspectRatio;
+                    }
+                    final double scaledW = unscaledW * _videoScale;
+                    final double scaledH = unscaledH * _videoScale;
+                    final double videoOffsetDx = (_videoX - 0.5) * (constraints.maxWidth - scaledW);
+                    final double videoOffsetDy = (_videoY - 0.5) * (constraints.maxHeight - scaledH);
+
+                    return GestureDetector(
                     onTap: () => setState(() => _showControls = !_showControls),
                     onPanUpdate: (d) => setState(() {
                       _watermarkX = (d.localPosition.dx / constraints.maxWidth).clamp(0.0, 1.0);
@@ -1755,75 +2000,79 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                            return _buildPatchPreview(p, idx, constraints);
                         }).toList(),
 
-                          Align(
-                            alignment: Alignment(0, (_videoY - 0.5) * 2),
-                            child: Transform.scale(
-                              scale: _videoScale,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(_videoRadius),
-                                  border: _videoBorderWidth > 0 ? Border.all(
-                                    color: _parseColor(_videoBorderColor),
-                                    width: _videoBorderWidth,
-                                  ) : null,
-                                  boxShadow: _showVideoShadow ? [
-                                    BoxShadow(
-                                      color: _parseColor(_videoShadowColor),
-                                      blurRadius: _videoShadowBlur,
-                                      offset: Offset(_videoShadowOffsetX, _videoShadowOffsetY),
-                                      spreadRadius: _videoShadowSpread,
-                                    )
-                                  ] : null,
-                                ) ,
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(_videoRadius),
-                                  child: AspectRatio(
-                                    aspectRatio: _videoAspectRatio,
-                                     child: Stack(
-                                       children: [
-                                         VideoPlayer(_videoController!),
-                                         if (_watermarkType == 'wire')
-                                           Positioned.fill(
-                                             child: LayoutBuilder(
-                                               builder: (context, videoConstraints) {
+                          Center(
+                            child: Transform.translate(
+                              offset: Offset(videoOffsetDx, videoOffsetDy),
+                              child: Transform.scale(
+                                scale: _videoScale,
+                                child: Container(
+                                  width: unscaledW,
+                                  height: unscaledH,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(_videoRadius),
+                                    border: _videoBorderWidth > 0 ? Border.all(
+                                      color: _parseColor(_videoBorderColor),
+                                      width: _videoBorderWidth,
+                                    ) : null,
+                                    boxShadow: _showVideoShadow ? [
+                                      BoxShadow(
+                                        color: _parseColor(_videoShadowColor),
+                                        blurRadius: _videoShadowBlur,
+                                        offset: Offset(_videoShadowOffsetX, _videoShadowOffsetY),
+                                        spreadRadius: _videoShadowSpread,
+                                      )
+                                    ] : null,
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(_videoRadius),
+                                    child: AspectRatio(
+                                      aspectRatio: _videoAspectRatio,
+                                      child: Stack(
+                                        children: [
+                                          VideoPlayer(_videoController!),
+                                          if (_watermarkType == 'wire')
+                                            Positioned.fill(
+                                              child: LayoutBuilder(
+                                                builder: (context, videoConstraints) {
                                                   _lastPreviewWidth = videoConstraints.maxWidth;
                                                   final double previewScale = videoConstraints.maxWidth / _videoWidth * _watermarkScale;
                                                   return _buildWatermarkPreview(previewScale);
-                                               },
-                                             ),
-                                           ),
-                                         if (_showControls) ...[
-                                           Center(
-                                             child: IconButton(
-                                               iconSize: 64,
-                                               icon: Icon(
-                                                 _videoController!.value.isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
-                                                 color: Colors.white70,
-                                               ),
-                                               onPressed: _togglePlayPause,
-                                             ),
-                                           ),
-                                           Positioned(
-                                             bottom: 0,
-                                             left: 0,
-                                             right: 0,
-                                             child: Container(
-                                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                               color: Colors.black26,
-                                               child: VideoProgressIndicator(
-                                                 _videoController!,
-                                                 allowScrubbing: true,
-                                                 colors: const VideoProgressColors(
-                                                   playedColor: Colors.blueAccent,
-                                                   bufferedColor: Colors.white24,
-                                                   backgroundColor: Colors.white10,
-                                                 ),
-                                               ),
-                                             ),
-                                           ),
-                                         ],
-                                       ],
-                                     ),
+                                                },
+                                              ),
+                                            ),
+                                          if (_showControls) ...[
+                                            Center(
+                                              child: IconButton(
+                                                iconSize: 64,
+                                                icon: Icon(
+                                                  _videoController!.value.isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
+                                                  color: Colors.white70,
+                                                ),
+                                                onPressed: _togglePlayPause,
+                                              ),
+                                            ),
+                                            Positioned(
+                                              bottom: 0,
+                                              left: 0,
+                                              right: 0,
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                                color: Colors.black26,
+                                                child: VideoProgressIndicator(
+                                                  _videoController!,
+                                                  allowScrubbing: true,
+                                                  colors: const VideoProgressColors(
+                                                    playedColor: Colors.blueAccent,
+                                                    bufferedColor: Colors.white24,
+                                                    backgroundColor: Colors.white10,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -2757,23 +3006,78 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     final matches = wordRegex.allMatches(t.text).toList();
     List<TextSpan> fillSpans = [];
     List<TextSpan> strokeSpans = [];
-    int wordIdx = 0;
     
-    for (final match in matches) {
-      final str = match.group(0)!;
-      if (str.trim().isEmpty) {
-        fillSpans.add(TextSpan(text: str));
-        strokeSpans.add(TextSpan(text: str));
+    // First pass to map word indices
+    final List<int> matchWordIndices = List.filled(matches.length, -1);
+    int currentWordCount = 0;
+    for (int i = 0; i < matches.length; i++) {
+      if (matches[i].group(0)!.trim().isNotEmpty) {
+        matchWordIndices[i] = currentWordCount++;
+      }
+    }
+    
+    for (int i = 0; i < matches.length; i++) {
+      final str = matches[i].group(0)!;
+      final isWord = matchWordIndices[i] != -1;
+      
+      if (!isWord) {
+        // Continuous marker stroke across spaces if surrounding words share matching highlight
+        Color? spaceBg;
+        if (!str.contains('\n')) {
+          int prevIdx = -1;
+          for (int p = i - 1; p >= 0; p--) {
+            if (matchWordIndices[p] != -1) { prevIdx = matchWordIndices[p]; break; }
+          }
+          int nextIdx = -1;
+          for (int n = i + 1; n < matches.length; n++) {
+            if (matchWordIndices[n] != -1) { nextIdx = matchWordIndices[n]; break; }
+          }
+          if (prevIdx != -1 && nextIdx != -1) {
+            final prevBg = t.wordBgColors[prevIdx];
+            final nextBg = t.wordBgColors[nextIdx];
+            if (prevBg != null && prevBg == nextBg) {
+              spaceBg = _parseColor(prevBg).withOpacity(0.85);
+            }
+          }
+        }
+        fillSpans.add(TextSpan(text: str, style: TextStyle(backgroundColor: spaceBg)));
+        strokeSpans.add(TextSpan(text: str, style: const TextStyle(color: Colors.transparent)));
       } else {
+        final wordIdx = matchWordIndices[i];
         final cStr = t.wordColors[wordIdx] ?? t.color;
         final wStrokeWidth = t.wordStrokeWidths[wordIdx] ?? t.strokeWidth;
         final wStrokeColor = t.wordStrokeColors[wordIdx] ?? t.strokeColor;
         final wStrokeOnly = t.wordStrokeOnly[wordIdx] ?? t.strokeOnly;
+        final bgStr = t.wordBgColors[wordIdx];
+
+        Color textColor = _parseColor(cStr);
+        Color? bgColor = bgStr != null ? _parseColor(bgStr).withOpacity(0.85) : null;
+
+        // Auto contrast adjustment when text is light and marker is bright
+        if (bgColor != null && !t.wordColors.containsKey(wordIdx)) {
+          if (bgColor.computeLuminance() > 0.45 && _parseColor(t.color).computeLuminance() > 0.55) {
+            textColor = Colors.black87;
+          } else if (bgColor.computeLuminance() <= 0.45 && _parseColor(t.color).computeLuminance() <= 0.45) {
+            textColor = Colors.white;
+          }
+        }
 
         if (!wStrokeOnly) {
-          fillSpans.add(TextSpan(text: str, style: TextStyle(color: _parseColor(cStr))));
+          fillSpans.add(TextSpan(
+            text: str,
+            style: TextStyle(
+              color: textColor,
+              backgroundColor: bgColor,
+            ),
+          ));
         } else {
-          fillSpans.add(TextSpan(text: str, style: const TextStyle(color: Colors.transparent)));
+          fillSpans.add(TextSpan(
+            text: str,
+            style: TextStyle(
+              color: Colors.transparent,
+              backgroundColor: bgColor,
+            ),
+          ));
         }
 
         if (wStrokeWidth > 0) {
@@ -2785,12 +3089,11 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                 ..strokeWidth = wStrokeWidth * scale * t.scale
                 ..strokeJoin = StrokeJoin.round
                 ..color = _parseColor(wStrokeColor),
-            )
+            ),
           ));
         } else {
-          strokeSpans.add(TextSpan(text: str));
+          strokeSpans.add(TextSpan(text: str, style: const TextStyle(color: Colors.transparent)));
         }
-        wordIdx++;
       }
     }
 
@@ -2869,6 +3172,31 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
     );
   }
 
+  double _calculateFirstTextAboveVideoY() {
+    final double canvasAspect = _fullScreen ? (9.0 / 16.0) : (_forceSquare ? 1.0 : _videoAspectRatio);
+    final double normScaledH;
+    if (_videoAspectRatio >= canvasAspect) {
+      normScaledH = (canvasAspect / _videoAspectRatio) * _videoScale;
+    } else {
+      normScaledH = _videoScale;
+    }
+    // Normalized top edge of the video on canvas:
+    final double videoTopEdge = _videoY * (1.0 - normScaledH);
+    
+    // Position text center right above the video top edge with a slight gap
+    // Text half-height (~0.012) + aesthetic slight gap (~0.033) = ~0.045
+    final double gapAndHalfHeight = 0.045;
+    final double targetY = videoTopEdge - gapAndHalfHeight;
+    
+    if (targetY >= 0.05) {
+      return targetY;
+    } else if (videoTopEdge >= 0.06) {
+      return 0.05;
+    } else {
+      return 0.12;
+    }
+  }
+
   Widget _buildTextOverlayTab() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2880,9 +3208,20 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
              ElevatedButton.icon(
                onPressed: () {
                  setState(() {
+                   final double defaultY;
+                   if (_textOverlays.isEmpty) {
+                     defaultY = _calculateFirstTextAboveVideoY();
+                   } else {
+                     if (_textOverlays.last.y >= 0.12) {
+                       defaultY = (_textOverlays.last.y - 0.06).clamp(0.05, 0.94);
+                     } else {
+                       defaultY = (_textOverlays.last.y + 0.06).clamp(0.05, 0.94);
+                     }
+                   }
                    _textOverlays.add(_TextOverlay(
                      text: "New Text",
-                     y: 0.25,
+                     x: _videoX,
+                     y: defaultY,
                      fontSize: 30.0,
                      font: const FontInfo(family: 'KleeOne', displayName: 'Klee One SemiBold', weight: FontWeight.w600, assetPath: 'assets/fonts/KleeOne-SemiBold.ttf'),
                    ));
@@ -2977,25 +3316,94 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                   controller: _overlayTextController,
                   maxLines: null,
                   onChanged: (v) => _updateSelectedTextOverlays((o) => o.text = v),
-                  decoration: const InputDecoration(labelText: "Text Content", border: OutlineInputBorder(), isDense: true),
+                  decoration: InputDecoration(
+                    labelText: "Text Content",
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
+                    ),
+                    isDense: true,
+                  ),
                 ),
-                if (matches.length > 1) ...[
+                if (matches.isNotEmpty) ...[
                   const SizedBox(height: 12),
-                  const Text("Select words to highlight:", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54)),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("Select words to highlight:", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54)),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                if (_selectedWordIndices.length == matches.length) {
+                                  _selectedWordIndices.clear();
+                                } else {
+                                  _selectedWordIndices.clear();
+                                  _selectedWordIndices.addAll(List.generate(matches.length, (i) => i));
+                                }
+                              });
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              child: Text(
+                                _selectedWordIndices.length == matches.length ? 'Deselect All' : 'Select All',
+                                style: const TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                          if (t.wordBgColors.isNotEmpty || t.wordColors.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  t.wordBgColors.clear();
+                                  t.wordColors.clear();
+                                });
+                              },
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                child: Text('Clear All', style: TextStyle(fontSize: 11, color: Colors.red, fontWeight: FontWeight.bold)),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 8),
                   Wrap(
-                    spacing: 4,
-                    runSpacing: 2,
+                    spacing: 5,
+                    runSpacing: 4,
                     children: List.generate(matches.length, (i) {
                       final wordStr = matches[i].group(0)!;
                       final isSelected = _selectedWordIndices.contains(i);
                       final wordColor = t.wordColors[i];
+                      final wordBgColor = t.wordBgColors[i];
+                      final hasMarker = wordBgColor != null;
+
                       return FilterChip(
                         showCheckmark: false,
-                        padding: EdgeInsets.zero,
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
-                        label: Text(wordStr, style: TextStyle(color: wordColor != null ? _parseColor(wordColor) : null, fontSize: 12)),
+                        backgroundColor: hasMarker ? _parseColor(wordBgColor).withOpacity(0.3) : null,
+                        selectedColor: hasMarker ? _parseColor(wordBgColor).withOpacity(0.55) : AppColors.primary.withOpacity(0.2),
+                        side: BorderSide(
+                          color: isSelected ? AppColors.primary : (hasMarker ? _parseColor(wordBgColor) : Colors.grey.shade300),
+                          width: isSelected ? 1.8 : 1.0,
+                        ),
+                        label: Text(
+                          wordStr,
+                          style: TextStyle(
+                            color: wordColor != null ? _parseColor(wordColor) : (hasMarker ? Colors.black87 : null),
+                            fontSize: 12,
+                            fontWeight: (hasMarker || isSelected) ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
                         selected: isSelected,
                         onSelected: (val) {
                           setState(() {
@@ -3007,23 +3415,194 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                     }),
                   ),
                 ],
-                const SizedBox(height: 16),
-                const Text("Text Color", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                const SizedBox(height: 8),
-                _buildColorPicker(
-                  _selectedWordIndices.isNotEmpty && _selectedWordIndices.every((i) => t.wordColors[i] == t.wordColors[_selectedWordIndices.first]) 
-                     ? (t.wordColors[_selectedWordIndices.first] ?? t.color) 
-                     : t.color,
-                  (c) => setState(() {
-                    if (_selectedWordIndices.isNotEmpty) {
-                      for (final i in _selectedWordIndices) {
-                        t.wordColors[i] = c;
-                      }
-                    } else {
-                      t.color = c;
-                    }
-                  }),
-                ),
+                if (_selectedWordIndices.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => setState(() => _overlayHighlightType = 'marker'),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              decoration: BoxDecoration(
+                                color: _overlayHighlightType == 'marker' ? Colors.white : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                                boxShadow: _overlayHighlightType == 'marker' ? [
+                                  BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 4, offset: const Offset(0, 1)),
+                                ] : null,
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.brush, size: 14, color: _overlayHighlightType == 'marker' ? AppColors.primary : Colors.grey.shade600),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    'Marker Highlight',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: _overlayHighlightType == 'marker' ? FontWeight.bold : FontWeight.w500,
+                                      color: _overlayHighlightType == 'marker' ? AppColors.primary : Colors.grey.shade700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => setState(() => _overlayHighlightType = 'text'),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              decoration: BoxDecoration(
+                                color: _overlayHighlightType == 'text' ? Colors.white : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                                boxShadow: _overlayHighlightType == 'text' ? [
+                                  BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 4, offset: const Offset(0, 1)),
+                                ] : null,
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.format_color_text, size: 14, color: _overlayHighlightType == 'text' ? AppColors.primary : Colors.grey.shade600),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    'Text Color',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: _overlayHighlightType == 'text' ? FontWeight.bold : FontWeight.w500,
+                                      color: _overlayHighlightType == 'text' ? AppColors.primary : Colors.grey.shade700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (_overlayHighlightType == 'marker') ...[
+                    const Text("Book Highlighter Markers", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 8),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: _bookMarkerPresets.map((preset) {
+                          final hex = preset['hex']!;
+                          final name = preset['name']!;
+                          final dotColor = _parseColor(preset['dot']!);
+                          final markerColor = _parseColor(hex);
+                          final isMarked = _selectedWordIndices.isNotEmpty && _selectedWordIndices.every((idx) => t.wordBgColors[idx] == hex);
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 6.0),
+                            child: InkWell(
+                              onTap: () {
+                                setState(() {
+                                  for (final idx in _selectedWordIndices) {
+                                    t.wordBgColors[idx] = hex;
+                                  }
+                                });
+                              },
+                              borderRadius: BorderRadius.circular(20),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5.5),
+                                decoration: BoxDecoration(
+                                  color: markerColor.withOpacity(0.35),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: isMarked ? AppColors.primary : markerColor,
+                                    width: isMarked ? 2.0 : 1.2,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(width: 10, height: 10, decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle)),
+                                    const SizedBox(width: 5),
+                                    Text(name, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.black87)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text("Custom Marker Color", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: Colors.black54)),
+                    const SizedBox(height: 6),
+                    _buildColorPicker(
+                      _selectedWordIndices.isNotEmpty && t.wordBgColors.containsKey(_selectedWordIndices.first)
+                          ? t.wordBgColors[_selectedWordIndices.first]!
+                          : "#FFEE58",
+                      (c) => setState(() {
+                        for (final i in _selectedWordIndices) {
+                          t.wordBgColors[i] = c;
+                        }
+                      }),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          for (final i in _selectedWordIndices) {
+                            t.wordBgColors.remove(i);
+                          }
+                        });
+                      },
+                      icon: const Icon(Icons.clear, size: 15, color: Colors.red),
+                      label: const Text('Remove Marker on Selected', style: TextStyle(color: Colors.red, fontSize: 11.5)),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: Colors.red.shade200),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                    ),
+                  ] else ...[
+                    const Text("Text Color for Selected Word(s)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 8),
+                    _buildColorPicker(
+                      _selectedWordIndices.isNotEmpty && _selectedWordIndices.every((i) => t.wordColors[i] == t.wordColors[_selectedWordIndices.first])
+                          ? (t.wordColors[_selectedWordIndices.first] ?? t.color)
+                          : t.color,
+                      (c) => setState(() {
+                        for (final i in _selectedWordIndices) {
+                          t.wordColors[i] = c;
+                        }
+                      }),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          for (final i in _selectedWordIndices) {
+                            t.wordColors.remove(i);
+                          }
+                        });
+                      },
+                      icon: const Icon(Icons.clear, size: 15, color: Colors.red),
+                      label: const Text('Reset Text Color on Selected', style: TextStyle(color: Colors.red, fontSize: 11.5)),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: Colors.red.shade200),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                    ),
+                  ],
+                ] else ...[
+                  const SizedBox(height: 16),
+                  const Text("Base Text Color", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const SizedBox(height: 8),
+                  _buildColorPicker(t.color, (c) => setState(() => t.color = c)),
+                ],
                 const SizedBox(height: 16),
                 const Text("Font Style", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                 const SizedBox(height: 8),
@@ -3038,8 +3617,35 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                 _buildControlSlider(label: "Letter Spacing", value: t.letterSpacing, min: -5.0, max: 20.0, onChanged: (v) => _updateSelectedTextOverlays((o) => o.letterSpacing = v)),
                 _buildControlSlider(label: "Word Spacing", value: t.wordSpacing, min: -10.0, max: 50.0, onChanged: (v) => _updateSelectedTextOverlays((o) => o.wordSpacing = v)),
                 _buildControlSlider(label: "Opacity", value: t.opacity, min: 0.0, max: 1.0, onChanged: (v) => _updateSelectedTextOverlays((o) => o.opacity = v)),
+                SwitchListTile(
+                  title: Text(
+                    "Text Fill ${(_selectedWordIndices.isNotEmpty && _selectedWordIndices.every((i) => t.wordStrokeOnly[i] == t.wordStrokeOnly[_selectedWordIndices.first]) ? (t.wordStrokeOnly[_selectedWordIndices.first] ?? t.strokeOnly) : t.strokeOnly) ? '(Outline only)' : '(Solid)'}",
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                  value: !(_selectedWordIndices.isNotEmpty && _selectedWordIndices.every((i) => t.wordStrokeOnly[i] == t.wordStrokeOnly[_selectedWordIndices.first])
+                      ? (t.wordStrokeOnly[_selectedWordIndices.first] ?? t.strokeOnly)
+                      : t.strokeOnly),
+                  onChanged: (fillOn) => setState(() {
+                    final strokeOnly = !fillOn;
+                    if (_selectedWordIndices.isNotEmpty) {
+                      for (final i in _selectedWordIndices) {
+                        t.wordStrokeOnly[i] = strokeOnly;
+                        if (strokeOnly && (t.wordStrokeWidths[i] ?? t.strokeWidth) <= 0) {
+                          t.wordStrokeWidths[i] = 2.0;
+                        }
+                      }
+                    } else {
+                      t.strokeOnly = strokeOnly;
+                      if (strokeOnly && t.strokeWidth <= 0) {
+                        t.strokeWidth = 2.0;
+                      }
+                    }
+                  }),
+                  contentPadding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                ),
                 _buildControlSlider(
-                  label: "Stroke Width", 
+                  label: "Outline Width", 
                   value: _selectedWordIndices.isNotEmpty && _selectedWordIndices.every((i) => t.wordStrokeWidths[i] == t.wordStrokeWidths[_selectedWordIndices.first])
                      ? (t.wordStrokeWidths[_selectedWordIndices.first] ?? t.strokeWidth)
                      : t.strokeWidth, 
@@ -3054,9 +3660,9 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                     }
                   })
                 ),
-                if (t.strokeWidth > 0 || t.wordStrokeWidths.values.any((w) => w > 0)) ...[
+                if (t.strokeWidth > 0 || t.strokeOnly || t.wordStrokeWidths.values.any((w) => w > 0) || t.wordStrokeOnly.values.any((o) => o)) ...[
                   const SizedBox(height: 16),
-                  const Text("Stroke Color", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const Text("Outline Color", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   const SizedBox(height: 8),
                   _buildColorPicker(
                     _selectedWordIndices.isNotEmpty && _selectedWordIndices.every((i) => t.wordStrokeColors[i] == t.wordStrokeColors[_selectedWordIndices.first])
@@ -3071,24 +3677,6 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                         t.strokeColor = c;
                       }
                     }),
-                  ),
-                  const SizedBox(height: 8),
-                  SwitchListTile(
-                    title: const Text("Stroke Only", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                    value: _selectedWordIndices.isNotEmpty && _selectedWordIndices.every((i) => t.wordStrokeOnly[i] == t.wordStrokeOnly[_selectedWordIndices.first])
-                       ? (t.wordStrokeOnly[_selectedWordIndices.first] ?? t.strokeOnly)
-                       : t.strokeOnly,
-                    onChanged: (v) => setState(() {
-                      if (_selectedWordIndices.isNotEmpty) {
-                        for (final i in _selectedWordIndices) {
-                          t.wordStrokeOnly[i] = v;
-                        }
-                      } else {
-                        t.strokeOnly = v;
-                      }
-                    }),
-                    contentPadding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
                   ),
                 ],
                 const SizedBox(height: 16),
@@ -3512,7 +4100,7 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
         const SizedBox(height: 8),
         SwitchListTile(
           title: const Text("Show Story Ring", style: TextStyle(fontWeight: FontWeight.bold)),
-          subtitle: Text(_isCustomRingColor ? "Custom solid color circle" : "Purple-Orange IG gradient circle", style: const TextStyle(fontSize: 12)),
+          subtitle: Text(_isCustomRingColor ? "Custom solid color circle" : "Purple-Orange gradient circle", style: const TextStyle(fontSize: 12)),
           value: _showStoryRing,
           onChanged: (v) => setState(() => _showStoryRing = v),
           secondary: const Icon(Icons.circle_outlined, color: AppColors.primary),
@@ -3680,6 +4268,31 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Style Options', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            IconButton(
+              icon: const Icon(Icons.refresh, size: 20, color: Colors.grey),
+              tooltip: 'Reset Styles',
+              onPressed: () {
+                setState(() {
+                  _showUsernameShadow = false;
+                  _showHandleShadow = false;
+                  _showIconShadow = false;
+                  _showVideoShadow = false;
+                  _fontSize = 40.0;
+                  _iconSize = 50.0;
+                  _textColor = "#FFFFFF";
+                  _accentColor = "#FF0000";
+                  _usernameOpacity = 1.0;
+                  _handleOpacity = 1.0;
+                });
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
           children: [
             _buildSubTabButton(0, 'Username', Icons.person_outline),
             _buildSubTabButton(1, 'Handle', Icons.alternate_email),
@@ -3797,22 +4410,44 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
                   onChanged: (v) => setState(() => _videoScale = v),
                 ),
                 const SizedBox(height: 16),
-                _buildControlSlider(
-                  label: 'Corner Radius',
-                  value: _videoRadius,
-                  min: 0.0,
-                  max: 200.0,
-                  onChanged: (v) => setState(() => _videoRadius = v),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Corner Radius', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    Switch(
+                      value: _videoRadius > 0,
+                      onChanged: (v) => setState(() => _videoRadius = v ? (_videoRadius == 0 ? 12.0 : _videoRadius) : 0.0),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                _buildControlSlider(
-                  label: 'Border Width',
-                  value: _videoBorderWidth,
-                  min: 0.0,
-                  max: 50.0,
-                  onChanged: (v) => setState(() => _videoBorderWidth = v),
+                if (_videoRadius > 0) ...[
+                  _buildControlSlider(
+                    label: 'Radius Value',
+                    value: _videoRadius,
+                    min: 0.0,
+                    max: 200.0,
+                    onChanged: (v) => setState(() => _videoRadius = v),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Video Border', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    Switch(
+                      value: _videoBorderWidth > 0,
+                      onChanged: (v) => setState(() => _videoBorderWidth = v ? (_videoBorderWidth == 0 ? 2.5 : _videoBorderWidth) : 0.0),
+                    ),
+                  ],
                 ),
                 if (_videoBorderWidth > 0) ...[
+                  _buildControlSlider(
+                    label: 'Border Width',
+                    value: _videoBorderWidth,
+                    min: 0.0,
+                    max: 10.0,
+                    onChanged: (v) => setState(() => _videoBorderWidth = v),
+                  ),
                   const SizedBox(height: 12),
                   const Text('Border Color', style: TextStyle(fontSize: 12, color: Colors.grey)),
                   const SizedBox(height: 8),
@@ -4134,18 +4769,150 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text('Canvas Settings', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            Switch(
-              value: _fullScreen, 
-              onChanged: (v) => setState(() => _fullScreen = v),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Builder(builder: (context) {
+                  final isFramed = (_videoScale == 0.85 && _videoBorderWidth == 1.5 && _videoBorderColor.toUpperCase() == "#FFFFFF" && _bgColor == "#000000" && _bgImage == null && _watermarkType == 'none');
+                  return InkWell(
+                    onTap: () {
+                      setState(() {
+                        if (isFramed) {
+                          _videoScale = 1.0;
+                          _videoBorderWidth = 0.0;
+                        } else {
+                          _videoScale = 0.85;
+                          _videoBorderWidth = 1.5;
+                          _videoBorderColor = "#FFFFFF";
+                          _bgColor = "#000000";
+                          _bgImage = null;
+                          _gridImages.clear();
+                          _watermarkType = 'none';
+                          if (!_fullScreen && !_forceSquare) {
+                            _fullScreen = true;
+                          }
+                        }
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: isFramed ? AppColors.primary.withOpacity(0.12) : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isFramed ? AppColors.primary : Colors.grey.shade300,
+                          width: isFramed ? 1.4 : 1.0,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isFramed ? Icons.check : Icons.crop_free,
+                            size: 13,
+                            color: isFramed ? AppColors.primary : Colors.grey.shade800,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '0.85x Frame',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: isFramed ? AppColors.primary : Colors.grey.shade900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+                const SizedBox(width: 2),
+                IconButton(
+                  icon: const Icon(Icons.refresh, size: 20, color: Colors.grey),
+                  tooltip: 'Reset Canvas',
+                  onPressed: () {
+                    setState(() {
+                      _fullScreen = true;
+                      _forceSquare = false;
+                      _bgImage = null;
+                      _gridImages.clear();
+                      _gridGap = 0.0;
+                      _bgColor = "#000000";
+                      _bgBrightness = 1.0;
+                      _bgSaturation = 1.0;
+                      _bgBlur = 0.0;
+                      _videoX = 0.5;
+                      _videoY = 0.5;
+                      _videoScale = 1.0;
+                      _videoRadius = 0.0;
+                      _videoBorderWidth = 0.0;
+                      _videoBorderColor = "#FFFFFF";
+                    });
+                    _triggerAutoSave();
+                  },
+                ),
+              ],
             ),
           ],
         ),
-        const Text('Enable 9:16 Fullscreen Padding', style: TextStyle(fontSize: 12, color: Colors.grey)),
-        if (_fullScreen) ...[
-          const SizedBox(height: 16),
-          const Text('Background Mode', style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          ListTile(
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: '9:16', label: Text('9:16')),
+              ButtonSegment(value: '1:1', label: Text('1:1')),
+              ButtonSegment(value: 'original', label: Text('Original')),
+            ],
+            selected: {
+              if (_fullScreen) '9:16'
+              else if (_forceSquare) '1:1'
+              else 'original'
+            },
+            onSelectionChanged: (Set<String> newSelection) {
+              setState(() {
+                final mode = newSelection.first;
+                if (mode == '9:16') {
+                  _fullScreen = true;
+                  _forceSquare = false;
+                } else if (mode == '1:1') {
+                  _fullScreen = false;
+                  _forceSquare = true;
+                  _watermarkType = 'none';
+                } else {
+                  _fullScreen = false;
+                  _forceSquare = false;
+                  _watermarkType = 'none';
+                }
+              });
+              _triggerAutoSave();
+            },
+            style: SegmentedButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              textStyle: const TextStyle(fontSize: 12),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          height: 40,
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Expanded(child: _buildSettingsSubTabBtn(0, 'Background', Icons.wallpaper)),
+              Expanded(child: _buildSettingsSubTabBtn(1, 'Video', Icons.video_call)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        if (_settingsSubTab == 0) ...[
+        const Text('Background Mode', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        ListTile(
             contentPadding: EdgeInsets.zero,
             leading: _bgImage != null 
                ? ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.file(_bgImage!, width: 40, height: 40, fit: BoxFit.cover))
@@ -4153,11 +4920,199 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
             title: const Text('Background Image'),
             subtitle: Text(_bgImage == null ? 'None selected' : 'Change background image'),
             trailing: _bgImage != null 
-              ? IconButton(onPressed: () => setState(() => _bgImage = null), icon: const Icon(Icons.close, color: Colors.red))
+              ? IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _saveCurrentBgLayout();
+                      _bgImage = null;
+                    });
+                    _triggerAutoSave();
+                  },
+                  icon: const Icon(Icons.close, color: Colors.red),
+                )
               : const Icon(Icons.chevron_right),
             onTap: _pickBgImage,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade300)),
           ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () => _pickAndCreateGridBgImage(1),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.crop_square, size: 28, color: Colors.orange),
+                        const SizedBox(height: 8),
+                        const Text('1x1 Grid', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        const Text('1 image', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: InkWell(
+                  onTap: () => _pickAndCreateGridBgImage(2),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.grid_view, size: 28, color: Colors.blue),
+                        const SizedBox(height: 8),
+                        const Text('2x2 Grid', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        const Text('4 images', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: InkWell(
+                  onTap: () => _pickAndCreateGridBgImage(3),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.grid_on, size: 28, color: Colors.purple),
+                        const SizedBox(height: 8),
+                        const Text('3x3 Grid', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        const Text('9 images', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_gridHistory.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text('Grid History', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 70,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: _gridHistory.length,
+                itemBuilder: (context, index) {
+                  final path = _gridHistory[index];
+                  final isSelected = _bgImage?.path == path;
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _saveCurrentBgLayout();
+                        _bgImage = File(path);
+                        _applyBgLayoutForImage(path);
+                      });
+                      _triggerAutoSave();
+                    },
+                    onLongPress: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Delete Background'),
+                          content: const Text('Remove this background image from history?'),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, true),
+                              style: TextButton.styleFrom(foregroundColor: Colors.red),
+                              child: const Text('Delete'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirm == true) {
+                        try {
+                          final f = File(path);
+                          if (await f.exists()) await f.delete();
+                        } catch (_) {}
+                        if (mounted) {
+                          setState(() {
+                            _bgLayoutConfigs.remove(path);
+                            _gridHistory.remove(path);
+                            if (_bgImage?.path == path) {
+                              _bgImage = null;
+                            }
+                          });
+                          _triggerAutoSave();
+                        }
+                      }
+                    },
+                    child: Container(
+                      width: 70,
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: isSelected ? Colors.blue : Colors.grey.shade300, width: isSelected ? 2 : 1),
+                        borderRadius: BorderRadius.circular(8),
+                        image: DecorationImage(
+                          image: FileImage(File(path)),
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+          if (_gridImages.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Grid Gap', style: TextStyle(fontWeight: FontWeight.bold)),
+                Switch(
+                  value: _gridGap > 0,
+                  onChanged: (v) {
+                    setState(() => _gridGap = v ? (_gridGap == 0 ? 5.0 : _gridGap) : 0.0);
+                    _generateGridBgImage();
+                  },
+                ),
+              ],
+            ),
+            if (_gridGap > 0) ...[
+              _buildControlSlider(
+                label: 'Gap Width',
+                value: _gridGap,
+                min: 0.0,
+                max: 20.0,
+                onChanged: (v) {
+                  setState(() => _gridGap = v);
+                  _generateGridBgImage();
+                },
+              ),
+              const SizedBox(height: 12),
+              const Text('Grid Gap Color', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 8),
+              _buildColorPicker(_gridGapColor, (c) {
+                setState(() => _gridGapColor = c);
+                _generateGridBgImage();
+              }),
+            ],
+          ],
           if (_bgImage == null) ...[
             const SizedBox(height: 20),
             const Text('Background Color'),
@@ -4188,9 +5143,16 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
             ),
           ],
         ],
-        const Divider(height: 32),
-        const Text('Video Placement', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-        const SizedBox(height: 8),
+        if (_settingsSubTab == 1) ...[
+          const Text('Video Placement', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          const SizedBox(height: 8),
+        _buildControlSlider(
+          label: 'Horizontal Alignment (X)',
+          value: _videoX,
+          min: 0.0,
+          max: 1.0,
+          onChanged: (v) => setState(() => _videoX = v),
+        ),
         _buildControlSlider(
           label: 'Vertical Alignment (Y)',
           value: _videoY,
@@ -4207,29 +5169,79 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
           onChanged: (v) => setState(() => _videoScale = v),
         ),
         const SizedBox(height: 8),
-        _buildControlSlider(
-          label: 'Corner Radius',
-          value: _videoRadius,
-          min: 0.0,
-          max: 200.0,
-          onChanged: (v) => setState(() => _videoRadius = v),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Corner Radius', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            Switch(
+              value: _videoRadius > 0,
+              onChanged: (v) => setState(() => _videoRadius = v ? (_videoRadius == 0 ? 12.0 : _videoRadius) : 0.0),
+            ),
+          ],
         ),
-        const SizedBox(height: 16),
-        _buildControlSlider(
-          label: 'Border Width',
-          value: _videoBorderWidth,
-          min: 0.0,
-          max: 50.0,
-          onChanged: (v) => setState(() => _videoBorderWidth = v),
+        if (_videoRadius > 0) ...[
+          _buildControlSlider(
+            label: 'Radius Value',
+            value: _videoRadius,
+            min: 0.0,
+            max: 200.0,
+            onChanged: (v) => setState(() => _videoRadius = v),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Video Border', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            Switch(
+              value: _videoBorderWidth > 0,
+              onChanged: (v) => setState(() => _videoBorderWidth = v ? (_videoBorderWidth == 0 ? 2.5 : _videoBorderWidth) : 0.0),
+            ),
+          ],
         ),
         if (_videoBorderWidth > 0) ...[
+          _buildControlSlider(
+            label: 'Border Width',
+            value: _videoBorderWidth,
+            min: 0.0,
+            max: 10.0,
+            onChanged: (v) => setState(() => _videoBorderWidth = v),
+          ),
           const SizedBox(height: 12),
           const Text('Border Color', style: TextStyle(fontSize: 12, color: Colors.grey)),
           const SizedBox(height: 8),
           _buildColorPicker(_videoBorderColor, (c) => setState(() => _videoBorderColor = c)),
         ],
-        const Divider(height: 32),
+        ],
       ],
+    );
+  }
+
+  Widget _buildSettingsSubTabBtn(int index, String label, IconData icon) {
+    final isActive = _settingsSubTab == index;
+    return GestureDetector(
+      onTap: () => setState(() => _settingsSubTab = index),
+      child: Container(
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: isActive ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          boxShadow: isActive ? [const BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))] : [],
+        ),
+        margin: const EdgeInsets.all(4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16, color: isActive ? AppColors.primary : Colors.grey),
+            const SizedBox(width: 6),
+            Text(label, style: TextStyle(
+              fontSize: 13,
+              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+              color: isActive ? AppColors.primary : Colors.grey,
+            )),
+          ],
+        ),
+      ),
     );
   }
 
@@ -4354,10 +5366,153 @@ class _VideoWatermarkScreenState extends State<VideoWatermarkScreen> with Widget
   Future<void> _pickBgImage() async {
     try {
       final image = await ImagePicker().pickImage(source: ImageSource.gallery);
-      if (image != null) setState(() => _bgImage = File(image.path));
+      if (image != null) {
+        final dir = await getApplicationDocumentsDirectory();
+        final gridsDir = Directory('${dir.path}/grids');
+        if (!await gridsDir.exists()) await gridsDir.create(recursive: true);
+
+        final ext = image.path.contains('.') ? image.path.split('.').last : 'jpg';
+        final savedFile = File('${gridsDir.path}/bg_${DateTime.now().millisecondsSinceEpoch}.$ext');
+        await File(image.path).copy(savedFile.path);
+
+        setState(() {
+          _saveCurrentBgLayout();
+          _bgImage = savedFile;
+          _applyBgLayoutForImage(savedFile.path);
+          if (!_gridHistory.contains(savedFile.path)) {
+            _gridHistory.insert(0, savedFile.path);
+          }
+        });
+        _triggerAutoSave();
+      }
     } catch (e) {
       _showToast('Error picking background: $e', isError: true);
     }
+  }
+
+  Future<void> _pickAndCreateGridBgImage(int columns) async {
+    try {
+      final int requiredImages = columns * columns;
+      final List<XFile> images;
+      if (columns == 1) {
+        final img = await ImagePicker().pickImage(source: ImageSource.gallery);
+        if (img == null) return;
+        images = [img];
+      } else {
+        images = await ImagePicker().pickMultiImage();
+        if (images.length != requiredImages) {
+          _showToast('Please select exactly $requiredImages images for the grid.', isError: true);
+          return;
+        }
+      }
+      
+      final dir = await getApplicationDocumentsDirectory();
+      final sourcesDir = Directory('${dir.path}/grid_sources');
+      if (!await sourcesDir.exists()) await sourcesDir.create(recursive: true);
+
+      final List<XFile> persistentImages = [];
+      final now = DateTime.now().millisecondsSinceEpoch;
+      for (int i = 0; i < images.length; i++) {
+        final ext = images[i].path.contains('.') ? images[i].path.split('.').last : 'jpg';
+        final persistentFile = File('${sourcesDir.path}/grid_src_${now}_$i.$ext');
+        await File(images[i].path).copy(persistentFile.path);
+        persistentImages.add(XFile(persistentFile.path));
+      }
+
+      _gridImages = persistentImages;
+      _gridColumns = columns;
+      await _generateGridBgImage();
+      _triggerAutoSave();
+    } catch (e) {
+      _showToast('Error picking grid images: $e', isError: true);
+    }
+  }
+
+  Timer? _gridDebounce;
+
+  Future<void> _generateGridBgImage() async {
+    if (_gridImages.isEmpty) return;
+    
+    _gridDebounce?.cancel();
+    _gridDebounce = Timer(const Duration(milliseconds: 150), () async {
+      try {
+      final int gridW = 1080;
+      final int gridH = _fullScreen ? 1920 : (_forceSquare ? 1080 : 1080);
+      final double gap = _gridGap;
+      final double actualCellW = (gridW - gap * (_gridColumns + 1)) / _gridColumns;
+      final double actualCellH = (gridH - gap * (_gridColumns + 1)) / _gridColumns;
+      
+      final ui.PictureRecorder recorder = ui.PictureRecorder();
+      final ui.Canvas canvas = ui.Canvas(recorder);
+      
+      if (gap > 0) {
+        final paint = Paint()..color = _parseColor(_gridGapColor);
+        canvas.drawRect(Rect.fromLTWH(0, 0, gridW.toDouble(), gridH.toDouble()), paint);
+      }
+      
+      for (int i = 0; i < _gridImages.length; i++) {
+        final data = await File(_gridImages[i].path).readAsBytes();
+        final ui.Image img = await decodeImageFromList(data);
+        
+        final int col = i % _gridColumns;
+        final int row = i ~/ _gridColumns;
+        
+        final double destX = gap + col * (actualCellW + gap);
+        final double destY = gap + row * (actualCellH + gap);
+        
+        final double srcAspect = img.width / img.height;
+        final double dstAspect = actualCellW / actualCellH;
+        
+        double srcW = img.width.toDouble();
+        double srcH = img.height.toDouble();
+        double srcX = 0;
+        double srcY = 0;
+        
+        if (srcAspect > dstAspect) {
+          srcW = srcH * dstAspect;
+          srcX = (img.width - srcW) / 2;
+        } else {
+          srcH = srcW / dstAspect;
+          srcY = (img.height - srcH) / 2;
+        }
+        
+        canvas.drawImageRect(
+          img,
+          Rect.fromLTWH(srcX, srcY, srcW, srcH),
+          Rect.fromLTWH(destX, destY, actualCellW, actualCellH),
+          Paint(),
+        );
+      }
+      
+      final ui.Image finalImg = await recorder.endRecording().toImage(gridW, gridH);
+      final ByteData? byteData = await finalImg.toByteData(format: ui.ImageByteFormat.png);
+      
+      if (byteData != null) {
+        final dir = await getApplicationDocumentsDirectory();
+        final gridsDir = Directory('${dir.path}/grids');
+        if (!await gridsDir.exists()) await gridsDir.create(recursive: true);
+        
+        final file = File('${gridsDir.path}/grid_bg_${DateTime.now().millisecondsSinceEpoch}.png');
+        await file.writeAsBytes(byteData.buffer.asUint8List());
+        
+        if (!mounted) return;
+        await precacheImage(FileImage(file), context);
+        
+        if (!mounted) return;
+        setState(() {
+          _saveCurrentBgLayout();
+          _bgImage = file;
+          _applyBgLayoutForImage(file.path);
+          if (!_gridHistory.contains(file.path)) {
+            _gridHistory.insert(0, file.path);
+          }
+        });
+        _triggerAutoSave();
+      }
+      } catch (e) {
+        _showToast('Error creating grid: $e', isError: true);
+      }
+    });
   }
 
   Widget _buildVerifiedBadgeWidget(double scale) {

@@ -4,6 +4,9 @@ import 'package:file_picker/file_picker.dart';
 import '../../config/app_theme.dart';
 import '../../utils/font_selector.dart';
 import '../../utils/custom_font_manager.dart';
+import '../../services/google_font_service.dart';
+import '../../services/favorite_fonts_manager.dart';
+import 'widgets/google_fonts_tab_view.dart';
 
 class FontLibraryScreen extends StatefulWidget {
   final bool isActive;
@@ -16,7 +19,7 @@ class FontLibraryScreen extends StatefulWidget {
 class _FontLibraryScreenState extends State<FontLibraryScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
-  final TextEditingController _previewController = TextEditingController(text: 'Abc - The quick brown fox');
+  final TextEditingController _previewController = TextEditingController();
   
   List<FontInfo> _allFonts = [];
   List<FontInfo> _filteredFonts = [];
@@ -57,13 +60,32 @@ class _FontLibraryScreenState extends State<FontLibraryScreen> with SingleTicker
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _tabController.addListener(_handleTabSelection);
-    _loadFonts();
+    GoogleFontService().addListener(_onGoogleFontsChanged);
+    FavoriteFontsManager().addListener(_onFavoritesChanged);
+    _allFonts = getAllFonts();
+    _applyFilter();
+  }
+
+  void _onGoogleFontsChanged() {
+    if (mounted) {
+      _loadFonts();
+    }
+  }
+
+  void _onFavoritesChanged() {
+    if (mounted) {
+      setState(() {
+        _applyFilter();
+      });
+    }
   }
 
   @override
   void dispose() {
+    GoogleFontService().removeListener(_onGoogleFontsChanged);
+    FavoriteFontsManager().removeListener(_onFavoritesChanged);
     _tabController.dispose();
     _searchController.dispose();
     _previewController.dispose();
@@ -72,22 +94,35 @@ class _FontLibraryScreenState extends State<FontLibraryScreen> with SingleTicker
 
   void _handleTabSelection() {
     if (_tabController.indexIsChanging) return;
-    _filterFonts();
+    if (mounted) {
+      setState(() {
+        _applyFilter();
+      });
+    }
   }
 
   void _loadFonts() {
-    setState(() {
-      _allFonts = getAllFonts();
-      _filterFonts();
-    });
+    if (mounted) {
+      setState(() {
+        _allFonts = getAllFonts();
+        _applyFilter();
+      });
+    }
   }
 
-  void _filterFonts() {
+  void _applyFilter() {
+    final googleService = GoogleFontService();
+    final favManager = FavoriteFontsManager();
     List<FontInfo> list = [];
     if (_tabController.index == 0) {
       list = _allFonts;
     } else if (_tabController.index == 1) {
-      list = _allFonts.where((f) => f.isCustom).toList();
+      list = _allFonts.where((f) => favManager.isFavorite(f.family)).toList();
+    } else if (_tabController.index == 2) {
+      // Google Fonts tab renders GoogleFontsTabView in the body
+      list = [];
+    } else if (_tabController.index == 3) {
+      list = _allFonts.where((f) => f.isCustom && !googleService.isDownloaded(f.family)).toList();
     } else {
       list = _allFonts.where((f) => !f.isCustom).toList();
     }
@@ -96,10 +131,10 @@ class _FontLibraryScreenState extends State<FontLibraryScreen> with SingleTicker
       list = list.where((f) => f.displayName.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
     }
 
-    setState(() {
-      _filteredFonts = list;
-    });
+    _filteredFonts = list;
   }
+
+  void _filterFonts() => _applyFilter();
 
   Future<void> _importCustomFont() async {
     setState(() => _isImporting = true);
@@ -163,23 +198,22 @@ class _FontLibraryScreenState extends State<FontLibraryScreen> with SingleTicker
     );
 
     if (confirm == true) {
-      await CustomFontManager().removeFont(font.family);
+      if (GoogleFontService().isDownloaded(font.family)) {
+        await GoogleFontService().deleteFont(font.family);
+      } else {
+        await CustomFontManager().removeFont(font.family);
+      }
       _loadFonts();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Deleted font'),
-          backgroundColor: Colors.black87,
-        ),
-      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final primary = AppColors.primary;
     final totalCount = _allFonts.length;
-    final customCount = _allFonts.where((f) => f.isCustom).length;
-    final systemCount = totalCount - customCount;
+    final googleDownloaded = GoogleFontService().downloadedFonts.length;
+    final googleCatalog = GoogleFontService().catalog.length;
+    final customCount = CustomFontManager().fonts.length;
+    final systemCount = FontInfo.availableFonts.length;
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -248,7 +282,7 @@ class _FontLibraryScreenState extends State<FontLibraryScreen> with SingleTicker
                           onChanged: (val) {
                             setState(() {
                               _searchQuery = val;
-                              _filterFonts();
+                              _applyFilter();
                             });
                           },
                           decoration: const InputDecoration(
@@ -276,7 +310,7 @@ class _FontLibraryScreenState extends State<FontLibraryScreen> with SingleTicker
                       setState(() {});
                     },
                     decoration: const InputDecoration(
-                      hintText: 'Type text to preview fonts...',
+                      hintText: 'Type custom preview text (optional)...',
                       hintStyle: TextStyle(fontSize: 14, color: Colors.grey),
                       prefixIcon: Icon(Icons.font_download_outlined, size: 20, color: AppColors.primary),
                       border: InputBorder.none,
@@ -370,57 +404,95 @@ class _FontLibraryScreenState extends State<FontLibraryScreen> with SingleTicker
           Container(
             color: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Row(
-              children: [
-                _buildStatCard('Total', totalCount, Colors.indigo),
-                const SizedBox(width: 8),
-                _buildStatCard('Custom', customCount, Colors.purple),
-                const SizedBox(width: 8),
-                _buildStatCard('Premium', systemCount, Colors.teal),
-              ],
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: AnimatedBuilder(
+                animation: FavoriteFontsManager(),
+                builder: (context, _) {
+                  final favCount = FavoriteFontsManager().count;
+                  return Row(
+                    children: [
+                      SizedBox(width: 120, child: _buildStatCard('Active', totalCount, Colors.indigo)),
+                      const SizedBox(width: 8),
+                      SizedBox(width: 120, child: _buildStatCard('Favorites', favCount, Colors.redAccent)),
+                      const SizedBox(width: 8),
+                      SizedBox(width: 140, child: _buildStatCard('Google ($googleDownloaded/$googleCatalog)', googleDownloaded, Colors.blue)),
+                      const SizedBox(width: 8),
+                      SizedBox(width: 120, child: _buildStatCard('Custom', customCount, Colors.purple)),
+                      const SizedBox(width: 8),
+                      SizedBox(width: 120, child: _buildStatCard('System', systemCount, Colors.teal)),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
 
           // ─── Tab Bar category selectors ───
           Container(
             color: Colors.white,
-            child: TabBar(
-              controller: _tabController,
-              labelColor: AppColors.primary,
-              unselectedLabelColor: Colors.grey,
-              indicatorColor: AppColors.primary,
-              indicatorWeight: 3,
-              labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              tabs: const [
-                Tab(text: 'All Fonts'),
-                Tab(text: 'Custom Fonts'),
-                Tab(text: 'System Fonts'),
-              ],
+            child: AnimatedBuilder(
+              animation: FavoriteFontsManager(),
+              builder: (context, _) {
+                final favCount = FavoriteFontsManager().count;
+                return TabBar(
+                  controller: _tabController,
+                  isScrollable: true,
+                  labelColor: AppColors.primary,
+                  unselectedLabelColor: Colors.grey,
+                  indicatorColor: AppColors.primary,
+                  indicatorWeight: 3,
+                  labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  tabs: [
+                    const Tab(text: 'All Fonts'),
+                    Tab(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.favorite, size: 14, color: Colors.redAccent),
+                          const SizedBox(width: 4),
+                          Text('Favorites ($favCount)'),
+                        ],
+                      ),
+                    ),
+                    Tab(text: 'Google Fonts ($googleDownloaded)'),
+                    const Tab(text: 'Custom Fonts'),
+                    const Tab(text: 'System Fonts'),
+                  ],
+                );
+              },
             ),
           ),
 
           // ─── Fonts list ───
           Expanded(
-            child: _filteredFonts.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.font_download_off_outlined, size: 48, color: Colors.grey[400]),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No fonts found',
-                          style: TextStyle(color: Colors.grey[600], fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Import your custom .ttf/.otf fonts to get started.',
-                          style: TextStyle(color: Colors.grey, fontSize: 12),
-                        ),
-                      ],
-                    ),
+            child: _tabController.index == 2
+                ? GoogleFontsTabView(
+                    searchQuery: _searchQuery,
+                    previewText: _previewController.text,
+                    textColor: _textColor,
+                    cardBg: _bgColor,
                   )
-                : ListView.builder(
+                : _filteredFonts.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.font_download_off_outlined, size: 48, color: Colors.grey[400]),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No fonts found',
+                              style: TextStyle(color: Colors.grey[600], fontSize: 16, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Import your custom .ttf/.otf fonts to get started.',
+                              style: TextStyle(color: Colors.grey, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: _filteredFonts.length,
                     itemBuilder: (context, index) {
@@ -453,37 +525,63 @@ class _FontLibraryScreenState extends State<FontLibraryScreen> with SingleTicker
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Row(
-                                      children: [
-                                        Text(
-                                          font.displayName,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                            color: isDarkBg ? Colors.grey[400] : Colors.grey[600],
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: font.isCustom
-                                                ? Colors.purple.withOpacity(isDarkBg ? 0.2 : 0.08)
-                                                : Colors.teal.withOpacity(isDarkBg ? 0.2 : 0.08),
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          child: Text(
-                                            font.isCustom ? 'CUSTOM' : 'PREMIUM',
-                                            style: TextStyle(
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.bold,
-                                              color: font.isCustom
-                                                  ? (isDarkBg ? Colors.purple[200] : Colors.purple)
-                                                  : (isDarkBg ? Colors.teal[200] : Colors.teal),
+                                    Builder(
+                                      builder: (context) {
+                                        final isGoogle = GoogleFontService().isDownloaded(font.family);
+                                        final badgeText = isGoogle ? 'GOOGLE FONT' : (font.isCustom ? 'CUSTOM' : 'PREMIUM');
+                                        final Color badgeColor = isGoogle ? Colors.blue : (font.isCustom ? Colors.purple : Colors.teal);
+
+                                        return Row(
+                                          children: [
+                                            // Favorite heart toggle
+                                            AnimatedBuilder(
+                                              animation: FavoriteFontsManager(),
+                                              builder: (context, _) {
+                                                final isFav = FavoriteFontsManager().isFavorite(font.family);
+                                                return InkWell(
+                                                  onTap: () => FavoriteFontsManager().toggleFavorite(font.family),
+                                                  borderRadius: BorderRadius.circular(16),
+                                                  child: Padding(
+                                                    padding: const EdgeInsets.only(right: 6.0),
+                                                    child: Icon(
+                                                      isFav ? Icons.favorite : Icons.favorite_border,
+                                                      size: 18,
+                                                      color: isFav ? Colors.redAccent : (isDarkBg ? Colors.white38 : Colors.grey[400]),
+                                                    ),
+                                                  ),
+                                                );
+                                              },
                                             ),
-                                          ),
-                                        ),
-                                      ],
+                                            Flexible(
+                                              child: Text(
+                                                font.displayName,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: isDarkBg ? Colors.grey[400] : Colors.grey[600],
+                                                ),
+                                                softWrap: true,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: badgeColor.withValues(alpha: isDarkBg ? 0.2 : 0.08),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Text(
+                                                badgeText,
+                                                style: TextStyle(
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: isDarkBg ? badgeColor.withValues(alpha: 0.8) : badgeColor,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        );
+                                      },
                                     ),
                                     const SizedBox(height: 16),
                                     Text(
@@ -497,7 +595,7 @@ class _FontLibraryScreenState extends State<FontLibraryScreen> with SingleTicker
                                   ],
                                 ),
                               ),
-                              if (font.isCustom)
+                              if (font.isCustom || GoogleFontService().isDownloaded(font.family))
                                 Positioned(
                                   top: 12,
                                   right: 12,
@@ -508,7 +606,7 @@ class _FontLibraryScreenState extends State<FontLibraryScreen> with SingleTicker
                                       size: 20,
                                     ),
                                     onPressed: () => _deleteFont(font),
-                                    tooltip: 'Delete custom font',
+                                    tooltip: 'Delete font',
                                   ),
                                 ),
                             ],
@@ -524,28 +622,26 @@ class _FontLibraryScreenState extends State<FontLibraryScreen> with SingleTicker
   }
 
   Widget _buildStatCard(String title, int count, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.12), width: 1.2),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color.withOpacity(0.8)),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              count.toString(),
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: color),
-            ),
-          ],
-        ),
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.12), width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color.withOpacity(0.8)),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            count.toString(),
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: color),
+          ),
+        ],
       ),
     );
   }

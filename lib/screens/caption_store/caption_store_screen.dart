@@ -571,7 +571,7 @@ class _CaptionStoreScreenState extends State<CaptionStoreScreen> {
       }
     } else {
       variantControllers.add({
-        'name': TextEditingController(text: initialVariantName ?? 'Instagram'),
+        'name': TextEditingController(text: initialVariantName ?? 'Social Feed'),
         'content': TextEditingController(),
       });
     }
@@ -696,7 +696,7 @@ class _CaptionStoreScreenState extends State<CaptionStoreScreen> {
                                     child: _buildFullTextField(
                                       controllers['name']!,
                                       'Type',
-                                      'e.g., Instagram, Twitter, Short',
+                                      'e.g., Social Feed, Microblog, Short',
                                     ),
                                   ),
                                   if (variantControllers.length > 1)

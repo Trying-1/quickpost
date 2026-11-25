@@ -9,6 +9,22 @@ class AdConfig {
   // Global switch to enable/disable all ads in the app
   static const bool adsEnabled = false;
 
+  // --- App Open Ads Configuration ---
+  /// Master switch to enable/disable App Open ads specifically
+  static const bool appOpenAdsEnabled = true;
+
+  /// Whether App Open ads should show on cold start (fresh app launch)
+  static const bool showAppOpenOnColdStart = true;
+
+  /// Whether App Open ads should show when resuming from background
+  static const bool showAppOpenOnResume = true;
+
+  /// Maximum allowed wait duration for an App Open ad to load and display on cold start
+  static const Duration coldStartAdTimeout = Duration(seconds: 15);
+
+  /// Minimum interval / cooldown limit between showing App Open ads (10-minute frequency limit)
+  static const Duration appOpenCooldown = Duration(minutes: 10);
+
   // --- Production Ad Unit IDs ---
   // Managed in AdMob Console: https://apps.admob.com/
   static const String _androidAppId = 'ca-app-pub-5829296907403264~3334590442';
@@ -31,7 +47,7 @@ class AdConfig {
 
   /// Returns the App Open Ad Unit ID based on the build mode (Debug/Release)
   static String get appOpenAdUnitId {
-    if (!adsEnabled) return '';
+    if (!adsEnabled || !appOpenAdsEnabled) return '';
     if (kDebugMode) {
       return _androidAppOpenTestId;
     }
